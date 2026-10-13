@@ -420,9 +420,10 @@ export const saveMembers = (members: Member[]) => {
 export const getStoredPayments = (): Payment[] => {
   try {
     const isCleared = localStorage.getItem(KEYS.DEMO_CLEARED) === 'true';
+    const isTxCleared = localStorage.getItem('dana_kematian_tx_cleared_v1') === 'true';
     const data = localStorage.getItem(KEYS.PAYMENTS);
     if (data === null) {
-      if (isCleared) {
+      if (isCleared || isTxCleared) {
         return [];
       }
       const isInit = localStorage.getItem(KEYS.IS_INITIALIZED);

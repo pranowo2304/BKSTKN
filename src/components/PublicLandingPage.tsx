@@ -15,6 +15,7 @@ import {
 import { formatIDR } from '../lib/storage';
 import { calculateMemberExpiry } from '../lib/expiryUtils';
 import { getMemberKtaIssuanceInfo } from '../lib/ktaUtils';
+import { checkDuplicateMember, findDuplicateNikMember, findDuplicateKkMember } from '../lib/duplicateValidator';
 import { FamilyCardUploader } from './FamilyCardUploader';
 import {
   HeartHandshake,
@@ -63,6 +64,7 @@ import {
   Info,
   Camera,
   Mail,
+  AlertTriangle,
 } from 'lucide-react';
 import { DigitalKtaModal } from './DigitalKtaModal';
 import { KtaScannerModal } from './KtaScannerModal';
@@ -294,6 +296,15 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
   const [regFamilyCardFile, setRegFamilyCardFile] = useState<File | null>(null);
   const [showPublicRegPassword, setShowPublicRegPassword] = useState(false);
 
+  // Real-time Duplicate Checking for NIK and Nomor KK
+  const duplicateNikMember = useMemo(() => {
+    return findDuplicateNikMember(members, regForm.nik);
+  }, [members, regForm.nik]);
+
+  const duplicateKkMember = useMemo(() => {
+    return findDuplicateKkMember(members, regForm.familyCardNumber);
+  }, [members, regForm.familyCardNumber]);
+
   // Save draft whenever regForm changes
   useEffect(() => {
     const hasData = Boolean(
@@ -471,13 +482,21 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
       return;
     }
 
-    // Check duplicate NIK
-    const existing = members.find((m) => m.nik === regForm.nik.trim());
-    if (existing) {
-      alert(`NIK ${regForm.nik} sudah terdaftar atas nama ${existing.name}. Silakan cek status keanggotaan Anda.`);
-      setSearchQuery(existing.nik);
-      handleSearch();
-      setActiveSection('cek-status');
+    // Validasi pencegahan data double NIK dan Nomor KK
+    const dupCheck = checkDuplicateMember(members, regForm.nik, regForm.familyCardNumber);
+    if (dupCheck.isDuplicate) {
+      if (dupCheck.duplicateField === 'nik') {
+        alert(
+          `PENDAFTARAN DITOLAK (DATA DOUBLE NIK TERDETEKSI):\n\nNIK "${regForm.nik}" sudah terdaftar dalam sistem atas nama warga "${dupCheck.duplicateMember?.name}" (${dupCheck.duplicateMember?.cluster || 'Cluster'}).\n\nSilakan gunakan menu "Cek Status Keanggotaan" untuk mengecek status kepesertaan Anda.`
+        );
+        setSearchQuery(dupCheck.duplicateMember?.nik || regForm.nik);
+        handleSearch();
+        setActiveSection('cek-status');
+      } else {
+        alert(
+          `PENDAFTARAN DITOLAK (DATA DOUBLE NOMOR KK TERDETEKSI):\n\nNomor Kartu Keluarga "${regForm.familyCardNumber}" sudah terdaftar dalam sistem atas nama Kepala Keluarga "${dupCheck.duplicateMember?.name}" (${dupCheck.duplicateMember?.cluster || 'Cluster'}).\n\nSatu Kartu Keluarga (KK) hanya boleh didaftarkan untuk satu kepala keluarga/rumah tangga.`
+        );
+      }
       return;
     }
 
@@ -1657,8 +1676,13 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        Nomor Induk Kependudukan (NIK) <span className="text-rose-500">*</span>
+                      <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                        <span>Nomor Induk Kependudukan (NIK) <span className="text-rose-500">*</span></span>
+                        {duplicateNikMember && (
+                          <span className="text-[10px] font-extrabold text-rose-600 bg-rose-100 px-2 py-0.5 rounded-full">
+                            Double NIK
+                          </span>
+                        )}
                       </label>
                       <input
                         type="text"
@@ -1667,8 +1691,63 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                         placeholder="16 Digit Nomor KTP"
                         value={regForm.nik}
                         onChange={(e) => setRegForm({ ...regForm, nik: e.target.value.replace(/[^0-9]/g, '') })}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
+                        className={`w-full px-3.5 py-2.5 border rounded-xl text-xs font-mono font-medium outline-none transition-all ${
+                          duplicateNikMember
+                            ? 'border-rose-400 bg-rose-50 text-rose-900 focus:ring-2 focus:ring-rose-500 font-bold'
+                            : regForm.nik && regForm.nik.length === 16
+                            ? 'border-emerald-400 bg-emerald-50/50 text-slate-900 focus:ring-2 focus:ring-emerald-500'
+                            : 'bg-slate-50 border-slate-300 text-slate-900 focus:ring-2 focus:ring-emerald-500'
+                        }`}
                       />
+                      {duplicateNikMember && (
+                        <p className="mt-1 text-[11px] text-rose-700 font-bold flex items-start gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                          <span>NIK ini sudah terdaftar atas nama {duplicateNikMember.name} ({duplicateNikMember.cluster || 'Cluster'}).</span>
+                        </p>
+                      )}
+                      {!duplicateNikMember && regForm.nik && regForm.nik.length === 16 && (
+                        <p className="mt-1 text-[11px] text-emerald-700 font-bold flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>NIK Unik & Belum Terdaftar (16 Digit)</span>
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                        <span>Nomor Kartu Keluarga (KK) <span className="text-slate-400 font-normal">(16 Digit)</span></span>
+                        {duplicateKkMember && (
+                          <span className="text-[10px] font-extrabold text-rose-600 bg-rose-100 px-2 py-0.5 rounded-full">
+                            Double KK
+                          </span>
+                        )}
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={16}
+                        placeholder="16 Digit No. KK"
+                        value={regForm.familyCardNumber}
+                        onChange={(e) => setRegForm({ ...regForm, familyCardNumber: e.target.value.replace(/[^0-9]/g, '') })}
+                        className={`w-full px-3.5 py-2.5 border rounded-xl text-xs font-mono font-medium outline-none transition-all ${
+                          duplicateKkMember
+                            ? 'border-rose-400 bg-rose-50 text-rose-900 focus:ring-2 focus:ring-rose-500 font-bold'
+                            : regForm.familyCardNumber && regForm.familyCardNumber.length === 16
+                            ? 'border-emerald-400 bg-emerald-50/50 text-slate-900 focus:ring-2 focus:ring-emerald-500'
+                            : 'bg-slate-50 border-slate-300 text-slate-900 focus:ring-2 focus:ring-emerald-500'
+                        }`}
+                      />
+                      {duplicateKkMember && (
+                        <p className="mt-1 text-[11px] text-rose-700 font-bold flex items-start gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                          <span>No. KK sudah terdaftar atas nama {duplicateKkMember.name} ({duplicateKkMember.cluster || 'Cluster'}).</span>
+                        </p>
+                      )}
+                      {!duplicateKkMember && regForm.familyCardNumber && regForm.familyCardNumber.length === 16 && (
+                        <p className="mt-1 text-[11px] text-emerald-700 font-bold flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Nomor KK Unik (16 Digit)</span>
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -1906,6 +1985,11 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                           familyCardNumber: kkNum,
                         }));
                       }}
+                      duplicateKkError={
+                        duplicateKkMember
+                          ? `Nomor KK ini sudah terdaftar atas nama Kepala Keluarga "${duplicateKkMember.name}" (${duplicateKkMember.cluster || 'Cluster'}, No. Anggota: ${duplicateKkMember.memberNumber || '-'}).`
+                          : null
+                      }
                     />
                   </div>
                 </div>

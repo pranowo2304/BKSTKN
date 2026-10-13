@@ -31,6 +31,7 @@ interface ParsedMemberRow {
   cluster: string;
   address: string;
   dependentsCount: number;
+  familyCardNumber?: string;
   joinDate: string;
   notes?: string;
   isValid: boolean;
@@ -55,12 +56,12 @@ export const CsvMemberImportModal: React.FC<CsvMemberImportModalProps> = ({
 
   // Function to download pre-formatted CSV template
   const handleDownloadTemplate = () => {
-    const headers = 'nama,nik,no_hp,cluster,alamat,jumlah_tanggungan,tgl_bergabung,catatan';
+    const headers = 'nama,nik,no_kk,no_hp,cluster,alamat,jumlah_tanggungan,tgl_bergabung,catatan';
     const sampleRows = [
-      'Budi Santoso,3201123456780001,081234567890,Cluster Sanur,"Blok S-12 No. 04",3,2026-08-01,Kepala Keluarga',
-      'Siti Aminah,3201123456780002,081398765432,Cluster Mataram,"Blok M-05 No. 18",2,2026-08-01,Warga RT 05',
-      'Ahmad Fauzi,3201123456780003,085611223344,Cluster Pasundan RT 01,"Blok P-08 No. 02",0,2026-08-01,',
-      'Dewi Lestari,3201123456780004,087811223344,Cluster Ranah Minang,"Blok RM-19 No. 11",1,2026-08-01,',
+      'Budi Santoso,3201123456780001,3201123456780099,081234567890,Cluster Sanur,"Blok S-12 No. 04",3,2026-08-01,Kepala Keluarga',
+      'Siti Aminah,3201123456780002,3201123456780088,081398765432,Cluster Mataram,"Blok M-05 No. 18",2,2026-08-01,Warga RT 05',
+      'Ahmad Fauzi,3201123456780003,3201123456780077,085611223344,Cluster Pasundan RT 01,"Blok P-08 No. 02",0,2026-08-01,',
+      'Dewi Lestari,3201123456780004,3201123456780066,087811223344,Cluster Ranah Minang,"Blok RM-19 No. 11",1,2026-08-01,',
     ].join('\n');
 
     const csvContent = `${headers}\n${sampleRows}`;
@@ -117,6 +118,7 @@ export const CsvMemberImportModal: React.FC<CsvMemberImportModalProps> = ({
     // Map column indices
     const nameIdx = headerCols.findIndex((h) => h.includes('nama') || h.includes('name'));
     const nikIdx = headerCols.findIndex((h) => h.includes('nik') || h.includes('ktp'));
+    const kkIdx = headerCols.findIndex((h) => h.includes('kk') || h.includes('keluarga') || h.includes('familycard'));
     const phoneIdx = headerCols.findIndex((h) => h.includes('hp') || h.includes('telepon') || h.includes('phone') || h.includes('wa'));
     const clusterIdx = headerCols.findIndex((h) => h.includes('cluster') || h.includes('kluster') || h.includes('wilayah'));
     const addrIdx = headerCols.findIndex((h) => h.includes('alamat') || h.includes('address') || h.includes('blok'));
@@ -125,11 +127,20 @@ export const CsvMemberImportModal: React.FC<CsvMemberImportModalProps> = ({
     const notesIdx = headerCols.findIndex((h) => h.includes('catatan') || h.includes('note') || h.includes('keterangan'));
 
     if (nameIdx === -1 || nikIdx === -1) {
-      throw new Error('Format CSV tidak valid: Header wajib mengandung kolom "nama" dan "nik".');
+      throw new Error('Format CSV tidak valid: Header wajib mengandung kolom "nama" dan "nik". Kolom opsional: "no_kk", "no_hp", dll.');
     }
 
-    const existingNikSet = new Set(existingMembers.map((m) => m.nik.trim()));
+    const existingNikMap = new Map<string, string>();
+    const existingKkMap = new Map<string, string>();
+    existingMembers.forEach((m) => {
+      const cleanNik = (m.nik || '').trim().replace(/[\s.\-_]/g, '');
+      if (cleanNik) existingNikMap.set(cleanNik, m.name);
+      const cleanKk = (m.familyCardNumber || '').trim().replace(/[\s.\-_]/g, '');
+      if (cleanKk) existingKkMap.set(cleanKk, m.name);
+    });
+
     const seenNikInBatch = new Set<string>();
+    const seenKkInBatch = new Set<string>();
     const results: ParsedMemberRow[] = [];
 
     const todayStr = new Date().toISOString().split('T')[0];
@@ -140,6 +151,7 @@ export const CsvMemberImportModal: React.FC<CsvMemberImportModalProps> = ({
 
       const rawName = nameIdx !== -1 && cols[nameIdx] ? cols[nameIdx] : '';
       const rawNik = nikIdx !== -1 && cols[nikIdx] ? cols[nikIdx].replace(/[^\d]/g, '') : '';
+      const rawKk = kkIdx !== -1 && cols[kkIdx] ? cols[kkIdx].replace(/[^\d]/g, '') : '';
       const rawPhone = phoneIdx !== -1 && cols[phoneIdx] ? cols[phoneIdx] : '';
       let rawCluster = clusterIdx !== -1 && cols[clusterIdx] ? cols[clusterIdx].trim() : '';
       const rawAddr = addrIdx !== -1 && cols[addrIdx] ? cols[addrIdx] : 'RT 05 / RW 03';
@@ -178,17 +190,30 @@ export const CsvMemberImportModal: React.FC<CsvMemberImportModalProps> = ({
         errors.push('Nama wajib diisi (minimal 2 karakter)');
       }
 
-      // NIK validation
+      // NIK validation & Double Check
       if (!rawNik) {
         errors.push('NIK wajib diisi');
       } else if (rawNik.length < 10) {
         errors.push('NIK terlalu pendek (minimal 10-16 digit angka)');
-      } else if (existingNikSet.has(rawNik)) {
-        errors.push(`NIK ${rawNik} sudah terdaftar dalam sistem`);
+      } else if (existingNikMap.has(rawNik)) {
+        errors.push(`DATA DOUBLE NIK: NIK ${rawNik} sudah terdaftar atas nama "${existingNikMap.get(rawNik)}"`);
       } else if (seenNikInBatch.has(rawNik)) {
-        errors.push(`NIK ${rawNik} duplikat di dalam file CSV ini`);
+        errors.push(`DATA DOUBLE NIK: NIK ${rawNik} duplikat di baris lain dalam file CSV ini`);
       } else {
         seenNikInBatch.add(rawNik);
+      }
+
+      // Nomor KK validation & Double Check (jika ada)
+      if (rawKk) {
+        if (rawKk.length < 10) {
+          errors.push('Nomor KK terlalu pendek (minimal 10-16 digit angka)');
+        } else if (existingKkMap.has(rawKk)) {
+          errors.push(`DATA DOUBLE KK: No. KK ${rawKk} sudah terdaftar atas nama Kepala Keluarga "${existingKkMap.get(rawKk)}"`);
+        } else if (seenKkInBatch.has(rawKk)) {
+          errors.push(`DATA DOUBLE KK: No. KK ${rawKk} duplikat di baris lain dalam file CSV ini`);
+        } else {
+          seenKkInBatch.add(rawKk);
+        }
       }
 
       // Date validation
@@ -201,6 +226,7 @@ export const CsvMemberImportModal: React.FC<CsvMemberImportModalProps> = ({
         rowIndex: i,
         name: rawName.trim(),
         nik: rawNik.trim(),
+        familyCardNumber: rawKk ? rawKk.trim() : undefined,
         phone: rawPhone.trim() || '-',
         cluster: rawCluster,
         address: rawAddr.trim(),
@@ -294,6 +320,7 @@ export const CsvMemberImportModal: React.FC<CsvMemberImportModalProps> = ({
         memberNumber,
         name: row.name,
         nik: row.nik,
+        familyCardNumber: row.familyCardNumber,
         phone: row.phone === '-' ? '' : row.phone,
         cluster: row.cluster as any,
         address: row.address,

@@ -60,6 +60,7 @@ import {
   cleanupDemoClaimsFromCloud,
   restoreDemoDataToCloud,
 } from './lib/firebase';
+import { checkDuplicateMember } from './lib/duplicateValidator';
 import { initialUsers } from './data/initialData';
 
 import { Navbar } from './components/Navbar';
@@ -470,6 +471,13 @@ export default function App() {
       return;
     }
 
+    // Validasi pencegahan data double NIK dan Nomor KK
+    const dupCheck = checkDuplicateMember(members, newMember.nik, newMember.familyCardNumber);
+    if (dupCheck.isDuplicate) {
+      alert(`PENDAFTARAN DITOLAK (DATA DOUBLE TERDETEKSI):\n\n${dupCheck.message}`);
+      return;
+    }
+
     const updatedMembers = [newMember, ...members];
     setMembers(updatedMembers);
     saveMembers(updatedMembers);
@@ -488,6 +496,13 @@ export default function App() {
 
   // UPDATE EXISTING MEMBER BIODATA
   const handleUpdateMember = (updatedMember: Member) => {
+    // Validasi pencegahan data double NIK dan Nomor KK pada anggota lain
+    const dupCheck = checkDuplicateMember(members, updatedMember.nik, updatedMember.familyCardNumber, updatedMember.id);
+    if (dupCheck.isDuplicate) {
+      alert(`PEMBARUAN DITOLAK (DATA DOUBLE TERDETEKSI):\n\n${dupCheck.message}`);
+      return;
+    }
+
     const oldMember = members.find((m) => m.id === updatedMember.id);
     const statusChanged = oldMember && oldMember.status !== updatedMember.status;
     const updatedMembers = members.map((m) => (m.id === updatedMember.id ? updatedMember : m));
@@ -520,16 +535,40 @@ export default function App() {
       return;
     }
 
-    const updatedMembers = [...importedMembers, ...members];
+    // Filter baris data double NIK dan Nomor KK
+    const validBatch: Member[] = [];
+    const skippedDuplicates: string[] = [];
+
+    for (const m of importedMembers) {
+      const dupCheck = checkDuplicateMember([...members, ...validBatch], m.nik, m.familyCardNumber);
+      if (dupCheck.isDuplicate) {
+        skippedDuplicates.push(`${m.name} (NIK: ${m.nik || '-'})`);
+      } else {
+        validBatch.push(m);
+      }
+    }
+
+    if (validBatch.length === 0) {
+      alert(`Impor CSV Ditolak: Seluruh ${skippedDuplicates.length} data dalam berkas terdeteksi sebagai data double NIK / No. KK yang sudah terdaftar.`);
+      return;
+    }
+
+    const updatedMembers = [...validBatch, ...members];
     setMembers(updatedMembers);
     saveMembers(updatedMembers);
-    syncMembersBatchToCloud(importedMembers).catch((e) => console.warn('Cloud batch sync members error:', e));
+    syncMembersBatchToCloud(validBatch).catch((e) => console.warn('Cloud batch sync members error:', e));
+
+    if (skippedDuplicates.length > 0) {
+      alert(
+        `Impor Berhasil Sebagian:\n• ${validBatch.length} anggota baru berhasil didaftarkan.\n• ${skippedDuplicates.length} data dilewati karena NIK / No. KK sudah terdaftar dalam sistem.`
+      );
+    }
 
     addNotification({
       type: 'success',
       category: 'registration',
       title: 'Impor Anggota Massal Berhasil',
-      message: `Sebanyak ${importedMembers.length} data anggota baru berhasil diimpor ke sistem paguyuban.`,
+      message: `Sebanyak ${validBatch.length} data anggota baru berhasil diimpor ke sistem paguyuban${skippedDuplicates.length > 0 ? ` (${skippedDuplicates.length} data double dilewati)` : ''}.`,
       linkTab: 'registration',
     });
   };

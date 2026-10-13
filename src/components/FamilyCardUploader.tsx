@@ -55,6 +55,7 @@ interface FamilyCardUploaderProps {
   onChange: (data: FamilyCardUploadResult) => void;
   onClear?: () => void;
   onKkNumberChange?: (kkNumber: string) => void;
+  duplicateKkError?: string | null;
 }
 
 export const FamilyCardUploader: React.FC<FamilyCardUploaderProps> = ({
@@ -71,6 +72,7 @@ export const FamilyCardUploader: React.FC<FamilyCardUploaderProps> = ({
   onChange,
   onClear,
   onKkNumberChange,
+  duplicateKkError,
 }) => {
   // Two separate inputs: One standard file picker (for gallery/files) and one with capture="environment" (direct camera)
   const filePickerInputRef = useRef<HTMLInputElement>(null);
@@ -337,9 +339,27 @@ export const FamilyCardUploader: React.FC<FamilyCardUploaderProps> = ({
                   });
                 }
               }}
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none"
+              className={`w-full pl-9 pr-3 py-2 border rounded-xl text-xs font-mono font-bold transition-all outline-none ${
+                duplicateKkError
+                  ? 'border-rose-400 bg-rose-50 text-rose-900 focus:ring-2 focus:ring-rose-500'
+                  : kkNumber && kkNumber.length === 16
+                  ? 'border-emerald-400 bg-emerald-50/50 text-slate-800 focus:ring-2 focus:ring-emerald-500'
+                  : 'bg-slate-50 border-slate-300 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:bg-white'
+              }`}
             />
           </div>
+          {duplicateKkError && (
+            <div className="mt-1.5 p-2 bg-rose-50 border border-rose-200 rounded-lg text-[11px] text-rose-800 font-bold flex items-start gap-1.5 animate-in fade-in">
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+              <span>{duplicateKkError}</span>
+            </div>
+          )}
+          {!duplicateKkError && kkNumber && kkNumber.length === 16 && (
+            <p className="mt-1 text-[10px] text-emerald-700 font-bold flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+              <span>Format 16 digit lengkap</span>
+            </p>
+          )}
         </div>
       )}
 

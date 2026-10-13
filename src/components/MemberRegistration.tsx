@@ -13,6 +13,7 @@ import { FamilyCardUploader } from './FamilyCardUploader';
 import { FamilyCardModal } from './FamilyCardModal';
 import { MemberPhotoCaptureModal } from './MemberPhotoCaptureModal';
 import { calculateMemberExpiry, MemberAnnualExpiryInfo } from '../lib/expiryUtils';
+import { checkDuplicateMember, findDuplicateNikMember, findDuplicateKkMember } from '../lib/duplicateValidator';
 import { formatIDR, getMemberForUser } from '../lib/storage';
 import { MessageTopic } from '../lib/contactAdminUtils';
 import { getMemberKtaIssuanceInfo } from '../lib/ktaUtils';
@@ -233,6 +234,15 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
   const [familyCardQualityReport, setFamilyCardQualityReport] = useState<DocumentQualityReport | null>(null);
   const [selectedKkViewerMember, setSelectedKkViewerMember] = useState<Member | null>(null);
 
+  // Real-time Duplicate Checking for NIK and Nomor KK
+  const duplicateNikMember = useMemo(() => {
+    return findDuplicateNikMember(members, nik);
+  }, [members, nik]);
+
+  const duplicateKkMember = useMemo(() => {
+    return findDuplicateKkMember(members, familyCardNumber);
+  }, [members, familyCardNumber]);
+
   // Auto-save admin draft
   useEffect(() => {
     const hasData = Boolean(name || nik || phone || email || address || photoUrl || familyCardPhotoUrl || dependents.length > 0);
@@ -341,6 +351,13 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
     e.preventDefault();
     if (!name.trim() || !nik.trim() || !phone.trim() || !address.trim()) {
       alert('Mohon isi semua field utama (Nama, NIK, No. Telepon, Cluster, Alamat)');
+      return;
+    }
+
+    // Validasi Data Double NIK & Nomor KK
+    const dupCheck = checkDuplicateMember(members, nik, familyCardNumber);
+    if (dupCheck.isDuplicate) {
+      alert(`PENDAFTARAN DITOLAK (DATA DOUBLE TERDETEKSI):\n\n${dupCheck.message}`);
       return;
     }
 
@@ -1014,6 +1031,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
         <EditMemberBiodataModal
           isOpen={isEditBiodataModalOpen}
           member={memberToEdit || myMember}
+          members={members}
           settings={settings}
           onClose={() => {
             setIsEditBiodataModalOpen(false);
@@ -1353,8 +1371,13 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Nomor Induk Kependudukan (NIK) <span className="text-rose-500">*</span>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Nomor Induk Kependudukan (NIK) <span className="text-rose-500">*</span></span>
+                  {duplicateNikMember && (
+                    <span className="text-[10px] font-extrabold text-rose-600 bg-rose-100 px-2 py-0.5 rounded-full">
+                      Data Double Terdeteksi
+                    </span>
+                  )}
                 </label>
                 <input
                   type="text"
@@ -1362,9 +1385,74 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                   maxLength={16}
                   placeholder="16 digit angka KTP"
                   value={nik}
-                  onChange={(e) => setNik(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none"
+                  onChange={(e) => setNik(e.target.value.replace(/[^0-9]/g, ''))}
+                  className={`w-full px-3.5 py-2.5 border rounded-xl text-sm font-mono transition-all outline-none ${
+                    duplicateNikMember
+                      ? 'border-rose-400 bg-rose-50 text-rose-900 focus:ring-2 focus:ring-rose-500 font-bold'
+                      : nik && nik.length === 16
+                      ? 'border-emerald-400 bg-emerald-50/50 text-slate-900 focus:ring-2 focus:ring-emerald-500'
+                      : 'bg-slate-50 border-slate-300 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:bg-white'
+                  }`}
                 />
+                {duplicateNikMember && (
+                  <div className="mt-1.5 p-2.5 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-900 font-semibold space-y-1 animate-in fade-in">
+                    <div className="flex items-center gap-1.5 text-rose-700 font-bold">
+                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>Data Double NIK Terdeteksi!</span>
+                    </div>
+                    <p className="text-[11px] text-rose-800 leading-relaxed font-normal">
+                      NIK ini sudah terdaftar atas nama <strong className="text-rose-950 font-bold">{duplicateNikMember.name}</strong> ({duplicateNikMember.cluster || 'Cluster'}, No. Anggota: {duplicateNikMember.memberNumber || '-'}). Satu NIK KTP hanya boleh terdaftar satu kali.
+                    </p>
+                  </div>
+                )}
+                {!duplicateNikMember && nik && nik.length === 16 && (
+                  <p className="mt-1 text-[11px] text-emerald-700 font-bold flex items-center gap-1">
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>NIK Unik & Belum Terdaftar (16 Digit Lengkap)</span>
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Nomor Kartu Keluarga (KK) <span className="text-slate-400 font-normal">(16 Digit)</span></span>
+                  {duplicateKkMember && (
+                    <span className="text-[10px] font-extrabold text-rose-600 bg-rose-100 px-2 py-0.5 rounded-full">
+                      Data Double Terdeteksi
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="text"
+                  maxLength={16}
+                  placeholder="16 digit angka No. KK"
+                  value={familyCardNumber}
+                  onChange={(e) => setFamilyCardNumber(e.target.value.replace(/[^0-9]/g, ''))}
+                  className={`w-full px-3.5 py-2.5 border rounded-xl text-sm font-mono transition-all outline-none ${
+                    duplicateKkMember
+                      ? 'border-rose-400 bg-rose-50 text-rose-900 focus:ring-2 focus:ring-rose-500 font-bold'
+                      : familyCardNumber && familyCardNumber.length === 16
+                      ? 'border-emerald-400 bg-emerald-50/50 text-slate-900 focus:ring-2 focus:ring-emerald-500'
+                      : 'bg-slate-50 border-slate-300 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:bg-white'
+                  }`}
+                />
+                {duplicateKkMember && (
+                  <div className="mt-1.5 p-2.5 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-900 font-semibold space-y-1 animate-in fade-in">
+                    <div className="flex items-center gap-1.5 text-rose-700 font-bold">
+                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>Data Double Nomor KK Terdeteksi!</span>
+                    </div>
+                    <p className="text-[11px] text-rose-800 leading-relaxed font-normal">
+                      Nomor KK ini sudah terdaftar atas nama Kepala Keluarga <strong className="text-rose-950 font-bold">{duplicateKkMember.name}</strong> ({duplicateKkMember.cluster || 'Cluster'}, No. Anggota: {duplicateKkMember.memberNumber || '-'}).
+                    </p>
+                  </div>
+                )}
+                {!duplicateKkMember && familyCardNumber && familyCardNumber.length === 16 && (
+                  <p className="mt-1 text-[11px] text-emerald-700 font-bold flex items-center gap-1">
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Nomor KK Unik & Belum Terdaftar (16 Digit Lengkap)</span>
+                  </p>
+                )}
               </div>
 
               <div>
@@ -1581,6 +1669,11 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                     setFamilyCardQualityReport(null);
                   }}
                   onKkNumberChange={(num) => setFamilyCardNumber(num)}
+                  duplicateKkError={
+                    duplicateKkMember
+                      ? `Nomor KK ini sudah terdaftar atas nama Kepala Keluarga "${duplicateKkMember.name}" (${duplicateKkMember.cluster || 'Cluster'}, No. Anggota: ${duplicateKkMember.memberNumber || '-'}).`
+                      : null
+                  }
                 />
               </div>
             </div>
@@ -2478,6 +2571,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
         <EditMemberBiodataModal
           isOpen={isEditBiodataModalOpen}
           member={memberToEdit}
+          members={members}
           settings={settings}
           onClose={() => {
             setIsEditBiodataModalOpen(false);

@@ -24,10 +24,12 @@ import {
 } from 'lucide-react';
 import { FamilyCardUploader } from './FamilyCardUploader';
 import { MemberPhotoCaptureModal } from './MemberPhotoCaptureModal';
+import { checkDuplicateMember, findDuplicateNikMember, findDuplicateKkMember } from '../lib/duplicateValidator';
 
 interface EditMemberBiodataModalProps {
   isOpen: boolean;
   member: Member | null;
+  members?: Member[];
   settings?: SystemSettings;
   onClose: () => void;
   onSave: (updatedMember: Member) => void;
@@ -36,6 +38,7 @@ interface EditMemberBiodataModalProps {
 export const EditMemberBiodataModal: React.FC<EditMemberBiodataModalProps> = ({
   isOpen,
   member,
+  members = [],
   settings,
   onClose,
   onSave,
@@ -69,6 +72,17 @@ export const EditMemberBiodataModal: React.FC<EditMemberBiodataModalProps> = ({
   const [newDepName, setNewDepName] = useState('');
   const [newDepRel, setNewDepRel] = useState('Suami/Istri');
   const [newDepAge, setNewDepAge] = useState('');
+
+  // Duplicate checks against other members
+  const duplicateNikMember = React.useMemo(() => {
+    if (!members || members.length === 0) return undefined;
+    return findDuplicateNikMember(members, nik, member.id);
+  }, [members, nik, member.id]);
+
+  const duplicateKkMember = React.useMemo(() => {
+    if (!members || members.length === 0) return undefined;
+    return findDuplicateKkMember(members, familyCardNumber, member.id);
+  }, [members, familyCardNumber, member.id]);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -142,6 +156,16 @@ export const EditMemberBiodataModal: React.FC<EditMemberBiodataModalProps> = ({
       setErrorMessage('Nomor NIK harus berjumlah 16 digit angka.');
       setActiveTab('biodata');
       return;
+    }
+
+    // Validasi pencegahan data double NIK & No. KK pada anggota lain
+    if (members && members.length > 0) {
+      const dupCheck = checkDuplicateMember(members, cleanNik, familyCardNumber, member.id);
+      if (dupCheck.isDuplicate) {
+        setErrorMessage(dupCheck.message || 'Data double terdeteksi');
+        setActiveTab('biodata');
+        return;
+      }
     }
 
     const updatedMember: Member = {
@@ -283,20 +307,37 @@ export const EditMemberBiodataModal: React.FC<EditMemberBiodataModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* NIK */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Nomor NIK (KTP 16 Digit) <span className="text-rose-500">*</span>
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                    <span>Nomor NIK (KTP 16 Digit) <span className="text-rose-500">*</span></span>
+                    {duplicateNikMember && (
+                      <span className="text-[10px] font-extrabold text-rose-600 bg-rose-100 px-2 py-0.5 rounded-full">
+                        Data Double Terdeteksi
+                      </span>
+                    )}
                   </label>
                   <input
                     type="text"
                     maxLength={16}
                     value={nik}
                     onChange={(e) => setNik(e.target.value.replace(/\D/g, ''))}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-mono text-slate-900 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all"
+                    className={`w-full px-4 py-2.5 border rounded-xl text-xs sm:text-sm font-mono transition-all outline-none ${
+                      duplicateNikMember
+                        ? 'border-rose-400 bg-rose-50 text-rose-900 focus:ring-2 focus:ring-rose-500 font-bold'
+                        : nik && nik.length === 16
+                        ? 'border-emerald-400 bg-emerald-50/50 text-slate-900 focus:ring-2 focus:ring-emerald-500'
+                        : 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:ring-2 focus:ring-emerald-500'
+                    }`}
                     placeholder="16 digit angka NIK"
                   />
-                  <span className="text-[11px] text-slate-500 mt-1 block">
-                    {nik.length}/16 digit
-                  </span>
+                  {duplicateNikMember ? (
+                    <span className="text-[11px] text-rose-700 font-bold mt-1 block">
+                      ⚠️ NIK sudah dipakai oleh warga {duplicateNikMember.name} ({duplicateNikMember.cluster || 'Cluster'})
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-slate-500 mt-1 block">
+                      {nik.length}/16 digit
+                    </span>
+                  )}
                 </div>
 
                 {/* No. WhatsApp / HP */}
@@ -528,6 +569,11 @@ export const EditMemberBiodataModal: React.FC<EditMemberBiodataModalProps> = ({
                     setFamilyCardFileName('');
                   }}
                   onKkNumberChange={(kkNum) => setFamilyCardNumber(kkNum)}
+                  duplicateKkError={
+                    duplicateKkMember
+                      ? `Nomor KK ini sudah terdaftar atas nama Kepala Keluarga "${duplicateKkMember.name}" (${duplicateKkMember.cluster || 'Cluster'}, No. Anggota: ${duplicateKkMember.memberNumber || '-'}).`
+                      : null
+                  }
                 />
               </div>
               <p className="text-xs text-slate-500 flex items-center gap-1.5">
