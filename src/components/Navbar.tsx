@@ -102,9 +102,14 @@ export const Navbar: React.FC<NavbarProps> = ({
   const notificationRef = useRef<HTMLDivElement>(null);
   const userDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Authority & Permitted Tabs Filter
   const authority: UserAuthority = activeUser ? activeUser.authority : 'Anggota';
   const isBendaharaOrAdmin = authority === 'Bendahara' || authority === 'Admin';
+  // Hanya Admin, Bendahara, Ketua Paguyuban, dan Ketua DKM yang memiliki akses tombol Ganti Peran dan Laporan di Header
+  const canAccessManagementActions =
+    authority === 'Admin' ||
+    authority === 'Bendahara' ||
+    authority === 'Ketua Paguyuban' ||
+    authority === 'Ketua DKM';
   const pendingPayments = payments.filter((p) => p.status === 'Pending');
   const graceSummary = getGracePeriodSummary(payments);
 
@@ -276,114 +281,131 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Active User Profile & Role Switcher Popover OR Guest Login */}
           {activeUser ? (
             <div className="flex items-center gap-1.5 sm:gap-2">
-              <div className="relative" ref={userDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setShowUserDropdown(!showUserDropdown)}
-                  className="flex items-center gap-2 px-2.5 py-1.5 bg-slate-800/80 hover:bg-slate-800 text-white rounded-xl border border-slate-700/80 hover:border-slate-600 transition-all text-xs cursor-pointer"
-                  title="Ganti Pengguna / Otoritas"
+              {canAccessManagementActions ? (
+                /* TOMBOL GANTI PERAN (Hanya untuk Admin, Bendahara, Ketua Paguyuban, Ketua DKM) */
+                <div className="relative" ref={userDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setShowUserDropdown(!showUserDropdown)}
+                    className="flex items-center gap-2 px-2.5 py-1.5 bg-slate-800/80 hover:bg-slate-800 text-white rounded-xl border border-slate-700/80 hover:border-slate-600 transition-all text-xs cursor-pointer"
+                    title="Ganti Peran / Simulasi Otoritas Pengguna"
+                  >
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-white text-[11px] ${activeUser.avatarColor || 'bg-indigo-600'}`}>
+                      {activeUser.name.charAt(0)}
+                    </div>
+                    <div className="text-left hidden sm:block max-w-[130px] truncate">
+                      <p className="font-bold text-white leading-tight truncate">{activeUser.name}</p>
+                      <p className="text-[10px] text-slate-400 font-medium truncate">{activeUser.authority}</p>
+                    </div>
+                    <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showUserDropdown ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {/* USER SWITCHER DROPDOWN */}
+                  {showUserDropdown && (
+                    <div className="absolute right-0 mt-2 w-72 bg-white text-slate-900 rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="p-3.5 bg-slate-900 text-white border-b border-slate-800">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-white text-sm shadow ${activeUser.avatarColor || 'bg-indigo-600'}`}>
+                            {activeUser.name.charAt(0)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-extrabold text-xs text-white truncate">{activeUser.name}</p>
+                            <p className="text-[10px] text-slate-400 font-mono truncate">{activeUser.email}</p>
+                            <span className={`inline-block mt-0.5 px-2 py-0.2 rounded-md text-[9px] font-black border ${getAuthorityBadgeColor(activeUser.authority)}`}>
+                              {activeUser.authority} {activeUser.cluster ? `• ${activeUser.cluster}` : ''}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-2 space-y-1">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
+                          Simulasi Ganti Peran (Switch User):
+                        </p>
+                        <div className="max-h-52 overflow-y-auto space-y-1">
+                          {users.map((u) => {
+                            const isCurrent = u.id === activeUser.id;
+                            return (
+                              <button
+                                key={u.id}
+                                type="button"
+                                onClick={() => {
+                                  if (onSwitchActiveUser) onSwitchActiveUser(u);
+                                  setShowUserDropdown(false);
+                                }}
+                                className={`w-full p-2 rounded-xl text-left text-xs transition-colors flex items-center justify-between gap-2 cursor-pointer ${
+                                  isCurrent
+                                    ? 'bg-indigo-50 text-indigo-900 font-bold'
+                                    : 'hover:bg-slate-100 text-slate-700'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-white text-[10px] shrink-0 ${u.avatarColor || 'bg-slate-700'}`}>
+                                    {u.name.charAt(0)}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-bold text-xs truncate leading-tight">{u.name}</p>
+                                    <p className="text-[10px] text-slate-500 truncate font-medium">
+                                      {u.authority} {u.cluster ? `(${u.cluster})` : ''}
+                                    </p>
+                                  </div>
+                                </div>
+                                {isCurrent && (
+                                  <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <div className="pt-2 mt-1 border-t border-slate-100 space-y-1.5">
+                          {authority === 'Admin' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowUserDropdown(false);
+                                setCurrentTab('users');
+                              }}
+                              className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                            >
+                              <Shield className="w-3.5 h-3.5 text-indigo-400" />
+                              <span>Kelola Pengguna & Otoritas</span>
+                            </button>
+                          )}
+
+                          {onLogout && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowUserDropdown(false);
+                                onLogout();
+                              }}
+                              className="w-full py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 border border-rose-200 cursor-pointer"
+                            >
+                              <LogOut className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Keluar dari Akun (Logout)</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Profil Pengguna Aktif (Tombol Ganti Peran Dihilangkan untuk RT, RW, Anggota, dll) */
+                <div
+                  className="flex items-center gap-2 px-2.5 py-1.5 bg-slate-800/60 text-white rounded-xl border border-slate-700/60 text-xs select-none"
+                  title={`Akun: ${activeUser.name} (${activeUser.authority}${activeUser.cluster ? ` - ${activeUser.cluster}` : ''})`}
                 >
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-white text-[11px] ${activeUser.avatarColor || 'bg-indigo-600'}`}>
                     {activeUser.name.charAt(0)}
                   </div>
                   <div className="text-left hidden sm:block max-w-[130px] truncate">
                     <p className="font-bold text-white leading-tight truncate">{activeUser.name}</p>
-                    <p className="text-[10px] text-slate-400 font-medium truncate">{activeUser.authority}</p>
+                    <p className="text-[10px] text-emerald-400 font-semibold truncate">{activeUser.authority}</p>
                   </div>
-                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showUserDropdown ? 'rotate-180' : ''}`} />
-                </button>
-
-                {/* USER SWITCHER DROPDOWN */}
-                {showUserDropdown && (
-                  <div className="absolute right-0 mt-2 w-72 bg-white text-slate-900 rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150">
-                    <div className="p-3.5 bg-slate-900 text-white border-b border-slate-800">
-                      <div className="flex items-center gap-2.5">
-                        <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-white text-sm shadow ${activeUser.avatarColor || 'bg-indigo-600'}`}>
-                          {activeUser.name.charAt(0)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-extrabold text-xs text-white truncate">{activeUser.name}</p>
-                          <p className="text-[10px] text-slate-400 font-mono truncate">{activeUser.email}</p>
-                          <span className={`inline-block mt-0.5 px-2 py-0.2 rounded-md text-[9px] font-black border ${getAuthorityBadgeColor(activeUser.authority)}`}>
-                            {activeUser.authority} {activeUser.cluster ? `• ${activeUser.cluster}` : ''}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-2 space-y-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
-                        Simulasi Ganti Peran (Switch User):
-                      </p>
-                      <div className="max-h-52 overflow-y-auto space-y-1">
-                        {users.map((u) => {
-                          const isCurrent = u.id === activeUser.id;
-                          return (
-                            <button
-                              key={u.id}
-                              type="button"
-                              onClick={() => {
-                                if (onSwitchActiveUser) onSwitchActiveUser(u);
-                                setShowUserDropdown(false);
-                              }}
-                              className={`w-full p-2 rounded-xl text-left text-xs transition-colors flex items-center justify-between gap-2 cursor-pointer ${
-                                isCurrent
-                                  ? 'bg-indigo-50 text-indigo-900 font-bold'
-                                  : 'hover:bg-slate-100 text-slate-700'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-white text-[10px] shrink-0 ${u.avatarColor || 'bg-slate-700'}`}>
-                                  {u.name.charAt(0)}
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="font-bold text-xs truncate leading-tight">{u.name}</p>
-                                  <p className="text-[10px] text-slate-500 truncate font-medium">
-                                    {u.authority} {u.cluster ? `(${u.cluster})` : ''}
-                                  </p>
-                                </div>
-                              </div>
-                              {isCurrent && (
-                                <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0" />
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      <div className="pt-2 mt-1 border-t border-slate-100 space-y-1.5">
-                        {authority === 'Admin' && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowUserDropdown(false);
-                              setCurrentTab('users');
-                            }}
-                            className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
-                          >
-                            <Shield className="w-3.5 h-3.5 text-indigo-400" />
-                            <span>Kelola Pengguna & Otoritas</span>
-                          </button>
-                        )}
-
-                        {onLogout && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowUserDropdown(false);
-                              onLogout();
-                            }}
-                            className="w-full py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 border border-rose-200 cursor-pointer"
-                          >
-                            <LogOut className="w-3.5 h-3.5 text-rose-600" />
-                            <span>Keluar dari Akun (Logout)</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* DIRECT LOGOUT BUTTON */}
               {onLogout && (
@@ -661,12 +683,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </div>
 
-          {/* Unduh Laporan CSV Button (Admin/Bendahara/RW/DKM) */}
-          {onOpenExportModal && authority !== 'Anggota' && authority !== 'Ketua Paguyuban' && (
+          {/* Unduh Laporan CSV Button (Hanya tampil untuk Admin, Bendahara, Ketua Paguyuban, dan Ketua DKM) */}
+          {onOpenExportModal && canAccessManagementActions && (
             <button
               onClick={onOpenExportModal}
               title="Unduh Laporan Keuangan CSV"
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl border border-emerald-500/40 shadow-sm transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl border border-emerald-500/40 shadow-sm transition-all cursor-pointer"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
               <span className="hidden md:inline">Laporan CSV</span>
