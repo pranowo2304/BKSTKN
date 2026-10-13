@@ -1,29 +1,36 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Paguyuban Dana Kematian rules
-    match /members/{memberId} {
+    // Paguyuban Dana Kematian data collections
+    match /members/{memberId=**} {
       allow read, write: if true;
     }
-    match /payments/{paymentId} {
+    match /payments/{paymentId=**} {
       allow read, write: if true;
     }
-    match /claims/{claimId} {
+    match /claims/{claimId=**} {
       allow read, write: if true;
     }
-    match /settings/{settingId} {
+    match /settings/{settingId=**} {
       allow read, write: if true;
     }
-    match /users/{userId} {
+    match /users/{userId=**} {
       allow read, write: if true;
     }
-    match /clusters/{clusterId} {
+    match /clusters/{clusterId=**} {
       allow read, write: if true;
     }
-    match /benefits/{benefitId} {
+    match /benefits/{benefitId=**} {
       allow read, write: if true;
     }
-    match /meta/{docId} {
+    match /meta/{docId=**} {
+      allow read, write: if true;
+    }
+    match /test/{docId=**} {
+      allow read, write: if true;
+    }
+    // Global fallback for all sub-collections
+    match /{document=**} {
       allow read, write: if true;
     }
   }

@@ -61,7 +61,6 @@ export const UserLoginForm: React.FC<UserLoginFormProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successUser, setSuccessUser] = useState<AppUser | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [showDemoCredentials, setShowDemoCredentials] = useState(variant !== 'modal');
 
   // Password reset flow states: 'login' | 'forgot_password' | 'reset_link_sent' | 'reset_form'
   const [formView, setFormView] = useState<'login' | 'forgot_password' | 'reset_link_sent' | 'reset_form'>('login');
@@ -77,85 +76,6 @@ export const UserLoginForm: React.FC<UserLoginFormProps> = ({
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [isResetSubmitting, setIsResetSubmitting] = useState(false);
-
-  // Quick Demo Account Presets
-  const demoPresets = [
-    {
-      role: 'Ketua Paguyuban',
-      authority: 'Ketua Paguyuban' as UserAuthority,
-      email: 'ketua.paguyuban@danakematian.org',
-      password: 'password123',
-      name: 'Bpk. H. Ahmad Fauzi',
-      icon: ShieldCheck,
-      color: 'bg-purple-700',
-      badge: 'bg-purple-100 text-purple-800 border-purple-200',
-      desc: 'Persetujuan akhir pendaftaran anggota & pengesahan penerbitan KTA',
-    },
-    {
-      role: 'Admin Utama',
-      authority: 'Admin' as UserAuthority,
-      email: 'admin@danakematian.org',
-      password: 'password123',
-      name: 'Haji Suryadi',
-      icon: Crown,
-      color: 'bg-indigo-600',
-      badge: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-      desc: 'Akses penuh seluruh sistem & konfigurasi master data',
-    },
-    {
-      role: 'Bendahara Kas',
-      authority: 'Bendahara' as UserAuthority,
-      email: 'bendahara@danakematian.org',
-      password: 'password123',
-      name: 'Bpk. H. Hendra Wijaya',
-      icon: Landmark,
-      color: 'bg-emerald-600',
-      badge: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-      desc: 'Validasi bukti pembayaran kas, pencatatan klaim & laporan',
-    },
-    {
-      role: 'Ketua RT Sanur',
-      authority: 'Ketua RT (Cluster)' as UserAuthority,
-      email: 'rt.sanur@danakematian.org',
-      password: 'password123',
-      name: 'Pak Sutrisno',
-      cluster: 'Cluster Sanur',
-      icon: Building2,
-      color: 'bg-amber-600',
-      badge: 'bg-amber-100 text-amber-800 border-amber-200',
-      desc: 'Verifikasi pendaftaran warga Cluster Sanur',
-    },
-    {
-      role: 'Ketua RT Pasundan',
-      authority: 'Ketua RT (Cluster)' as UserAuthority,
-      email: 'rt.pasundan01@danakematian.org',
-      password: 'password123',
-      name: 'Kang Asep Suparman',
-      cluster: 'Cluster Pasundan RT 01',
-      icon: Building2,
-      color: 'bg-blue-600',
-      badge: 'bg-blue-100 text-blue-800 border-blue-200',
-      desc: 'Verifikasi pendaftaran warga Cluster Pasundan RT 01',
-    },
-    {
-      role: 'Warga / Anggota',
-      authority: 'Anggota' as UserAuthority,
-      email: 'budi.santoso@warga.danakematian.org',
-      password: 'password123',
-      name: 'Budi Santoso (KK)',
-      cluster: 'Cluster Sanur',
-      icon: User,
-      color: 'bg-slate-700',
-      badge: 'bg-slate-100 text-slate-800 border-slate-200',
-      desc: 'Cek KTA digital, histori pembayaran & hak santunan keluarga',
-    },
-  ];
-
-  const handleFillDemo = (preset: typeof demoPresets[0]) => {
-    setIdentifier(preset.email);
-    setPassword(preset.password);
-    setErrorMessage(null);
-  };
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -906,88 +826,10 @@ export const UserLoginForm: React.FC<UserLoginFormProps> = ({
           ) : (
             <div className="pb-1">
               <p className="text-xs text-slate-600">
-                Silakan masukkan kredensial akun Anda atau pilih <strong>Akun Demo Cepat (1-Klik)</strong> di bawah:
+                Silakan masukkan alamat email atau nama pengguna dan kata sandi Anda untuk masuk ke sistem:
               </p>
             </div>
           )}
-
-          {/* QUICK PRESET DEMO ACCOUNTS HELPER (COMPACT 1-CLICK PILLS) */}
-          <div className="bg-slate-50/90 border border-slate-200 rounded-2xl p-3 space-y-2.5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                <span className="text-[11px] font-black uppercase tracking-wider text-slate-800">
-                  Pilih Cepat Akun Demo (1-Klik):
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowDemoCredentials(!showDemoCredentials)}
-                className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer hover:underline"
-              >
-                <span>{showDemoCredentials ? 'Tutup Rincian' : 'Rincian Peran'}</span>
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showDemoCredentials ? 'rotate-180' : ''}`} />
-              </button>
-            </div>
-
-            {/* Quick 1-Click Action Pills */}
-            <div className="flex flex-wrap gap-1.5">
-              {demoPresets.map((preset) => {
-                const isSelected = identifier === preset.email;
-                return (
-                  <button
-                    key={preset.email}
-                    type="button"
-                    onClick={() => handleFillDemo(preset)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
-                      isSelected
-                        ? 'bg-indigo-600 text-white ring-2 ring-indigo-300'
-                        : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
-                    }`}
-                    title={`Pilih ${preset.role}: ${preset.name} (${preset.email})`}
-                  >
-                    <span className={`w-2 h-2 rounded-full ${preset.color}`} />
-                    <span>{preset.role}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Expanded Detailed Cards when toggled */}
-            {showDemoCredentials && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-2.5 mt-2 border-t border-slate-200 animate-in fade-in duration-150">
-                {demoPresets.map((preset) => {
-                  const Icon = preset.icon;
-                  const isSelected = identifier === preset.email;
-                  return (
-                    <button
-                      key={preset.email}
-                      type="button"
-                      onClick={() => handleFillDemo(preset)}
-                      className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer flex items-start gap-2 ${
-                        isSelected
-                          ? 'bg-indigo-50 border-indigo-400 ring-2 ring-indigo-300 shadow-xs'
-                          : 'bg-white hover:bg-slate-50 border-slate-200'
-                      }`}
-                    >
-                      <div className={`p-1.5 rounded-lg text-white shrink-0 ${preset.color}`}>
-                        <Icon className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-1">
-                          <p className="font-extrabold text-xs text-slate-900 truncate">{preset.role}</p>
-                          {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 shrink-0" />}
-                        </div>
-                        <p className="text-[11px] font-bold text-slate-700 truncate">{preset.name}</p>
-                        <p className="text-[10px] text-slate-400 font-mono truncate">{preset.email}</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">{preset.desc}</p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
 
           {/* SUCCESS BANNER FROM RESET PASSWORD */}
           {resetSuccessNotice && (

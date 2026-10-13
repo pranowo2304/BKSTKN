@@ -658,17 +658,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </div>
 
-          {/* Tombol Menu Cepat Operasional */}
-          <button
-            type="button"
-            onClick={() => setIsQuickMenuOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold border border-purple-400/40 shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
-            title="Buka Menu Cepat Operasional Lengkap"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-            <span className="hidden sm:inline">Menu Cepat</span>
-          </button>
-
           {/* Unduh Laporan CSV Button (Admin/Bendahara/RW/DKM) */}
           {onOpenExportModal && authority !== 'Anggota' && authority !== 'Ketua Paguyuban' && (
             <button
@@ -681,8 +670,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           )}
 
-          {/* Data Management & Demo Reset Button (Khusus Admin) */}
-          {authority === 'Admin' && (
+          {/* Data Management & Demo Reset Button (Admin / Ketua Paguyuban / Bendahara) */}
+          {(authority === 'Admin' || authority === 'Ketua Paguyuban' || authority === 'Bendahara') && (
             <button
               type="button"
               onClick={() => setIsDataModalOpen(true)}

@@ -21,6 +21,7 @@ const KEYS = {
   BENEFITS: 'dana_kematian_benefits_v1',
   NOTIFICATIONS: 'dana_kematian_notifications_v1',
   IS_INITIALIZED: 'dana_kematian_initialized_v1',
+  DEMO_CLEARED: 'dana_kematian_demo_cleared_v1',
 };
 
 export const getStoredBenefits = (): BenefitMaster[] => {
@@ -339,8 +340,12 @@ export const clearStoredActiveUser = () => {
 
 export const getStoredMembers = (): Member[] => {
   try {
+    const isCleared = localStorage.getItem(KEYS.DEMO_CLEARED) === 'true';
     const data = localStorage.getItem(KEYS.MEMBERS);
     if (data === null) {
+      if (isCleared) {
+        return [];
+      }
       const isInit = localStorage.getItem(KEYS.IS_INITIALIZED);
       if (isInit) {
         return [];
@@ -372,15 +377,6 @@ export const getStoredMembers = (): Member[] => {
       }
       return { ...m, cluster };
     });
-
-    const hasMem9 = migratedMembers.some((m: Member) => m && m.id === 'mem-9');
-    if (!hasMem9) {
-      const mem9 = initialMembers.find((m) => m.id === 'mem-9');
-      if (mem9) {
-        migratedMembers.push(mem9);
-        migrated = true;
-      }
-    }
 
     if (migrated) {
       localStorage.setItem(KEYS.MEMBERS, JSON.stringify(migratedMembers));
@@ -420,8 +416,12 @@ export const saveMembers = (members: Member[]) => {
 
 export const getStoredPayments = (): Payment[] => {
   try {
+    const isCleared = localStorage.getItem(KEYS.DEMO_CLEARED) === 'true';
     const data = localStorage.getItem(KEYS.PAYMENTS);
     if (data === null) {
+      if (isCleared) {
+        return [];
+      }
       const isInit = localStorage.getItem(KEYS.IS_INITIALIZED);
       if (isInit) {
         return [];
@@ -431,14 +431,6 @@ export const getStoredPayments = (): Payment[] => {
     }
     const parsed = JSON.parse(data);
     if (!Array.isArray(parsed)) return [];
-    const hasPay9 = parsed.some((p: Payment) => p && p.id === 'pay-9');
-    if (!hasPay9) {
-      const pay9 = initialPayments.find((p) => p.id === 'pay-9');
-      if (pay9) {
-        parsed.push(pay9);
-        localStorage.setItem(KEYS.PAYMENTS, JSON.stringify(parsed));
-      }
-    }
     return parsed;
   } catch (e) {
     console.error('Error reading payments:', e);
@@ -610,6 +602,7 @@ export const saveStoredNotifications = (notifications: AppNotification[]) => {
 };
 
 export const resetToDefaultData = () => {
+  localStorage.removeItem(KEYS.DEMO_CLEARED);
   localStorage.setItem(KEYS.IS_INITIALIZED, 'true');
   localStorage.setItem(KEYS.MEMBERS, JSON.stringify(initialMembers));
   localStorage.setItem(KEYS.PAYMENTS, JSON.stringify(initialPayments));
@@ -625,6 +618,7 @@ export const resetToDefaultData = () => {
 
 export const clearAllDemoDataLocally = () => {
   localStorage.setItem(KEYS.IS_INITIALIZED, 'true');
+  localStorage.setItem(KEYS.DEMO_CLEARED, 'true');
   localStorage.setItem(KEYS.MEMBERS, JSON.stringify([]));
   localStorage.setItem(KEYS.PAYMENTS, JSON.stringify([]));
   localStorage.setItem(KEYS.CLAIMS, JSON.stringify([]));

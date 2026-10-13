@@ -163,17 +163,28 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
  */
 export async function seedInitialFirestoreData(): Promise<void> {
   try {
+    // If user has locally or globally cleared demo data, never re-populate!
+    if (typeof window !== 'undefined' && localStorage.getItem('dana_kematian_demo_cleared_v1') === 'true') {
+      return;
+    }
+
     const metaInitRef = doc(db, COLLECTIONS.META, 'init_status');
     const initSnap = await Promise.race([
       getDoc(metaInitRef),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500)),
     ]).catch((err) => {
       console.warn('Firestore initial check encountered offline or waiting connection:', err?.message);
       return null;
     });
 
+    // If init record exists, respect its state
     if (initSnap && initSnap.exists()) {
-      return; // Already initialized once, respect user's data state (even if empty)
+      return;
+    }
+
+    // If initial check timed out or was null, do NOT re-seed blindly
+    if (!initSnap) {
+      return;
     }
 
     // Also check if any members already exist
