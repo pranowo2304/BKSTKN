@@ -62,6 +62,7 @@ interface NavbarProps {
   cloudStatus?: 'connected' | 'connecting' | 'offline' | 'error';
   onSwitchActiveUser?: (user: AppUser) => void;
   onResetData: () => void;
+  onClearTransactions?: () => Promise<void> | void;
   onClearDemoData?: () => Promise<void> | void;
   onClearClaims?: () => Promise<void> | void;
   onOpenExportModal?: () => void;
@@ -87,6 +88,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   cloudStatus = 'connected',
   onSwitchActiveUser,
   onResetData,
+  onClearTransactions,
   onClearDemoData,
   onClearClaims,
   onOpenExportModal,
@@ -671,12 +673,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           )}
 
-          {/* Data Management & Demo Reset Button (Admin / Ketua Paguyuban / Bendahara) */}
+          {/* Data Management & Clear Transactions Button (Admin / Ketua Paguyuban / Bendahara) */}
           {(authority === 'Admin' || authority === 'Ketua Paguyuban' || authority === 'Bendahara') && (
             <button
               type="button"
               onClick={() => setIsDataModalOpen(true)}
-              title="Kelola Basis Data & Hapus Data Demo"
+              title="Kelola Basis Data & Hapus Data Transaksi Firebase"
               className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-xl transition-colors border border-transparent hover:border-slate-700 flex items-center gap-1.5"
             >
               <Trash2 className="w-4 h-4 text-rose-400/80" />
@@ -704,14 +706,15 @@ export const Navbar: React.FC<NavbarProps> = ({
         onOpenExportModal={onOpenExportModal}
       />
 
-      {/* Data Management & Clear Demo Data Modal */}
+      {/* Data Management & Clear Transactions Modal */}
       <DataManagementModal
         isOpen={isDataModalOpen}
         onClose={() => setIsDataModalOpen(false)}
         memberCount={memberCount}
         paymentCount={payments.length}
         claimCount={claimCount}
-        onClearDemoData={onClearDemoData || onResetData}
+        onClearTransactions={onClearTransactions || onClearDemoData}
+        onClearDemoData={onClearTransactions || onClearDemoData}
         onRestoreDemoData={onResetData}
         onClearClaims={onClearClaims}
       />

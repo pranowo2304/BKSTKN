@@ -166,8 +166,12 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
  */
 export async function seedInitialFirestoreData(): Promise<void> {
   try {
-    // If user has locally or globally cleared demo data, never re-populate!
-    if (typeof window !== 'undefined' && localStorage.getItem('dana_kematian_demo_cleared_v1') === 'true') {
+    // If user has locally or globally cleared demo data or transactions, never re-populate!
+    if (
+      typeof window !== 'undefined' &&
+      (localStorage.getItem('dana_kematian_demo_cleared_v1') === 'true' ||
+        localStorage.getItem('dana_kematian_tx_cleared_v1') === 'true')
+    ) {
       return;
     }
 
@@ -716,7 +720,64 @@ export async function cleanupDemoClaimsFromCloud(): Promise<void> {
 }
 
 /**
- * Clear all demo records (Members, Payments, Claims) from Firestore Cloud Database
+ * Clear all transaction records (Payments and Claims) from Firestore Cloud Database
+ * Resets fund balance to Rp 0
+ * Leaves Members, Users, Clusters, and Settings completely safe and intact
+ */
+export async function clearTransactionsFromCloud(): Promise<void> {
+  try {
+    // 1. Delete all payments in safe chunked batches
+    const paymentsSnap = await getDocs(collection(db, COLLECTIONS.PAYMENTS));
+    const paymentDocs = paymentsSnap.docs;
+    for (let i = 0; i < paymentDocs.length; i += 400) {
+      const batch = writeBatch(db);
+      paymentDocs.slice(i, i + 400).forEach((docItem) => {
+        batch.delete(docItem.ref);
+      });
+      await batch.commit();
+    }
+
+    // 2. Delete all claims in safe chunked batches
+    const claimsSnap = await getDocs(collection(db, COLLECTIONS.CLAIMS));
+    const claimDocs = claimsSnap.docs;
+    for (let i = 0; i < claimDocs.length; i += 400) {
+      const batch = writeBatch(db);
+      claimDocs.slice(i, i + 400).forEach((docItem) => {
+        batch.delete(docItem.ref);
+      });
+      await batch.commit();
+    }
+
+    // 3. Reset financials balance in meta
+    const metaRef = doc(db, COLLECTIONS.META, 'financials');
+    await setDoc(metaRef, { baseFundBalance: 0 }, { merge: true });
+
+    // 4. Update init_status so demo transactions will never auto-seed again
+    const metaInitRef = doc(db, COLLECTIONS.META, 'init_status');
+    await setDoc(
+      metaInitRef,
+      {
+        initialized: true,
+        transactionsCleared: true,
+        transactionsClearedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+
+    // 5. Local storage marker
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('dana_kematian_tx_cleared_v1', 'true');
+    }
+
+    console.log('Successfully cleared all transactions (payments & claims) from Cloud Firestore.');
+  } catch (error) {
+    console.error('Error clearing transactions from Firestore:', error);
+    throw error;
+  }
+}
+
+/**
+ * Clear all records (Members, Payments, Claims) from Firestore Cloud Database
  * Keeps core admin accounts and basic settings
  */
 export async function clearAllDemoDataFromCloud(): Promise<void> {

@@ -619,6 +619,13 @@ export const resetToDefaultData = () => {
   localStorage.setItem(KEYS.ACTIVE_USER, JSON.stringify(initialUsers[0]));
 };
 
+export const clearTransactionsLocally = () => {
+  localStorage.setItem(KEYS.PAYMENTS, JSON.stringify([]));
+  localStorage.setItem(KEYS.CLAIMS, JSON.stringify([]));
+  localStorage.setItem(KEYS.BASE_BALANCE, '0');
+  localStorage.setItem('dana_kematian_tx_cleared_v1', 'true');
+};
+
 export const clearAllDemoDataLocally = () => {
   localStorage.setItem(KEYS.IS_INITIALIZED, 'true');
   localStorage.setItem(KEYS.DEMO_CLEARED, 'true');

@@ -52,6 +52,7 @@ interface FundSettingsProps {
   onDeleteBenefit?: (benefitId: string) => void;
   onResetBenefits?: () => void;
   onResetData: () => void;
+  onClearTransactions?: () => Promise<void> | void;
   onClearDemoData?: () => Promise<void> | void;
   onClearClaims?: () => Promise<void> | void;
   onNavigateToUsers?: () => void;
@@ -73,6 +74,7 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
   onDeleteBenefit,
   onResetBenefits,
   onResetData,
+  onClearTransactions,
   onClearDemoData,
   onClearClaims,
   onNavigateToUsers,
@@ -211,9 +213,10 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
                 type="button"
                 onClick={() => setIsDataModalOpen(true)}
                 className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 transition-colors inline-flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                title="Hapus data riwayat transaksi di database Firebase"
               >
                 <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                <span>Hapus Data Demo</span>
+                <span>Hapus Data Transaksi Firebase</span>
               </button>
 
               <button
@@ -829,10 +832,10 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
               </div>
               <div>
                 <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-900">
-                  Manajemen Basis Data & Data Demo
+                  Manajemen Basis Data & Data Transaksi
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Pengelolaan reset data demo atau pengosongan basis data saat siap digunakan produksi secara resmi.
+                  Pengelolaan pengosongan riwayat data transaksi iuran dan klaim santunan di database Firebase secara aman.
                 </p>
               </div>
             </div>
@@ -846,10 +849,10 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2 text-rose-800 font-bold text-xs sm:text-sm">
                   <Trash2 className="w-4 h-4 text-rose-600" />
-                  <span>Hapus Seluruh Data Demo</span>
+                  <span>Hapus Data Transaksi di Database Firebase</span>
                 </div>
                 <p className="text-xs text-rose-900/70 leading-relaxed">
-                  Kosongkan data anggota, transaksi iuran, dan santunan demo agar Anda bisa mulai menginput data warga riil.
+                  Kosongkan seluruh riwayat pembayaran iuran kas dan pencatatan klaim santunan dari Cloud Firestore. Data warga (anggota), kluster RT, akun pengguna, dan pengaturan paguyuban tetap aman dipertahankan.
                 </p>
               </div>
               <button
@@ -858,27 +861,27 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
                 className="w-full py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-colors shadow-xs inline-flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
-                <span>Buka Menu Hapus Data</span>
+                <span>Buka Menu Hapus Transaksi</span>
               </button>
             </div>
 
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col justify-between gap-3">
+            <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-2xl flex flex-col justify-between gap-3">
               <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-slate-800 font-bold text-xs sm:text-sm">
-                  <RotateCcw className="w-4 h-4 text-indigo-600" />
-                  <span>Pulihkan Contoh Data Demo</span>
+                <div className="flex items-center gap-2 text-amber-800 font-bold text-xs sm:text-sm">
+                  <HeartHandshake className="w-4 h-4 text-amber-600" />
+                  <span>Kosongkan Khusus Data Realisasi Santunan</span>
                 </div>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Isi kembali database dengan 8 contoh data warga dan transaksi simulasi untuk keperluan demo atau simulasi.
+                <p className="text-xs text-amber-900/70 leading-relaxed">
+                  Hanya menghapus riwayat pengajuan klaim dan realisasi santunan duka dari Cloud Firestore tanpa memengaruhi catatan pembayaran iuran atau data warga.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsDataModalOpen(true)}
-                className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-colors shadow-xs inline-flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-2.5 px-4 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl transition-colors shadow-xs inline-flex items-center justify-center gap-2 cursor-pointer"
               >
-                <RotateCcw className="w-4 h-4 text-emerald-400" />
-                <span>Pulihkan Data Demo</span>
+                <HeartHandshake className="w-4 h-4" />
+                <span>Kelola Data Santunan</span>
               </button>
             </div>
           </div>
@@ -902,7 +905,8 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
         memberCount={memberCount}
         paymentCount={paymentCount}
         claimCount={claimCount}
-        onClearDemoData={onClearDemoData || onResetData}
+        onClearTransactions={onClearTransactions || onClearDemoData}
+        onClearDemoData={onClearTransactions || onClearDemoData}
         onRestoreDemoData={onResetData}
         onClearClaims={onClearClaims}
       />

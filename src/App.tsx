@@ -34,6 +34,7 @@ import {
   formatIDR,
   calculateCurrentBalance,
   resetToDefaultData,
+  clearTransactionsLocally,
   clearAllDemoDataLocally,
   clearAllClaimsLocally,
   syncClustersToRtUsers,
@@ -53,6 +54,7 @@ import {
   syncBenefitToCloud,
   deleteBenefitFromCloud,
   syncBenefitsBatchToCloud,
+  clearTransactionsFromCloud,
   clearAllDemoDataFromCloud,
   clearAllClaimsFromCloud,
   cleanupDemoClaimsFromCloud,
@@ -1301,6 +1303,29 @@ export default function App() {
     syncSettingsToCloud(newSettings).catch((e) => console.warn('Cloud sync settings error:', e));
   };
 
+  // HAPUS DATA TRANSAKSI DI DATABASE FIREBASE (Kosongkan riwayat pembayaran iuran & santunan tanpa menghapus data warga)
+  const handleClearTransactions = async () => {
+    try {
+      clearTransactionsLocally();
+      setPayments([]);
+      setClaims([]);
+
+      // Hapus data transaksi dari Cloud Firestore
+      await clearTransactionsFromCloud();
+
+      addNotification({
+        type: 'info',
+        category: 'payment',
+        title: 'Data Transaksi Telah Dikosongkan',
+        message: 'Seluruh riwayat pembayaran iuran kas dan santunan berhasil dihapus dari Cloud Firestore. Data anggota warga tetap aman tersimpan.',
+        linkTab: 'payments',
+      });
+    } catch (e) {
+      console.error('Error clearing transaction data from Firebase:', e);
+      throw e;
+    }
+  };
+
   // CLEAR ALL DEMO DATA (Empty database to start clean)
   const handleClearAllDemoData = async () => {
     try {
@@ -1502,7 +1527,8 @@ export default function App() {
         cloudStatus={cloudStatus}
         onSwitchActiveUser={handleSwitchActiveUser}
         onResetData={handleResetData}
-        onClearDemoData={handleClearAllDemoData}
+        onClearTransactions={handleClearTransactions}
+        onClearDemoData={handleClearTransactions}
         onClearClaims={handleClearClaims}
         onOpenExportModal={() => setIsExportModalOpen(true)}
         onLogout={handleRequestLogout}
@@ -1705,7 +1731,8 @@ export default function App() {
             onDeleteBenefit={handleDeleteBenefit}
             onResetBenefits={handleResetBenefits}
             onResetData={handleResetData}
-            onClearDemoData={handleClearAllDemoData}
+            onClearTransactions={handleClearTransactions}
+            onClearDemoData={handleClearTransactions}
             onClearClaims={handleClearClaims}
             onNavigateToUsers={() => setCurrentTab('users')}
             onClose={() => setCurrentTab('dashboard')}

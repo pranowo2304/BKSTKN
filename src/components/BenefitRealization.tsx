@@ -1125,7 +1125,7 @@ export const BenefitRealization: React.FC<BenefitRealizationProps> = ({
                   Data Realisasi Santunan Duka Bersih (Kosong)
                 </h4>
                 <p className="font-medium text-slate-500 max-w-md mx-auto leading-relaxed">
-                  Belum ada data pengajuan santunan kematian yang tercatat. Seluruh data demo telah dikosongkan sehingga sistem siap digunakan untuk pelaporan riil dari Ketua RT setempat.
+                  Belum ada data pengajuan santunan kematian yang tercatat. Seluruh riwayat transaksi santunan bersih sehingga sistem siap digunakan untuk pelaporan riil dari Ketua RT setempat.
                 </p>
               </div>
               {canInputRt && (
