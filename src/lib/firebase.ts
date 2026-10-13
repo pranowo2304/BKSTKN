@@ -24,6 +24,9 @@ import {
   initialMembers,
   initialPayments,
   initialClaims,
+  sampleDemoMembers,
+  sampleDemoPayments,
+  sampleDemoClaims,
   initialSettings,
   initialUsers,
   initialBenefits,
@@ -777,17 +780,17 @@ export async function restoreDemoDataToCloud(): Promise<void> {
   try {
     const batch = writeBatch(db);
 
-    initialMembers.forEach((m) => {
+    sampleDemoMembers.forEach((m) => {
       const ref = doc(db, COLLECTIONS.MEMBERS, m.id);
       batch.set(ref, m);
     });
 
-    initialPayments.forEach((p) => {
+    sampleDemoPayments.forEach((p) => {
       const ref = doc(db, COLLECTIONS.PAYMENTS, p.id);
       batch.set(ref, p);
     });
 
-    initialClaims.forEach((c) => {
+    sampleDemoClaims.forEach((c) => {
       const ref = doc(db, COLLECTIONS.CLAIMS, c.id);
       batch.set(ref, c);
     });

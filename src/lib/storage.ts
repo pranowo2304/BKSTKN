@@ -3,6 +3,9 @@ import {
   initialMembers,
   initialPayments,
   initialClaims,
+  sampleDemoMembers,
+  sampleDemoPayments,
+  sampleDemoClaims,
   initialSettings,
   initialUsers,
   initialBenefits,
@@ -604,9 +607,9 @@ export const saveStoredNotifications = (notifications: AppNotification[]) => {
 export const resetToDefaultData = () => {
   localStorage.removeItem(KEYS.DEMO_CLEARED);
   localStorage.setItem(KEYS.IS_INITIALIZED, 'true');
-  localStorage.setItem(KEYS.MEMBERS, JSON.stringify(initialMembers));
-  localStorage.setItem(KEYS.PAYMENTS, JSON.stringify(initialPayments));
-  localStorage.setItem(KEYS.CLAIMS, JSON.stringify(initialClaims));
+  localStorage.setItem(KEYS.MEMBERS, JSON.stringify(sampleDemoMembers));
+  localStorage.setItem(KEYS.PAYMENTS, JSON.stringify(sampleDemoPayments));
+  localStorage.setItem(KEYS.CLAIMS, JSON.stringify(sampleDemoClaims));
   localStorage.setItem(KEYS.SETTINGS, JSON.stringify(initialSettings));
   localStorage.setItem(KEYS.CLUSTERS, JSON.stringify(DEFAULT_CLUSTERS));
   localStorage.setItem(KEYS.BENEFITS, JSON.stringify(DEFAULT_BENEFITS));

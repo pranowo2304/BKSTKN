@@ -31,7 +31,11 @@ export const initialSettings: SystemSettings = {
   },
 };
 
-export const initialMembers: Member[] = [
+// Data Anggota default kosong (bersih dan siap untuk data riil warga paguyuban)
+export const initialMembers: Member[] = [];
+
+// Contoh Data Simulasi Demo (hanya dimuat jika pengguna secara manual memilih pulihkan demo)
+export const sampleDemoMembers: Member[] = [
   {
     id: 'mem-1',
     memberNumber: 'ADK-2026-001',
@@ -239,7 +243,11 @@ export const initialMembers: Member[] = [
   }
 ];
 
-export const initialPayments: Payment[] = [
+// Data Pembayaran default kosong (bersih dan siap untuk transaksi riil kas)
+export const initialPayments: Payment[] = [];
+
+// Contoh Data Simulasi Pembayaran Demo
+export const sampleDemoPayments: Payment[] = [
   {
     id: 'pay-9',
     receiptNumber: 'KWT-2026-0809',
