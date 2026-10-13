@@ -81,7 +81,7 @@ import { MemberPortal } from './components/MemberPortal';
 import { KtaAuthenticityVerificationModal } from './components/KtaAuthenticityVerificationModal';
 import { DigitalKtaModal } from './components/DigitalKtaModal';
 import { MembershipCertificateModal } from './components/MembershipCertificateModal';
-import { HeartHandshake } from 'lucide-react';
+import { HeartHandshake, Loader2, Cloud, Database } from 'lucide-react';
 import { useRolePermissions, getPermittedTabsForRole } from './lib/permissions';
 import {
   dispatchWhatsAppNotification,
@@ -101,6 +101,8 @@ export default function App() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [activeUser, setActiveUser] = useState<AppUser | null>(initialUsers[0]);
   const [cloudStatus, setCloudStatus] = useState<'connected' | 'connecting' | 'offline' | 'error'>('connecting');
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
+  const [loadingMessage, setLoadingMessage] = useState<string>('Menghubungkan ke Cloud Firestore...');
 
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [isAdmin, setIsAdmin] = useState<boolean>(true);
@@ -173,9 +175,11 @@ export default function App() {
 
     // 2. Initialize Firestore Cloud Data & Real-time Listeners
     let unsubscribeFirestore: (() => void) | undefined;
+    let safetyTimer: ReturnType<typeof setTimeout> | undefined;
 
     const setupCloud = async () => {
       try {
+        setLoadingMessage('Mengakses database Cloud Firestore...');
         await seedInitialFirestoreData();
         await cleanupDemoClaimsFromCloud().catch(() => {});
         unsubscribeFirestore = subscribeToFirestore({
@@ -184,12 +188,14 @@ export default function App() {
               setMembers(cloudMembers);
               saveMembers(cloudMembers);
             }
+            setIsInitialLoading(false);
           },
           onPaymentsChange: (cloudPayments) => {
             if (cloudPayments) {
               setPayments(cloudPayments);
               savePayments(cloudPayments);
             }
+            setIsInitialLoading(false);
           },
           onClaimsChange: (cloudClaims) => {
             if (cloudClaims && Array.isArray(cloudClaims)) {
@@ -198,12 +204,14 @@ export default function App() {
               setClaims(nonDemo);
               saveClaims(nonDemo);
             }
+            setIsInitialLoading(false);
           },
           onSettingsChange: (cloudSettings) => {
             if (cloudSettings) {
               setSettings(cloudSettings);
               saveSettings(cloudSettings);
             }
+            setIsInitialLoading(false);
           },
           onUsersChange: (cloudUsers) => {
             if (cloudUsers && cloudUsers.length > 0) {
@@ -215,6 +223,7 @@ export default function App() {
                 return currentClusters;
               });
             }
+            setIsInitialLoading(false);
           },
           onClustersChange: (cloudClusters) => {
             if (cloudClusters && cloudClusters.length > 0) {
@@ -226,26 +235,44 @@ export default function App() {
                 return synced;
               });
             }
+            setIsInitialLoading(false);
           },
           onBenefitsChange: (cloudBenefits) => {
             if (cloudBenefits && cloudBenefits.length > 0) {
               setBenefits(cloudBenefits);
               saveStoredBenefits(cloudBenefits);
             }
+            setIsInitialLoading(false);
           },
           onStatusChange: (status) => {
             setCloudStatus(status);
+            if (status === 'connected') {
+              setIsInitialLoading(false);
+            } else if (status === 'connecting') {
+              setLoadingMessage('Menyinkronkan data langsung dari Firebase...');
+            } else if (status === 'offline' || status === 'error') {
+              setTimeout(() => setIsInitialLoading(false), 600);
+            }
           },
         });
       } catch (err) {
         console.warn('Firestore initialization fallback to local:', err);
         setCloudStatus('offline');
+        setIsInitialLoading(false);
       }
     };
+
+    // Safety timeout: ensure loading screen dismisses even if connection is very slow
+    safetyTimer = setTimeout(() => {
+      setIsInitialLoading(false);
+    }, 2800);
 
     setupCloud();
 
     return () => {
+      if (safetyTimer) {
+        clearTimeout(safetyTimer);
+      }
       if (unsubscribeFirestore) {
         unsubscribeFirestore();
       }
@@ -1411,6 +1438,51 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-900 antialiased selection:bg-emerald-500 selection:text-white">
+      {/* INITIAL FIREBASE CLOUD DATABASE LOADING SCREEN */}
+      {isInitialLoading && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-950 text-white p-6 transition-opacity duration-300">
+          <div className="w-full max-w-md bg-slate-900/95 border border-slate-800 rounded-3xl p-8 text-center shadow-2xl relative overflow-hidden backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200">
+            {/* Top decorative gradient glow */}
+            <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-48 h-48 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-24 left-1/2 -translate-x-1/2 w-48 h-48 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+
+            {/* Logo / Badge */}
+            <div className="relative mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 p-0.5 shadow-xl shadow-emerald-950/60 mb-5 flex items-center justify-center">
+              <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center">
+                <HeartHandshake className="w-10 h-10 text-emerald-400 animate-pulse" />
+              </div>
+            </div>
+
+            {/* Title & Subtitle */}
+            <h2 className="text-xl font-black text-white tracking-tight">
+              {settings?.communityName || 'Paguyuban Dana Kematian Warga'}
+            </h2>
+            <p className="text-xs text-slate-400 mt-1 font-medium">
+              Sistem Informasi Kas & Keanggotaan Terpadu
+            </p>
+
+            {/* Loading status box */}
+            <div className="mt-6 p-4 bg-slate-950/80 rounded-2xl border border-slate-800/80 flex flex-col items-center gap-3">
+              <div className="flex items-center gap-2.5 text-emerald-400">
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span className="text-xs font-bold tracking-wide">
+                  {loadingMessage}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed max-w-xs">
+                Mengakses data anggota, kas keuangan, dan klaim santunan langsung dari server Cloud Firestore.
+              </p>
+            </div>
+
+            {/* Real-time sync badge */}
+            <div className="mt-5 flex items-center justify-center gap-2 text-[10px] text-slate-400 font-mono">
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              <span>Cloud Firestore Real-time Sync Active</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top Main Navbar */}
       <Navbar
         currentTab={currentTab}

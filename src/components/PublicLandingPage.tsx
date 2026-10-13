@@ -67,7 +67,6 @@ import {
 import { DigitalKtaModal } from './DigitalKtaModal';
 import { KtaScannerModal } from './KtaScannerModal';
 import { MemberKtaQrGeneratorModal } from './MemberKtaQrGeneratorModal';
-import { UserLoginForm } from './UserLoginForm';
 import { AppIcon } from './AppIcon';
 
 interface PublicLandingPageProps {
@@ -822,8 +821,6 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                 onNavigateToInternal();
               } else if (onOpenLoginModal) {
                 onOpenLoginModal();
-              } else {
-                navigateToSection('section-login', { mobileNav: 'akun' });
               }
             }}
             className="group flex flex-col items-center text-center p-2 rounded-2xl hover:bg-slate-100 transition-all cursor-pointer active:scale-95"
@@ -2386,25 +2383,6 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
             );
           })}
         </div>
-      </section>
-
-      {/* 8. SECTION LOGIN & AUTENTIKASI PENGGUNA / PENGURUS */}
-      <section id="section-login" className="scroll-mt-28 sm:scroll-mt-32">
-        <UserLoginForm
-          users={users}
-          members={members}
-          activeUser={activeUser}
-          onLoginSuccess={(user) => {
-            if (onLoginSuccess) {
-              onLoginSuccess(user);
-            }
-            if (user.authority !== 'Anggota' && onNavigateToInternal) {
-              onNavigateToInternal();
-            }
-          }}
-          onNavigateToDashboard={onNavigateToInternal}
-          onLogout={onLogout}
-        />
       </section>
 
       {/* MODAL: SELF-SERVICE PAYMENT CONFIRMATION */}

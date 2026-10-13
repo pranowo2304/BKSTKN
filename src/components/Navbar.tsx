@@ -220,7 +220,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="flex items-center gap-2.5 sm:gap-3 ml-auto">
           {/* Cloud Database Status Badge */}
           <div 
-            className="hidden md:flex items-center gap-2 bg-slate-800/90 border border-slate-700/80 px-2.5 py-1.5 rounded-xl shadow-inner text-xs"
+            className="flex items-center gap-1.5 sm:gap-2 bg-slate-800/90 border border-slate-700/80 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl shadow-inner text-xs"
             title={
               cloudStatus === 'connected'
                 ? 'Cloud Firestore Database terhubung aktif & tersinkronisasi real-time'
@@ -232,13 +232,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             {cloudStatus === 'connected' ? (
               <>
                 <div className="relative flex items-center justify-center">
-                  <Cloud className="w-4 h-4 text-emerald-400" />
+                  <Cloud className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
                   <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" />
                 </div>
                 <div className="leading-tight">
-                  <p className="text-[9px] text-slate-400 uppercase tracking-wider font-semibold">Cloud DB</p>
-                  <p className="text-[11px] font-bold text-emerald-300 flex items-center gap-1">
-                    <span>Firestore Realtime</span>
+                  <p className="text-[8px] sm:text-[9px] text-slate-400 uppercase tracking-wider font-semibold hidden xs:block">Cloud DB</p>
+                  <p className="text-[10px] sm:text-[11px] font-bold text-emerald-300 flex items-center gap-1">
+                    <span>Firestore</span>
+                    <span className="hidden sm:inline">Realtime</span>
                   </p>
                 </div>
               </>
