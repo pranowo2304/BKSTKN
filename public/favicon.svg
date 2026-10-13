@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="64" height="64">
+  <defs>
+    <linearGradient id="bgFav" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#022c22" />
+      <stop offset="50%" stop-color="#064e3b" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="goldFav" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="40%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#b45309" />
+    </linearGradient>
+    <linearGradient id="handFav" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#059669" />
+      <stop offset="100%" stop-color="#34d399" />
+    </linearGradient>
+    <linearGradient id="heartFav" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fb7185" />
+      <stop offset="50%" stop-color="#f43f5e" />
+      <stop offset="100%" stop-color="#e11d48" />
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="112" ry="112" fill="url(#bgFav)" stroke="#34d399" stroke-width="4" stroke-opacity="0.3" />
+  <circle cx="256" cy="256" r="150" fill="none" stroke="url(#goldFav)" stroke-width="3" stroke-opacity="0.4" />
+  <!-- Hands -->
+  <path d="M 165 305 C 175 285 198 275 220 288 C 235 297 248 312 256 325 C 246 332 232 338 215 338 C 192 338 172 324 165 305 Z" fill="url(#handFav)" />
+  <path d="M 347 305 C 337 285 314 275 292 288 C 277 297 264 312 256 325 C 266 332 280 338 297 338 C 320 338 340 324 347 305 Z" fill="url(#handFav)" />
+  <!-- Heart -->
+  <path d="M 256 285 C 256 285 200 242 200 200 C 200 176 218 158 241 158 C 247 158 252 160 256 164 C 260 160 265 158 271 158 C 294 158 312 176 312 200 C 312 242 256 285 256 285 Z" fill="url(#heartFav)" />
+  <circle cx="256" cy="112" r="5" fill="#fef08a" />
+</svg>

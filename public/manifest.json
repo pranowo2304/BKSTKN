@@ -1,0 +1,22 @@
+{
+  "name": "Aplikasi Dana Kematian",
+  "short_name": "Dana Kematian",
+  "description": "Sistem Pengelolaan Dana Kematian: Pendaftaran, Pembayaran Iuran, Verifikasi Admin, Kwitansi Otomatis, dan Realisasi Manfaat.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#022c22",
+  "theme_color": "#064e3b",
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml"
+    }
+  ]
+}

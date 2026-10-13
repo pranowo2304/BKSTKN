@@ -1,0 +1,140 @@
+{
+  "entities": {
+    "Member": {
+      "title": "Member",
+      "description": "Data anggota paguyuban dana kematian",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "memberNumber": { "type": "string" },
+        "nik": { "type": "string" },
+        "noKk": { "type": "string" },
+        "name": { "type": "string" },
+        "cluster": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "familyMembersCount": { "type": "number" },
+        "status": { "type": "string" },
+        "verificationStatus": { "type": "string" },
+        "joinDate": { "type": "string" }
+      },
+      "required": ["id", "name", "cluster", "status"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Catatan transaksi iuran anggota paguyuban",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "memberId": { "type": "string" },
+        "memberName": { "type": "string" },
+        "amount": { "type": "number" },
+        "period": { "type": "string" },
+        "paymentDate": { "type": "string" },
+        "status": { "type": "string" },
+        "paymentMethod": { "type": "string" }
+      },
+      "required": ["id", "memberId", "amount", "status"]
+    },
+    "BenefitClaim": {
+      "title": "BenefitClaim",
+      "description": "Data klaim dan penyaluran santunan kematian",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "deceasedName": { "type": "string" },
+        "memberId": { "type": "string" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string" },
+        "deathDate": { "type": "string" }
+      },
+      "required": ["id", "deceasedName", "totalAmount", "status"]
+    },
+    "SystemSettings": {
+      "title": "SystemSettings",
+      "description": "Konfigurasi paguyuban dan tarif santunan",
+      "type": "object",
+      "properties": {
+        "communityName": { "type": "string" },
+        "monthlyFeePerFamily": { "type": "number" },
+        "registrationFee": { "type": "number" },
+        "funeralAssistance": { "type": "number" },
+        "hearseAssistance": { "type": "number" },
+        "condolenceFund": { "type": "number" }
+      }
+    },
+    "AppUser": {
+      "title": "AppUser",
+      "description": "Akun pengguna sistem",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "authority": { "type": "string" },
+        "cluster": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "authority"]
+    },
+    "ClusterMaster": {
+      "title": "ClusterMaster",
+      "description": "Data master wilayah cluster atau RT",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "name", "isActive"]
+    },
+    "BenefitMaster": {
+      "title": "BenefitMaster",
+      "description": "Master data hak dan manfaat santunan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "amount": { "type": "number" },
+        "category": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "name", "amount", "isActive"]
+    }
+  },
+  "firestore": {
+    "/members/{memberId}": {
+      "schema": "Member",
+      "description": "Daftar anggota paguyuban kematian"
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Riwayat transaksi pembayaran iuran"
+    },
+    "/claims/{claimId}": {
+      "schema": "BenefitClaim",
+      "description": "Pencairan santunan duka cita"
+    },
+    "/settings/{settingId}": {
+      "schema": "SystemSettings",
+      "description": "Pengaturan konfigurasi sistem"
+    },
+    "/users/{userId}": {
+      "schema": "AppUser",
+      "description": "Pengguna aplikasi dan pengurus"
+    },
+    "/clusters/{clusterId}": {
+      "schema": "ClusterMaster",
+      "description": "Master data cluster dan wilayah"
+    },
+    "/benefits/{benefitId}": {
+      "schema": "BenefitMaster",
+      "description": "Master data hak dan paket santunan"
+    },
+    "/meta/{docId}": {
+      "schema": "object",
+      "description": "Metadata sistem dan status database"
+    }
+  }
+}

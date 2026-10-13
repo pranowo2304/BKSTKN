@@ -1,0 +1,6 @@
+{
+  "name": "Aplikasi Dana Kematian",
+  "description": "Sistem Pengelolaan Dana Kematian: Pendaftaran, Pembayaran Iuran, Verifikasi Admin, Kwitansi Otomatis, dan Realisasi Manfaat.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

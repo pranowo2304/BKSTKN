@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.8s infinite;
+}
+
+@keyframes marquee {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.animate-marquee {
+  display: inline-block;
+  animation: marquee 25s linear infinite;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+@media print {
+  /* Hide everything on page by default during print */
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Make sure background and print colors are preserved */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide background elements and non-printable modal controls */
+  header,
+  nav,
+  main,
+  footer,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Modal container adjustments for printing */
+  .fixed.inset-0 {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  .fixed.inset-0 > div {
+    box-shadow: none !important;
+    border: none !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #receipt-printable {
+    display: block !important;
+    width: 100% !important;
+    max-width: 750px !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  #receipt-printable > div {
+    border: 1.5px solid #334155 !important;
+    border-radius: 12px !important;
+    box-shadow: none !important;
+    padding: 24px 28px !important;
+  }
+
+  #member-card-printable {
+    display: block !important;
+    width: 100% !important;
+    max-width: 800px !important;
+    margin: 20px auto !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  @page {
+    size: auto;
+    margin: 10mm 12mm;
+  }
+}
