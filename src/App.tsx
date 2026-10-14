@@ -38,6 +38,7 @@ import {
   clearAllDemoDataLocally,
   clearAllClaimsLocally,
   syncClustersToRtUsers,
+  createMemberUser,
 } from './lib/storage';
 import {
   seedInitialFirestoreData,
@@ -465,9 +466,59 @@ export default function App() {
     saveStoredNotifications([]);
   };
 
-  // ADD SINGLE MEMBER
+  // PENDAFTARAN MANDIRI WARGA DARI HALAMAN PUBLIK (Terbuka untuk umum tanpa perlu login admin)
+  const handlePublicRegisterMember = (newMember: Member) => {
+    // Validasi pencegahan data double NIK dan Nomor KK
+    const dupCheck = checkDuplicateMember(members, newMember.nik, newMember.familyCardNumber);
+    if (dupCheck.isDuplicate) {
+      alert(`PENDAFTARAN DITOLAK (DATA DOUBLE TERDETEKSI):\n\n${dupCheck.message}`);
+      return;
+    }
+
+    const updatedMembers = [newMember, ...members];
+    setMembers(updatedMembers);
+    saveMembers(updatedMembers);
+    syncMemberToCloud(newMember).catch((e) => console.warn('Cloud sync member error:', e));
+
+    // Sinkronisasi otomatis akun login warga agar bisa langsung login ke portal anggota
+    if (newMember.email && newMember.password) {
+      const newUser = createMemberUser(newMember, newMember.email, newMember.password);
+      setUsers((prevUsers) => {
+        const existingIdx = prevUsers.findIndex(
+          (u) =>
+            u.id === newUser.id ||
+            (u.email && u.email.toLowerCase() === newUser.email.toLowerCase()) ||
+            (u.memberId && u.memberId === newMember.id)
+        );
+        let updatedUsersList: AppUser[];
+        if (existingIdx !== -1) {
+          updatedUsersList = [...prevUsers];
+          updatedUsersList[existingIdx] = { ...prevUsers[existingIdx], ...newUser };
+        } else {
+          updatedUsersList = [newUser, ...prevUsers];
+        }
+        saveUsers(updatedUsersList);
+        syncUserToCloud(newUser).catch((e) => console.warn('Cloud sync user error:', e));
+        return updatedUsersList;
+      });
+    }
+
+    addNotification({
+      type: 'info',
+      category: 'registration',
+      title: 'Pendaftaran Warga Baru Masuk',
+      message: `Pendaftaran warga baru ${newMember.name} (${newMember.cluster || 'Cluster'}) berhasil diajukan dan menunggu verifikasi berkas KK oleh Ketua RT.`,
+      cluster: newMember.cluster,
+      memberId: newMember.id,
+      linkTab: 'rt-verification',
+    });
+  };
+
+  // ADD SINGLE MEMBER (Oleh Pengurus / Admin di Dashboard Registrasi Anggota)
   const handleAddMember = (newMember: Member) => {
-    if (!can(activeUser?.authority, 'register_members')) {
+    // Jika pendaftaran mandiri (status 'Menunggu Verifikasi RT'), selalu izinkan tanpa memblokir
+    const isSelfRegistration = newMember.status === 'Menunggu Verifikasi RT' || !activeUser || activeUser.authority === 'Anggota';
+    if (!isSelfRegistration && !can(activeUser?.authority, 'register_members')) {
       alert(`Akses Ditolak: Akun Anda (${activeUser?.authority || 'Pengguna'}) tidak memiliki wewenang pendaftaran anggota baru.`);
       return;
     }
@@ -1637,7 +1688,7 @@ export default function App() {
             users={users}
             activeUser={activeUser}
             financials={financials}
-            onRegisterMember={handleAddMember}
+            onRegisterMember={handlePublicRegisterMember}
             onMakePayment={handleAddPayment}
             onNavigateToInternal={() => setCurrentTab('dashboard')}
             onLoginSuccess={handleUserLogin}
