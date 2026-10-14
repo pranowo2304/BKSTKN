@@ -776,11 +776,23 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
               <button
                 type="button"
                 onClick={() => setIsCertModalOpen(true)}
-                className="py-2 px-3 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-bold text-xs rounded-xl transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
-                title="Buka & Cetak Sertifikat Keanggotaan Resmi (A4 Landscape)"
+                className={`py-2 px-3 font-bold text-xs rounded-xl transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95 ${
+                  ktaInfo?.isIssued
+                    ? 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white'
+                    : 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
+                }`}
+                title={
+                  ktaInfo?.isIssued
+                    ? 'Buka & Cetak Sertifikat Keanggotaan Resmi (A4 Landscape)'
+                    : 'Sertifikat bisa terbit setelah disetujui ketua paguyuban'
+                }
               >
-                <Award className="w-3.5 h-3.5 text-amber-200" />
-                <span>Sertifikat Resmi</span>
+                {ktaInfo?.isIssued ? (
+                  <Award className="w-3.5 h-3.5 text-amber-200" />
+                ) : (
+                  <Lock className="w-3.5 h-3.5 text-amber-700" />
+                )}
+                <span>{ktaInfo?.isIssued ? 'Sertifikat Resmi' : 'Sertifikat (Menunggu Ketua Paguyuban)'}</span>
               </button>
 
               <button
@@ -1131,13 +1143,17 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
                       ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30'
                       : member.status === 'Menunggu Pembayaran'
                       ? 'bg-amber-500/20 text-amber-200 border border-amber-400/30'
+                      : (member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending')
+                      ? 'bg-rose-500/20 text-rose-200 border border-rose-400/30'
                       : 'bg-slate-500/20 text-slate-200 border border-slate-400/30'
                   }`}
                 >
                   {member.status === 'Aktif'
                     ? `Perlindungan Aktif s/d ${expiry?.expiryDateFormatted || '-'}`
                     : member.status === 'Menunggu Pembayaran'
-                    ? 'Verifikasi Berhasil — Menunggu Pembayaran'
+                    ? 'Verifikasi RT Berhasil — Siap Bayar Iuran'
+                    : (member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending')
+                    ? 'Menunggu Verifikasi RT — Belum Dapat Bayar'
                     : member.status}
                 </span>
               </div>
@@ -1145,14 +1161,20 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
               <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
                 {member.status === 'Aktif'
                   ? 'Bayar / Perpanjang Iuran Kas Paguyuban'
-                  : 'Bayar Iuran Pertama untuk Aktivasi KTA & Santunan'}
+                  : member.status === 'Menunggu Pembayaran'
+                  ? 'Verifikasi RT Selesai — Bayar Iuran Sekarang'
+                  : (member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending')
+                  ? 'Pendaftaran Baru Menunggu Verifikasi RT'
+                  : 'Layanan Pembayaran Iuran'}
               </h2>
 
               <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
                 {member.status === 'Aktif'
                   ? 'Setorkan iuran kas tahunan untuk memperpanjang masa aktif perlindungan santunan keluarga Anda. Pembayaran akan otomatis diverifikasi bendahara dan menerbitkan kwitansi resmi.'
                   : member.status === 'Menunggu Pembayaran'
-                  ? 'Pendaftaran Anda telah disetujui RT. Lakukan pembayaran iuran tahunan sekarang agar KTA resmi diterbitkan dan hak santunan duka cita warga segera aktif.'
+                  ? 'Pendaftaran Anda telah disetujui RT. Lakukan pembayaran iuran tahunan sekarang agar diteruskan ke Ketua Paguyuban untuk penerbitan Sertifikat Resmi & KTA.'
+                  : (member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending')
+                  ? 'Sesuai regulasi: Pendaftar baru bisa melakukan pembayaran setelah verifikasi dari RT. Berkas Anda sedang dalam proses verifikasi oleh Ketua RT setempat.'
                   : 'Iuran tahunan paguyuban dana kematian untuk menjamin perlindungan pemakaman, ambulans jenazah, dan santunan tunai duka cita.'}
               </p>
 
@@ -1190,20 +1212,32 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
 
             <div className="flex flex-col sm:flex-row lg:flex-col items-stretch sm:items-center lg:items-end gap-3 w-full lg:w-auto shrink-0">
               {onNavigateToPayment && (
-                <button
-                  type="button"
-                  onClick={() => onNavigateToPayment(member)}
-                  className="px-7 py-4 bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-slate-950 font-black text-sm sm:text-base rounded-2xl shadow-xl shadow-emerald-950/40 transition-all flex items-center justify-center gap-3 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-                  title="Klik untuk membuka form bayar iuran kas paguyuban"
-                >
-                  <CreditCard className="w-5 h-5" />
-                  <span>
-                    {member.status === 'Aktif'
-                      ? 'Bayar / Perpanjang Iuran'
-                      : 'Bayar Iuran Sekarang'}
-                  </span>
-                  <ArrowRight className="w-5 h-5" />
-                </button>
+                member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending' ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="px-6 py-4 bg-slate-800/90 text-amber-300 font-bold text-xs sm:text-sm rounded-2xl border border-amber-500/30 cursor-not-allowed flex items-center justify-center gap-2 shadow-inner"
+                    title="Pendaftar baru bisa melakukan pembayaran setelah verifikasi dari RT"
+                  >
+                    <Lock className="w-4 h-4 text-amber-400" />
+                    <span>Belum Dapat Bayar (Menunggu Verifikasi RT)</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onNavigateToPayment(member)}
+                    className="px-7 py-4 bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-slate-950 font-black text-sm sm:text-base rounded-2xl shadow-xl shadow-emerald-950/40 transition-all flex items-center justify-center gap-3 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                    title="Klik untuk membuka form bayar iuran kas paguyuban"
+                  >
+                    <CreditCard className="w-5 h-5" />
+                    <span>
+                      {member.status === 'Aktif'
+                        ? 'Bayar / Perpanjang Iuran'
+                        : 'Bayar Iuran Sekarang'}
+                    </span>
+                    <ArrowRight className="w-5 h-5" />
+                  </button>
+                )
               )}
 
               <button

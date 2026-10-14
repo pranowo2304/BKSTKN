@@ -1548,6 +1548,14 @@ export default function App() {
   };
 
   const handleSelectMemberForPayment = (member: Member) => {
+    if (member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending') {
+      alert(`Pendaftar baru belum dapat melakukan pembayaran!\n\nSesuai alur resmi paguyuban, pendaftar baru bisa melakukan pembayaran setelah verifikasi dari RT (${member.cluster || 'Cluster'}). Mohon tunggu verifikasi Ketua RT.`);
+      return;
+    }
+    if (member.status === 'Ditolak' || member.verificationStatus === 'Rejected') {
+      alert(`Warga "${member.name}" tidak dapat melakukan pembayaran karena berkas pendaftaran ditolak oleh Ketua RT.`);
+      return;
+    }
     setSelectedMemberForPayment(member);
     setCurrentTab('payment');
   };

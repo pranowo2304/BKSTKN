@@ -1088,11 +1088,15 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
                     <button
                       type="button"
                       onClick={() => setSelectedCertificateMember(member)}
-                      className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold rounded-xl transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
-                      title="Lihat & Cetak Sertifikat Keanggotaan Resmi (A4 Landscape)"
+                      className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-colors flex items-center gap-1 cursor-pointer shadow-2xs ${
+                        member.isPaguyubanApproved
+                          ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
+                      }`}
+                      title={member.isPaguyubanApproved ? "Lihat & Cetak Sertifikat Keanggotaan Resmi (A4 Landscape)" : "Sertifikat bisa terbit setelah disetujui ketua paguyuban"}
                     >
-                      <Award className="w-3.5 h-3.5 text-amber-600" />
-                      <span>Sertifikat Anggota</span>
+                      {member.isPaguyubanApproved ? <Award className="w-3.5 h-3.5 text-amber-600" /> : <Lock className="w-3.5 h-3.5 text-slate-500" />}
+                      <span>{member.isPaguyubanApproved ? 'Sertifikat Sah' : 'Draf Sertifikat'}</span>
                     </button>
                   </div>
 
@@ -1120,7 +1124,7 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
                           className="px-5 py-2 bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 text-white font-black text-xs sm:text-sm rounded-xl transition-all shadow-md shadow-purple-950/20 flex items-center gap-2 hover:scale-[1.02] active:scale-95 cursor-pointer"
                         >
                           <Crown className="w-4 h-4 text-amber-400" />
-                          <span>Setujui & Terbitkan KTA Resmi</span>
+                          <span>Setujui & Terbitkan KTA serta Sertifikat</span>
                         </button>
                       </>
                     ) : (
@@ -1216,10 +1220,10 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
               <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
                 <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-bold">Konsekuensi Pengesahan:</p>
+                  <p className="font-bold">Konsekuensi Pengesahan Ketua Paguyuban:</p>
                   <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
-                    Setelah disetujui, status keanggotaan warga akan otomatis berubah menjadi{' '}
-                    <strong>"Aktif"</strong>, <strong>KTA Digital Resmi diterbitkan</strong> dengan QR Code pengesahan, dan notifikasi WhatsApp resmi akan otomatis dikirimkan ke nomor ponsel anggota.
+                    Sesuai ketentuan, <strong>sertifikat keanggotaan resmi dan KTA baru dapat terbit setelah disetujui Ketua Paguyuban</strong>. Setelah pengesahan ini, status anggota otomatis berubah menjadi{' '}
+                    <strong>"Aktif"</strong>, <strong>KTA Digital & Sertifikat Sah langsung diterbitkan</strong>, dan notifikasi WhatsApp resmi akan otomatis dikirimkan ke nomor ponsel anggota.
                   </p>
                 </div>
               </div>
@@ -1297,7 +1301,7 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
                   className="px-6 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 text-white font-black text-xs sm:text-sm rounded-xl transition-all shadow-md shadow-purple-950/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   <Check className="w-4 h-4" />
-                  <span>{isSubmitting ? 'Memproses...' : 'Sahkan & Terbitkan KTA Resmi'}</span>
+                  <span>{isSubmitting ? 'Memproses...' : 'Sahkan & Terbitkan KTA serta Sertifikat'}</span>
                 </button>
               </div>
             </form>

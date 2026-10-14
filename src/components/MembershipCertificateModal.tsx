@@ -80,11 +80,19 @@ export const MembershipCertificateModal: React.FC<MembershipCertificateModalProp
 
   // Print Handler
   const handlePrint = () => {
+    if (!certInfo.isIssued) {
+      alert('Sertifikat keanggotaan resmi belum terbit!\n\nSesuai aturan AD/ART organisasi, sertifikat baru bisa terbit dan dicetak setelah disetujui oleh Ketua Paguyuban.');
+      return;
+    }
     window.print();
   };
 
   // Download PDF Handler (Crisp vector PDF directly using jsPDF, 100% immune to html2canvas & oklab errors)
   const handleDownloadPdf = () => {
+    if (!certInfo.isIssued) {
+      alert('Sertifikat keanggotaan resmi belum terbit!\n\nSesuai aturan AD/ART organisasi, sertifikat resmi baru bisa terbit dan diunduh setelah disetujui oleh Ketua Paguyuban.');
+      return;
+    }
     setIsExporting(true);
     try {
       let qrDataUrl: string | undefined;
@@ -115,6 +123,10 @@ export const MembershipCertificateModal: React.FC<MembershipCertificateModalProp
 
   // Download High-Res Image Handler (Direct Canvas 2D API, 100% immune to html2canvas & oklab errors)
   const handleDownloadImage = async () => {
+    if (!certInfo.isIssued) {
+      alert('Sertifikat keanggotaan resmi belum terbit!\n\nSertifikat baru bisa terbit setelah disetujui ketua paguyuban.');
+      return;
+    }
     setIsExporting(true);
     try {
       let qrDataUrl: string | undefined;
@@ -141,9 +153,13 @@ export const MembershipCertificateModal: React.FC<MembershipCertificateModalProp
 
   // WhatsApp Share Handler
   const handleShareWhatsApp = () => {
+    if (!certInfo.isIssued) {
+      alert('Sertifikat keanggotaan resmi belum terbit!\n\nSertifikat baru bisa terbit dan dibagikan setelah disetujui ketua paguyuban.');
+      return;
+    }
     const phone = (member.phone || '').replace(/[^0-9]/g, '');
     const intlPhone = phone.startsWith('0') ? '62' + phone.slice(1) : phone.startsWith('62') ? phone : '62' + phone;
-    const text = `*SERTIFIKAT KEANGGOTAAN RESMI*\n${communityName}\n\n*Nama:* ${member.name}\n*No. Sertifikat:* ${certInfo.certificateNumber}\n*NPA:* ${member.memberNumber}\n*Status:* ${certInfo.isIssued ? 'RESMI & SAH' : 'PROSES PENERBITAN'}\n*Masa Berlaku:* ${expiry.expiryDateFormatted}\n*Jumlah Jiwa Terlindungi:* ${(member.dependentsCount || 0) + 1} Jiwa\n\nSertifikat telah disahkan secara resmi oleh Ketua Paguyuban dan tercatat di Sistem Informasi Paguyuban.`;
+    const text = `*SERTIFIKAT KEANGGOTAAN RESMI*\n${communityName}\n\n*Nama:* ${member.name}\n*No. Sertifikat:* ${certInfo.certificateNumber}\n*NPA:* ${member.memberNumber}\n*Status:* RESMI & SAH\n*Masa Berlaku:* ${expiry.expiryDateFormatted}\n*Jumlah Jiwa Terlindungi:* ${(member.dependentsCount || 0) + 1} Jiwa\n\nSertifikat telah disahkan secara resmi oleh Ketua Paguyuban dan tercatat di Sistem Informasi Paguyuban.`;
     window.open(`https://wa.me/${intlPhone}?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
   };
 
@@ -244,7 +260,7 @@ export const MembershipCertificateModal: React.FC<MembershipCertificateModalProp
                 <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase border ${
                   certInfo.isIssued ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40' : 'bg-amber-500/20 text-amber-300 border-amber-400/40'
                 }`}>
-                  {certInfo.isIssued ? 'TERBIT & SAH' : 'PROSES TAHAPAN'}
+                  {certInfo.isIssued ? 'TERBIT & SAH (DISETUJUI KETUA)' : 'BELUM TERBIT — MENUNGGU PERSETUJUAN KETUA PAGUYUBAN'}
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-0.5 font-mono">
@@ -258,29 +274,41 @@ export const MembershipCertificateModal: React.FC<MembershipCertificateModalProp
             <button
               type="button"
               onClick={handlePrint}
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
-              title="Cetak langsung menggunakan printer (A4 Landscape)"
+              className={`px-3.5 py-2 font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer ${
+                certInfo.isIssued
+                  ? 'bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white'
+                  : 'bg-slate-800 text-amber-300 border border-amber-400/30 hover:bg-slate-700'
+              }`}
+              title={certInfo.isIssued ? 'Cetak langsung menggunakan printer (A4 Landscape)' : 'Sertifikat bisa terbit setelah disetujui ketua paguyuban'}
             >
-              <Printer className="w-4 h-4" />
-              <span>Cetak (A4)</span>
+              {certInfo.isIssued ? <Printer className="w-4 h-4" /> : <Lock className="w-4 h-4 text-amber-400" />}
+              <span>{certInfo.isIssued ? 'Cetak (A4)' : 'Cetak (Terkunci)'}</span>
             </button>
 
             <button
               type="button"
               onClick={handleDownloadPdf}
               disabled={isExporting}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-extrabold text-xs rounded-xl border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              title="Unduh dokumen dalam format PDF Siap Cetak"
+              className={`px-3.5 py-2 font-extrabold text-xs rounded-xl border transition-all flex items-center gap-1.5 cursor-pointer ${
+                certInfo.isIssued
+                  ? 'bg-slate-800 hover:bg-slate-700 active:scale-95 text-white border-slate-700'
+                  : 'bg-slate-800 text-amber-300 border-amber-400/30 hover:bg-slate-700'
+              }`}
+              title={certInfo.isIssued ? 'Unduh dokumen dalam format PDF Siap Cetak' : 'Sertifikat bisa terbit setelah disetujui ketua paguyuban'}
             >
-              <Download className="w-4 h-4 text-emerald-400" />
-              <span>{isExporting ? 'Memproses...' : 'Unduh PDF'}</span>
+              {certInfo.isIssued ? <Download className="w-4 h-4 text-emerald-400" /> : <Lock className="w-4 h-4 text-amber-400" />}
+              <span>{isExporting ? 'Memproses...' : certInfo.isIssued ? 'Unduh PDF' : 'Unduh PDF (Terkunci)'}</span>
             </button>
 
             <button
               type="button"
               onClick={handleShareWhatsApp}
-              className="px-3 py-2 bg-teal-700 hover:bg-teal-600 active:scale-95 text-white font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
-              title="Kirim pemberitahuan sertifikat ke WhatsApp warga"
+              className={`px-3 py-2 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                certInfo.isIssued
+                  ? 'bg-teal-700 hover:bg-teal-600 active:scale-95 text-white'
+                  : 'bg-slate-800 text-slate-400 border border-slate-700'
+              }`}
+              title={certInfo.isIssued ? 'Kirim pemberitahuan sertifikat ke WhatsApp warga' : 'Sertifikat bisa terbit setelah disetujui ketua paguyuban'}
             >
               <Share2 className="w-4 h-4" />
               <span className="hidden sm:inline">WhatsApp</span>
@@ -366,15 +394,22 @@ export const MembershipCertificateModal: React.FC<MembershipCertificateModalProp
 
         {/* ISSUANCE NOTICE BANNER (If not yet fully approved) */}
         {!certInfo.isIssued && (
-          <div className="p-3 bg-amber-50 border-b border-amber-200 flex items-center justify-between gap-3 text-xs text-amber-900">
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-              <div>
-                <span className="font-bold">Status Alur Pengesahan:</span> {certInfo.statusTitle} — {certInfo.statusDescription}
+          <div className="p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 border-b-2 border-amber-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-950">
+            <div className="flex items-start gap-2.5">
+              <div className="p-1.5 bg-amber-200 rounded-lg text-amber-800 shrink-0 mt-0.5">
+                <Lock className="w-4 h-4" />
+              </div>
+              <div className="space-y-0.5">
+                <p className="font-black text-amber-950 text-sm">
+                  Sertifikat Belum Terbit — Menunggu Persetujuan Ketua Paguyuban
+                </p>
+                <p className="text-amber-800 leading-relaxed text-[11px]">
+                  Sesuai alur resmi paguyuban: <strong>Pendaftar baru bisa melakukan pembayaran setelah verifikasi dari RT</strong>, dan <strong>sertifikat bisa terbit setelah disetujui ketua paguyuban</strong>. Tampilan di bawah ini merupakan pratinjau draf.
+                </p>
               </div>
             </div>
-            <span className="text-[10px] font-mono font-bold bg-amber-200/80 px-2 py-0.5 rounded text-amber-950 uppercase shrink-0">
-              Pratinjau Draft Resmi
+            <span className="text-[10px] font-mono font-black bg-amber-200 border border-amber-400 px-2.5 py-1 rounded-lg text-amber-950 uppercase shrink-0">
+              DRAF — BELUM TERBIT
             </span>
           </div>
         )}
@@ -417,8 +452,8 @@ export const MembershipCertificateModal: React.FC<MembershipCertificateModalProp
 
               {!certInfo.isIssued && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-                  <span className="text-4xl sm:text-6xl font-black text-rose-500/20 border-4 border-rose-500/20 p-6 rounded-2xl rotate-[-25deg] uppercase tracking-widest">
-                    DRAFT • PROSES PENGESAHAN
+                  <span className="text-3xl sm:text-5xl font-black text-rose-500/25 border-4 border-rose-500/25 p-6 rounded-2xl rotate-[-25deg] uppercase tracking-widest text-center leading-tight">
+                    DRAFT • BELUM TERBIT<br /><span className="text-xl sm:text-3xl">MENUNGGU PERSETUJUAN KETUA PAGUYUBAN</span>
                   </span>
                 </div>
               )}
@@ -573,7 +608,7 @@ export const MembershipCertificateModal: React.FC<MembershipCertificateModalProp
                           </div>
                         ) : (
                           <div className="px-2 py-0.5 bg-rose-50 border border-rose-300 rounded text-[9px] font-bold text-rose-800">
-                            Menunggu Pengesahan
+                            Menunggu Pengesahan Ketua Paguyuban
                           </div>
                         )}
                       </div>

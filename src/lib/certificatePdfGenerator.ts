@@ -106,9 +106,9 @@ export function generateCertificatePdf(options: GenerateCertificatePdfOptions): 
   // Watermark for draft if not issued
   if (!certInfo.isIssued) {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(36);
+    doc.setFontSize(28);
     doc.setTextColor(239, 68, 68); // Red
-    doc.text('DRAFT - MENUNGGU PENGESAHAN', width / 2, height / 2 + 10, {
+    doc.text('DRAFT - MENUNGGU PENGESAHAN KETUA PAGUYUBAN', width / 2, height / 2 + 10, {
       align: 'center',
       angle: 25,
     });

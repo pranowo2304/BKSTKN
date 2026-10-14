@@ -112,9 +112,9 @@ export async function generateCertificateCanvas(
     ctx.translate(width / 2, height / 2);
     ctx.rotate(-0.35);
     ctx.fillStyle = 'rgba(239, 68, 68, 0.12)';
-    ctx.font = '900 120px "Segoe UI", Arial, sans-serif';
+    ctx.font = '900 85px "Segoe UI", Arial, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('DRAFT - MENUNGGU PENGESAHAN', 0, 0);
+    ctx.fillText('DRAFT • MENUNGGU PENGESAHAN KETUA PAGUYUBAN', 0, 0);
     ctx.restore();
   }
 

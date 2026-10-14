@@ -873,11 +873,23 @@ export const DigitalKtaModal: React.FC<DigitalKtaModalProps> = ({
             <button
               type="button"
               onClick={() => setIsCertModalOpen(true)}
-              className="px-3.5 py-2 text-xs font-bold text-white bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 rounded-xl transition-all shadow-md shadow-amber-950/40 inline-flex items-center gap-1.5 hover:scale-105 active:scale-95 cursor-pointer"
-              title="Buka & Cetak Sertifikat Keanggotaan Resmi (A4 Landscape)"
+              className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all shadow-md inline-flex items-center gap-1.5 cursor-pointer ${
+                ktaInfo.isIssued
+                  ? 'text-white bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 shadow-amber-950/40 hover:scale-105 active:scale-95'
+                  : 'text-amber-200 bg-amber-950/60 hover:bg-amber-900/80 border border-amber-600/40'
+              }`}
+              title={
+                ktaInfo.isIssued
+                  ? 'Buka & Cetak Sertifikat Keanggotaan Resmi (A4 Landscape)'
+                  : 'Sertifikat bisa terbit setelah disetujui ketua paguyuban'
+              }
             >
-              <Award className="w-3.5 h-3.5 text-amber-200" />
-              <span>Sertifikat Anggota</span>
+              {ktaInfo.isIssued ? (
+                <Award className="w-3.5 h-3.5 text-amber-200" />
+              ) : (
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+              )}
+              <span>{ktaInfo.isIssued ? 'Sertifikat Resmi' : 'Sertifikat (Menunggu Ketua Paguyuban)'}</span>
             </button>
 
             {!ktaInfo.isIssued && onOpenPreviewKtaModal ? (

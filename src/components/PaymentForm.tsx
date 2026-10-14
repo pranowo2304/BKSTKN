@@ -142,7 +142,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
     }
 
     if (!isEligibleToPay) {
-      alert(`Warga "${activeMember.name}" belum dapat melakukan pembayaran iuran karena status pendaftaran belum disetujui oleh Ketua RT (${activeMember.cluster || 'Cluster'}).`);
+      alert(`Pendaftar baru belum dapat melakukan pembayaran!\n\nSesuai alur resmi paguyuban, pendaftar baru bisa melakukan pembayaran setelah verifikasi dari RT (${activeMember.cluster || 'Cluster'}). Mohon tunggu verifikasi dan persetujuan dari Ketua RT.`);
       return;
     }
 
@@ -376,9 +376,9 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                         <div className="flex items-start gap-2">
                           <Clock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
                           <div>
-                            <p className="font-bold text-amber-950">⛔ Belum Bisa Melakukan Pembayaran (Menunggu Verifikasi Ketua RT)</p>
+                            <p className="font-bold text-amber-950">⛔ Pendaftar Baru Belum Bisa Melakukan Pembayaran</p>
                             <p className="text-[11px] text-amber-800 mt-0.5">
-                              Pendaftaran warga <strong>{activeMember.name}</strong> ({activeMember.cluster || 'Cluster'}) masih berstatus <em>Menunggu Verifikasi RT</em>. Sesuai alur paguyuban, pembayaran iuran baru dapat dilakukan setelah berkas disetujui Ketua RT setempat.
+                              Pendaftar baru bisa melakukan pembayaran setelah verifikasi dari RT. Pendaftaran warga <strong>{activeMember.name}</strong> ({activeMember.cluster || 'Cluster'}) saat ini masih berstatus <em>Menunggu Verifikasi RT</em>.
                             </p>
                           </div>
                         </div>

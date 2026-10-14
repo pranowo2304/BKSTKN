@@ -861,11 +861,23 @@ export const PreviewKtaModal: React.FC<PreviewKtaModalProps> = ({
               <button
                 type="button"
                 onClick={() => setIsCertModalOpen(true)}
-                className="px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center gap-1.5 hover:scale-105 active:scale-95 cursor-pointer"
-                title="Buka Sertifikat Keanggotaan Resmi (A4 Landscape)"
+                className={`px-4 py-2 text-xs font-bold rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer ${
+                  member.isPaguyubanApproved
+                    ? 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white hover:scale-105 active:scale-95'
+                    : 'bg-amber-950/60 text-amber-200 border border-amber-600/40 hover:bg-amber-900/80'
+                }`}
+                title={
+                  member.isPaguyubanApproved
+                    ? 'Buka Sertifikat Keanggotaan Resmi (A4 Landscape)'
+                    : 'Sertifikat bisa terbit setelah disetujui ketua paguyuban'
+                }
               >
-                <Award className="w-4 h-4 text-amber-200" />
-                <span>Lihat Sertifikat</span>
+                {member.isPaguyubanApproved ? (
+                  <Award className="w-4 h-4 text-amber-200" />
+                ) : (
+                  <Lock className="w-4 h-4 text-amber-400" />
+                )}
+                <span>{member.isPaguyubanApproved ? 'Lihat Sertifikat Resmi' : 'Sertifikat (Menunggu Ketua Paguyuban)'}</span>
               </button>
 
               <button

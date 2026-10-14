@@ -65,10 +65,12 @@ import {
   Camera,
   Mail,
   AlertTriangle,
+  Award,
 } from 'lucide-react';
 import { DigitalKtaModal } from './DigitalKtaModal';
 import { KtaScannerModal } from './KtaScannerModal';
 import { MemberKtaQrGeneratorModal } from './MemberKtaQrGeneratorModal';
+import { MembershipCertificateModal } from './MembershipCertificateModal';
 import { AppIcon } from './AppIcon';
 
 interface PublicLandingPageProps {
@@ -405,6 +407,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
   const [payProofImage, setPayProofImage] = useState<string | null>(null);
   const [payProofFileName, setPayProofFileName] = useState('');
   const [paySuccessMsg, setPaySuccessMsg] = useState(false);
+  const [selectedCertificateMember, setSelectedCertificateMember] = useState<Member | null>(null);
 
   // FAQ Accordion State
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
@@ -569,7 +572,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
 
   const handleOpenPaymentForMember = (member: Member) => {
     if (member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending') {
-      alert('Pendaftaran Anda masih dalam status "Menunggu Verifikasi RT". Sesuai alur resmi, Anda baru dapat melakukan pembayaran dan mengunggah bukti transfer setelah disetujui oleh Ketua RT di cluster/wilayah Anda.');
+      alert(`Pendaftar baru belum dapat melakukan pembayaran!\n\nSesuai alur resmi paguyuban, pendaftar baru bisa melakukan pembayaran setelah verifikasi dari RT disetujui (Wilayah ${member.cluster || 'Cluster'}). Mohon tunggu verifikasi dan persetujuan dari Ketua RT setempat.`);
       return;
     }
     if (member.status === 'Ditolak' || member.verificationStatus === 'Rejected') {
@@ -1303,18 +1306,25 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                               ? 'bg-sky-50 text-sky-900 border-sky-300 ring-2 ring-sky-400/30'
                               : 'bg-slate-50 text-slate-400 border-slate-200'
                           }`}
+                          title={
+                            hasUploadedPayment
+                              ? 'Bukti pembayaran telah dikirim'
+                              : isReadyToPay
+                              ? 'Pendaftaran disetujui RT! Silakan lakukan pembayaran'
+                              : 'Pendaftar baru bisa melakukan pembayaran setelah verifikasi dari RT'
+                          }
                         >
                           {hasUploadedPayment ? (
                             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                           ) : isReadyToPay ? (
                             <Upload className="w-4 h-4 text-sky-600 shrink-0 animate-bounce" />
                           ) : (
-                            <CreditCard className="w-4 h-4 text-slate-400 shrink-0" />
+                            <Lock className="w-4 h-4 text-slate-400 shrink-0" />
                           )}
                           <div>
-                            <p className="font-bold text-[11px]">3. Upload Bukti</p>
+                            <p className="font-bold text-[11px]">3. Bayar Iuran</p>
                             <p className="text-[10px]">
-                              {hasUploadedPayment ? 'Bukti Terkirim' : isReadyToPay ? 'Silakan Bayar' : 'Terkunci (Tunggu RT)'}
+                              {hasUploadedPayment ? 'Bukti Terkirim' : isReadyToPay ? 'Siap Bayar (RT ✓)' : 'Terkunci (Tunggu RT)'}
                             </p>
                           </div>
                         </div>
@@ -1357,7 +1367,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                       );
                     })()}
 
-                    {/* Step 5: KTA Digital Terbit */}
+                    {/* Step 5: KTA & Sertifikat Terbit */}
                     {(() => {
                       const searchKta = getMemberKtaIssuanceInfo(searchResult, payments);
                       return (
@@ -1367,6 +1377,11 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                               ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                               : 'bg-slate-50 text-slate-400 border-slate-200'
                           }`}
+                          title={
+                            searchKta.isIssued
+                              ? 'KTA & Sertifikat resmi telah disetujui Ketua Paguyuban dan terbit sah'
+                              : 'Sertifikat bisa terbit setelah disetujui ketua paguyuban'
+                          }
                         >
                           {searchKta.isIssued ? (
                             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -1374,9 +1389,9 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                             <Lock className="w-4 h-4 text-slate-400 shrink-0" />
                           )}
                           <div>
-                            <p className="font-bold text-[11px]">5. KTA Digital</p>
+                            <p className="font-bold text-[11px]">5. Sertifikat & KTA</p>
                             <p className="text-[10px]">
-                              {searchKta.isIssued ? 'Terbit & Sah' : searchKta.statusBadge}
+                              {searchKta.isIssued ? 'Terbit & Sah' : 'Menunggu Ketua'}
                             </p>
                           </div>
                         </div>
@@ -1463,7 +1478,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                     {(() => {
                       const searchKta = getMemberKtaIssuanceInfo(searchResult, payments);
                       return (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <button
                             type="button"
                             onClick={() => setSelectedQrGeneratorMember(searchResult)}
@@ -1495,6 +1510,28 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                               <Lock className="w-3.5 h-3.5 text-amber-700" />
                             )}
                             <span>{searchKta.isIssued ? 'Buka KTA Digital' : 'Lihat Status KTA'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCertificateMember(searchResult)}
+                            className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-sm cursor-pointer ${
+                              searchKta.isIssued
+                                ? 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white shadow-amber-950/20 hover:scale-105 active:scale-95'
+                                : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300'
+                            }`}
+                            title={
+                              searchKta.isIssued
+                                ? 'Lihat & Unduh Sertifikat Keanggotaan Resmi (A4 Landscape)'
+                                : 'Sertifikat bisa terbit setelah disetujui ketua paguyuban'
+                            }
+                          >
+                            {searchKta.isIssued ? (
+                              <Award className="w-3.5 h-3.5 text-amber-200" />
+                            ) : (
+                              <Lock className="w-3.5 h-3.5 text-amber-700" />
+                            )}
+                            <span>{searchKta.isIssued ? 'Sertifikat Resmi' : 'Sertifikat (Menunggu Ketua Paguyuban)'}</span>
                           </button>
                         </div>
                       );
@@ -1584,14 +1621,24 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                     </p>
                   </div>
                 </div>
-                <p className="text-xs text-emerald-900 leading-relaxed bg-white/70 p-3 rounded-xl border border-emerald-200">
-                  Data pendaftaran atas nama <strong>{regSuccess.name}</strong> ({regSuccess.cluster}) telah berhasil disimpan dengan status <strong>Menunggu Verifikasi RT</strong>.
+                <div className="text-xs text-emerald-900 leading-relaxed bg-white/70 p-3.5 rounded-xl border border-emerald-200 space-y-2">
+                  <p>
+                    Data pendaftaran atas nama <strong>{regSuccess.name}</strong> ({regSuccess.cluster}) telah berhasil disimpan dengan status <strong>Menunggu Verifikasi RT</strong>.
+                  </p>
+                  <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-lg text-amber-950 text-[11px] space-y-1">
+                    <p className="font-bold flex items-center gap-1.5 text-amber-900">
+                      <Clock className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Alur Pembayaran & Penerbitan Sertifikat:</span>
+                    </p>
+                    <p>• <strong>Pembayaran:</strong> Pendaftar baru bisa melakukan pembayaran setelah verifikasi dari RT disetujui.</p>
+                    <p>• <strong>Penerbitan Sertifikat & KTA:</strong> Sertifikat bisa terbit setelah disetujui ketua paguyuban.</p>
+                  </div>
                   {regSuccess.email && (
                     <span className="block mt-1 font-semibold text-emerald-950">
                       Akun login Anda: <span className="font-mono bg-emerald-100 px-1.5 py-0.5 rounded text-emerald-900">{regSuccess.email}</span>. Gunakan email ini untuk login dan melihat riwayat pendaftaran, KTA, serta riwayat pembayaran.
                     </span>
                   )}
-                </p>
+                </div>
                 <div className="flex flex-wrap gap-2 pt-1">
                   {onOpenLoginModal && (
                     <button
@@ -2627,6 +2674,21 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
           member={selectedQrGeneratorMember}
           settings={settings}
           payments={payments}
+        />
+      )}
+
+      {/* OFFICIAL MEMBERSHIP CERTIFICATE MODAL */}
+      {selectedCertificateMember && (
+        <MembershipCertificateModal
+          isOpen={Boolean(selectedCertificateMember)}
+          onClose={() => setSelectedCertificateMember(null)}
+          member={selectedCertificateMember}
+          payments={payments}
+          settings={settings}
+          onOpenKtaModal={(mem) => {
+            setSelectedCertificateMember(null);
+            setSelectedKtaMember(mem);
+          }}
         />
       )}
     </div>
