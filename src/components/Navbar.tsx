@@ -104,8 +104,10 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const authority: UserAuthority = activeUser ? activeUser.authority : 'Anggota';
   const isBendaharaOrAdmin = authority === 'Bendahara' || authority === 'Admin';
-  // Hanya Admin, Bendahara, Ketua Paguyuban, dan Ketua DKM yang memiliki akses tombol Ganti Peran dan Laporan di Header
-  const canAccessManagementActions =
+  // Tombol ganti peran hanya untuk Admin
+  const canSwitchRole = authority === 'Admin';
+  // Tombol laporan di header untuk Admin, Bendahara, Ketua Paguyuban, dan Ketua DKM
+  const canAccessReport =
     authority === 'Admin' ||
     authority === 'Bendahara' ||
     authority === 'Ketua Paguyuban' ||
@@ -281,14 +283,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Active User Profile & Role Switcher Popover OR Guest Login */}
           {activeUser ? (
             <div className="flex items-center gap-1.5 sm:gap-2">
-              {canAccessManagementActions ? (
-                /* TOMBOL GANTI PERAN (Hanya untuk Admin, Bendahara, Ketua Paguyuban, Ketua DKM) */
+              {canSwitchRole ? (
+                /* TOMBOL GANTI PERAN (Hanya untuk Admin) */
                 <div className="relative" ref={userDropdownRef}>
                   <button
                     type="button"
                     onClick={() => setShowUserDropdown(!showUserDropdown)}
                     className="flex items-center gap-2 px-2.5 py-1.5 bg-slate-800/80 hover:bg-slate-800 text-white rounded-xl border border-slate-700/80 hover:border-slate-600 transition-all text-xs cursor-pointer"
-                    title="Ganti Peran / Simulasi Otoritas Pengguna"
+                    title="Ganti Peran / Simulasi Otoritas Pengguna (Admin)"
                   >
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-white text-[11px] ${activeUser.avatarColor || 'bg-indigo-600'}`}>
                       {activeUser.name.charAt(0)}
@@ -684,7 +686,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Unduh Laporan CSV Button (Hanya tampil untuk Admin, Bendahara, Ketua Paguyuban, dan Ketua DKM) */}
-          {onOpenExportModal && canAccessManagementActions && (
+          {onOpenExportModal && canAccessReport && (
             <button
               onClick={onOpenExportModal}
               title="Unduh Laporan Keuangan CSV"
