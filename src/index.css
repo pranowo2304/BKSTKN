@@ -31,6 +31,60 @@
   animation-play-state: paused;
 }
 
+@keyframes floatLogo {
+  0%, 100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-6px) scale(1.02);
+  }
+}
+
+.animate-float-logo {
+  animation: floatLogo 3.2s ease-in-out infinite;
+}
+
+@keyframes spinSlow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 14s linear infinite;
+}
+
+@keyframes spinReverseSlow {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+.animate-spin-reverse-slow {
+  animation: spinReverseSlow 18s linear infinite;
+}
+
+@keyframes pulseGlowRing {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.06);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulseGlowRing 2.8s ease-in-out infinite;
+}
+
 @media print {
   /* Hide everything on page by default during print */
   body {

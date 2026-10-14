@@ -84,6 +84,7 @@ import { MemberPortal } from './components/MemberPortal';
 import { KtaAuthenticityVerificationModal } from './components/KtaAuthenticityVerificationModal';
 import { DigitalKtaModal } from './components/DigitalKtaModal';
 import { MembershipCertificateModal } from './components/MembershipCertificateModal';
+import { AppIcon } from './components/AppIcon';
 import { HeartHandshake, Loader2, Cloud, Database } from 'lucide-react';
 import { useRolePermissions, getPermittedTabsForRole } from './lib/permissions';
 import {
@@ -1510,10 +1511,53 @@ export default function App() {
             <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-48 h-48 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute -bottom-24 left-1/2 -translate-x-1/2 w-48 h-48 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
 
-            {/* Logo / Badge */}
-            <div className="relative mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 p-0.5 shadow-xl shadow-emerald-950/60 mb-5 flex items-center justify-center">
-              <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center">
-                <HeartHandshake className="w-10 h-10 text-emerald-400 animate-pulse" />
+            {/* Animated Organization Logo Presentation */}
+            <div className="relative mx-auto w-32 h-32 mb-5 flex items-center justify-center">
+              {/* Outer Pulsing Aura Ring */}
+              <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-emerald-500/30 via-teal-400/25 to-amber-400/20 blur-xl animate-pulse-glow pointer-events-none" />
+
+              {/* Rotating Dashed Orbital Halo (Clockwise) */}
+              <div className="absolute -inset-2 rounded-full border-2 border-dashed border-emerald-400/40 animate-spin-slow pointer-events-none" />
+
+              {/* Counter-rotating Dotted Celestial Ring */}
+              <div className="absolute -inset-4 rounded-full border border-dotted border-teal-400/30 animate-spin-reverse-slow pointer-events-none" />
+
+              {/* Four Cardinal Glow Indicator Dots */}
+              <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] animate-ping" />
+              <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-teal-400 shadow-[0_0_8px_#2dd4bf]" />
+              <div className="absolute -left-2.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-amber-400/80 shadow-[0_0_8px_#fbbf24]" />
+              <div className="absolute -right-2.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-emerald-300 shadow-[0_0_8px_#6ee7b7]" />
+
+              {/* Center Floating Organization Logo Container */}
+              <div className="relative w-24 h-24 rounded-3xl p-[2px] bg-gradient-to-br from-emerald-400 via-teal-500 to-amber-400 shadow-2xl shadow-emerald-950/80 animate-float-logo">
+                <div className="w-full h-full bg-slate-950 rounded-[22px] backdrop-blur-md flex items-center justify-center p-2 overflow-hidden relative group">
+                  {/* Subtle Inner Diagonal Shimmer */}
+                  <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-transparent opacity-60 animate-shimmer pointer-events-none" />
+
+                  {/* Organization Logo (image with fallback to AppIcon) */}
+                  {settings?.logoUrl ? (
+                    <img
+                      src={settings.logoUrl}
+                      alt={settings.communityName || 'Logo Organisasi'}
+                      className="w-full h-full object-contain filter drop-shadow-[0_4px_12px_rgba(16,185,129,0.35)]"
+                      onError={(e) => {
+                        // Fallback smoothly to AppIcon SVG if image fails
+                        (e.target as HTMLImageElement).style.display = 'none';
+                        const fallbackElem = document.getElementById('loading-app-icon-fallback');
+                        if (fallbackElem) fallbackElem.style.display = 'flex';
+                      }}
+                    />
+                  ) : null}
+
+                  {/* SVG Organization Emblem Component (Shown if no logoUrl or on error) */}
+                  <div
+                    id="loading-app-icon-fallback"
+                    className="w-full h-full items-center justify-center"
+                    style={{ display: settings?.logoUrl ? 'none' : 'flex' }}
+                  >
+                    <AppIcon size={74} withBackground={false} className="filter drop-shadow-[0_4px_12px_rgba(16,185,129,0.35)]" />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1533,6 +1577,12 @@ export default function App() {
                   {loadingMessage}
                 </span>
               </div>
+
+              {/* Animated Progress Bar */}
+              <div className="w-full h-1.5 bg-slate-800/90 rounded-full overflow-hidden relative">
+                <div className="absolute inset-y-0 left-0 w-full bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 animate-shimmer" />
+              </div>
+
               <p className="text-[11px] text-slate-500 leading-relaxed max-w-xs">
                 Mengakses data anggota, kas keuangan, dan klaim santunan langsung dari server Cloud Firestore.
               </p>
