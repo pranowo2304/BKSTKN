@@ -18,6 +18,9 @@ import {
   Scan,
   Sparkles,
   Eye,
+  Copy,
+  Landmark,
+  Banknote,
 } from 'lucide-react';
 import { KtaQrScannerModal } from './KtaQrScannerModal';
 
@@ -62,7 +65,98 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
   const [paymentType, setPaymentType] = useState<PaymentType>('Iuran Tahunan');
   const [periodMonth, setPeriodMonth] = useState('Tahun 2026');
   const [amount, setAmount] = useState<number>(settings.annualFeeAmount || 300000);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Transfer BCA');
+
+  // Dynamic payment methods adjusted to registered bank accounts in system settings
+  const paymentMethodOptions = useMemo(() => {
+    const list: {
+      key: string;
+      id: PaymentMethod;
+      label: string;
+      bankName?: string;
+      accountNumber?: string;
+      accountHolder?: string;
+      isBank: boolean;
+      type: 'bank' | 'qris' | 'cash';
+    }[] = [];
+
+    if (settings?.bankAccounts && settings.bankAccounts.length > 0) {
+      settings.bankAccounts.forEach((acc, idx) => {
+        const rawName = acc.bankName?.trim() || '';
+        const cleanName = rawName || `Bank ${idx + 1}`;
+        const methodId = cleanName.toLowerCase().startsWith('transfer')
+          ? cleanName
+          : `Transfer ${cleanName}`;
+        list.push({
+          key: `bank-method-${idx}-${acc.accountNumber || idx}`,
+          id: methodId,
+          label: methodId,
+          bankName: acc.bankName || cleanName,
+          accountNumber: acc.accountNumber,
+          accountHolder: acc.accountHolder,
+          isBank: true,
+          type: 'bank',
+        });
+      });
+    } else {
+      list.push({
+        key: 'default-transfer-bank',
+        id: 'Transfer Bank',
+        label: 'Transfer Bank',
+        isBank: true,
+        type: 'bank',
+      });
+    }
+
+    list.push({
+      key: 'method-qris',
+      id: 'QRIS',
+      label: 'QRIS Paguyuban',
+      isBank: false,
+      type: 'qris',
+    });
+
+    list.push({
+      key: 'method-tunai',
+      id: 'Tunai',
+      label: 'Tunai (Langsung)',
+      isBank: false,
+      type: 'cash',
+    });
+
+    return list;
+  }, [settings?.bankAccounts]);
+
+  const defaultMethod = useMemo(() => {
+    return paymentMethodOptions[0]?.id || 'Transfer Bank';
+  }, [paymentMethodOptions]);
+
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(defaultMethod);
+  const [copiedBankAcc, setCopiedBankAcc] = useState<string | null>(null);
+
+  const handleCopyAccount = (accountNumber: string) => {
+    navigator.clipboard.writeText(accountNumber);
+    setCopiedBankAcc(accountNumber);
+    setTimeout(() => setCopiedBankAcc(null), 2500);
+  };
+
+  // Sync if settings.bankAccounts change
+  useEffect(() => {
+    if (paymentMethodOptions.length > 0) {
+      const exists = paymentMethodOptions.some((opt) => opt.id === paymentMethod);
+      if (!exists) {
+        setPaymentMethod(paymentMethodOptions[0].id);
+      }
+    }
+  }, [paymentMethodOptions, paymentMethod]);
+
+  const selectedBankInfo = useMemo(() => {
+    if (!settings?.bankAccounts) return null;
+    return settings.bankAccounts.find((acc) => {
+      const cleanName = acc.bankName?.trim() || '';
+      const methodId = cleanName.toLowerCase().startsWith('transfer') ? cleanName : `Transfer ${cleanName}`;
+      return methodId === paymentMethod;
+    }) || null;
+  }, [settings?.bankAccounts, paymentMethod]);
   
   // Proof upload state
   const [proofImage, setProofImage] = useState<string | null>(null);
@@ -513,27 +607,104 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                 </div>
               </div>
 
-              {/* Payment Method */}
+              {/* Payment Method - Disesuaikan dengan rekening di pengaturan sistem */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">
-                  Metode Pembayaran
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Metode Pembayaran (Sesuai Rekening Sistem)
+                  </label>
+                  <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    {settings.bankAccounts?.length || 0} Rekening Terdaftar
+                  </span>
+                </div>
+
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {(['Transfer BCA', 'Transfer Mandiri', 'Transfer BRI', 'QRIS', 'Tunai'] as PaymentMethod[]).map((method) => (
+                  {paymentMethodOptions.map((opt, idx) => (
                     <button
-                      key={method}
+                      key={`btn-paymethod-${opt.key || idx}-${opt.id}-${idx}`}
                       type="button"
-                      onClick={() => setPaymentMethod(method)}
-                      className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border text-left ${
-                        paymentMethod === method
-                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                      onClick={() => setPaymentMethod(opt.id)}
+                      className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all border text-left flex flex-col justify-between gap-1 cursor-pointer ${
+                        paymentMethod === opt.id
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-md ring-2 ring-emerald-500/30'
                           : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
-                      {method}
+                      <div className="flex items-center gap-1.5">
+                        {opt.type === 'bank' ? (
+                          <Landmark className={`w-3.5 h-3.5 shrink-0 ${paymentMethod === opt.id ? 'text-emerald-100' : 'text-emerald-600'}`} />
+                        ) : opt.type === 'qris' ? (
+                          <QrCode className={`w-3.5 h-3.5 shrink-0 ${paymentMethod === opt.id ? 'text-emerald-100' : 'text-slate-600'}`} />
+                        ) : (
+                          <Banknote className={`w-3.5 h-3.5 shrink-0 ${paymentMethod === opt.id ? 'text-emerald-100' : 'text-amber-600'}`} />
+                        )}
+                        <span className="truncate">{opt.label}</span>
+                      </div>
+                      {opt.accountNumber && (
+                        <span className={`text-[10px] font-mono truncate ${paymentMethod === opt.id ? 'text-emerald-100' : 'text-slate-400'}`}>
+                          {opt.accountNumber}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
+
+                {/* Feedback info kartu rekening yang sedang dipilih */}
+                {selectedBankInfo && (
+                  <div className="mt-3 p-3.5 bg-emerald-50/90 border border-emerald-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-emerald-950 shadow-2xs animate-in fade-in duration-200">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1.5 text-xs font-black text-emerald-900">
+                        <Landmark className="w-4 h-4 text-emerald-700 shrink-0" />
+                        <span>Tujuan Transfer: {selectedBankInfo.bankName}</span>
+                        <span className="text-[10px] bg-emerald-200/80 text-emerald-900 px-1.5 py-0.2 rounded font-mono font-bold">Resmi</span>
+                      </div>
+                      <p className="text-sm font-black font-mono tracking-wider text-slate-900">
+                        {selectedBankInfo.accountNumber}
+                      </p>
+                      <p className="text-[11px] text-emerald-800">
+                        a.n. <strong className="font-bold">{selectedBankInfo.accountHolder}</strong> • Nominal: <strong className="font-mono text-emerald-900">{formatIDR(amount)}</strong>
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCopyAccount(selectedBankInfo.accountNumber)}
+                      className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-600 active:scale-95 text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 shadow-sm cursor-pointer self-start sm:self-auto shrink-0 transition-all"
+                    >
+                      {copiedBankAcc === selectedBankInfo.accountNumber ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Tersalin!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Salin Rekening</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {paymentMethod === 'QRIS' && (
+                  <div className="mt-3 p-3 bg-slate-50 border border-slate-300 rounded-xl text-slate-700 text-xs flex items-center gap-3">
+                    <QrCode className="w-6 h-6 text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="font-bold text-slate-900">Pembayaran via QRIS Resmi</p>
+                      <p className="text-[11px] text-slate-500">Scan barcode QRIS di balai warga atau gunakan gambar QRIS statis paguyuban lalu upload struk pembayaran.</p>
+                    </div>
+                  </div>
+                )}
+
+                {paymentMethod === 'Tunai' && (
+                  <div className="mt-3 p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-950 text-xs flex items-center gap-3">
+                    <Banknote className="w-6 h-6 text-amber-600 shrink-0" />
+                    <div>
+                      <p className="font-bold text-amber-900">Pembayaran Tunai (Cash Langsung)</p>
+                      <p className="text-[11px] text-amber-800">Serahkan langsung uang tunai kepada Bendahara ({settings.treasurerName || 'Pengurus'}) atau Ketua RT. Upload foto tanda terima / bukti setor.</p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* UPLOAD BUKTI TRANSFER */}
@@ -607,16 +778,65 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
               </p>
 
               <div className="space-y-3">
-                {settings.bankAccounts.map((bank, idx) => (
-                  <div key={idx} className="p-3 bg-slate-800/90 rounded-xl border border-slate-700 space-y-1 font-mono text-xs">
-                    <div className="flex justify-between items-center text-emerald-400 font-bold">
-                      <span>{bank.bankName}</span>
-                      <span className="text-[10px] text-slate-400 uppercase font-sans">Official</span>
+                {settings.bankAccounts.map((bank, idx) => {
+                  const cleanName = bank.bankName?.trim() || '';
+                  const methodId = cleanName.toLowerCase().startsWith('transfer') ? cleanName : `Transfer ${cleanName}`;
+                  const isSelected = paymentMethod === methodId;
+
+                  return (
+                    <div
+                      key={`dest-bank-${idx}-${bank.accountNumber || idx}`}
+                      onClick={() => setPaymentMethod(methodId)}
+                      className={`p-3 rounded-xl border transition-all cursor-pointer font-mono text-xs ${
+                        isSelected
+                          ? 'bg-emerald-950/80 border-emerald-400 ring-2 ring-emerald-500/50'
+                          : 'bg-slate-800/90 border-slate-700 hover:border-slate-500'
+                      }`}
+                      title={`Klik untuk memilih metode ${methodId}`}
+                    >
+                      <div className="flex justify-between items-center text-emerald-400 font-bold mb-1">
+                        <span className="flex items-center gap-1.5 font-sans">
+                          <Landmark className="w-3.5 h-3.5" />
+                          {bank.bankName}
+                        </span>
+                        {isSelected ? (
+                          <span className="text-[10px] bg-emerald-500 text-slate-950 px-2 py-0.5 rounded font-sans font-bold flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Metode Dipilih
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 uppercase font-sans hover:text-emerald-300">
+                            Pilih Rekening
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-base font-black text-white tracking-wider">{bank.accountNumber}</p>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCopyAccount(bank.accountNumber);
+                          }}
+                          className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 active:scale-95 text-slate-200 text-[10px] font-sans font-bold rounded-lg flex items-center gap-1 shrink-0 transition-colors"
+                          title="Salin nomor rekening"
+                        >
+                          {copiedBankAcc === bank.accountNumber ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-400" />
+                              <span className="text-emerald-400">Tersalin</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3" />
+                              <span>Salin</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-sans mt-0.5">a.n. {bank.accountHolder}</p>
                     </div>
-                    <p className="text-base font-black text-white tracking-wider">{bank.accountNumber}</p>
-                    <p className="text-[10px] text-slate-400">a.n. {bank.accountHolder}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="mt-6 pt-4 border-t border-slate-800 flex items-center gap-3">

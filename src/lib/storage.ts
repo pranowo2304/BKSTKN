@@ -36,7 +36,24 @@ export const getStoredBenefits = (): BenefitMaster[] => {
     }
     const parsed = JSON.parse(data);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed;
+      // Pastikan santunan pasangan dan anak yang telah dihapus tidak muncul kembali dari cache lama
+      const cleaned = parsed.filter(
+        (b: BenefitMaster) =>
+          b.id !== 'bnf-2' &&
+          b.id !== 'bnf-3' &&
+          b.code !== 'BNF-PASANGAN' &&
+          b.code !== 'BNF-ANAK' &&
+          b.targetRelationship !== 'Suami/Istri' &&
+          b.targetRelationship !== 'Anak' &&
+          !b.categoryName?.toLowerCase().includes('pasangan') &&
+          !b.categoryName?.toLowerCase().includes('istri') &&
+          !b.categoryName?.toLowerCase().includes('suami') &&
+          !b.categoryName?.toLowerCase().includes('anak')
+      );
+      if (cleaned.length !== parsed.length) {
+        localStorage.setItem(KEYS.BENEFITS, JSON.stringify(cleaned));
+      }
+      return cleaned.length > 0 ? cleaned : DEFAULT_BENEFITS;
     }
     return DEFAULT_BENEFITS;
   } catch (e) {

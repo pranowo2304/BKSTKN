@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Member, Dependent, ClusterType, CLUSTERS, SystemSettings } from '../types';
+import { Member, Dependent, ClusterType, CLUSTERS, SystemSettings, BenefitMaster, DEFAULT_BENEFITS } from '../types';
 import { formatIDR } from '../lib/storage';
 import {
   X,
@@ -31,6 +31,7 @@ interface EditMemberBiodataModalProps {
   member: Member | null;
   members?: Member[];
   settings?: SystemSettings;
+  benefits?: BenefitMaster[];
   onClose: () => void;
   onSave: (updatedMember: Member) => void;
 }
@@ -40,6 +41,7 @@ export const EditMemberBiodataModal: React.FC<EditMemberBiodataModalProps> = ({
   member,
   members = [],
   settings,
+  benefits = DEFAULT_BENEFITS,
   onClose,
   onSave,
 }) => {
@@ -190,8 +192,6 @@ export const EditMemberBiodataModal: React.FC<EditMemberBiodataModalProps> = ({
       onClose();
     }, 900);
   };
-
-  const dependentBenefit = settings?.dependentBenefitAmount || 6000000;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
@@ -414,10 +414,9 @@ export const EditMemberBiodataModal: React.FC<EditMemberBiodataModalProps> = ({
               <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl border border-emerald-200 text-xs text-emerald-950 flex items-start gap-3">
                 <HeartHandshake className="w-5 h-5 text-emerald-700 shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="font-extrabold text-emerald-900">Perlindungan Santunan Seluruh Keluarga</h4>
+                  <h4 className="font-extrabold text-emerald-900">Perlindungan Santunan Sesuai Master Hak & Manfaat</h4>
                   <p className="mt-0.5 leading-relaxed text-emerald-800">
-                    Setiap tanggungan keluarga serumah yang didaftarkan berhak memperoleh santunan duka sebesar{' '}
-                    <strong className="font-mono text-emerald-950">{formatIDR(dependentBenefit)}</strong> serta pendampingan pengurusan fardhu kifayah jenazah.
+                    Keluarga yang tercatat resmi dalam Kartu Keluarga (KK) terlindungi fasilitas pemakaman & santunan duka cita sesuai ketentuan yang terdaftar pada Master Hak & Manfaat Paguyuban.
                   </p>
                 </div>
               </div>

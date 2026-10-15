@@ -27,6 +27,7 @@ import {
   CalendarRange,
   Clock,
   ArrowRight,
+  Plus,
 } from 'lucide-react';
 import { DataManagementModal } from './DataManagementModal';
 import { MasterClusterManager } from './MasterClusterManager';
@@ -190,6 +191,31 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
     const updatedBanks = [...formData.bankAccounts];
     updatedBanks[index] = { ...updatedBanks[index], [field]: value };
     setFormData({ ...formData, bankAccounts: updatedBanks });
+  };
+
+  const handleAddBank = () => {
+    setFormData((prev) => ({
+      ...prev,
+      bankAccounts: [
+        ...prev.bankAccounts,
+        {
+          bankName: '',
+          accountNumber: '',
+          accountHolder: prev.treasurerName || prev.communityName || 'KAS PAGUYUBAN',
+        },
+      ],
+    }));
+  };
+
+  const handleRemoveBank = (index: number) => {
+    if (formData.bankAccounts.length <= 1) {
+      alert('Minimal harus ada 1 rekening bank terdaftar untuk menerima pembayaran iuran warga.');
+      return;
+    }
+    setFormData((prev) => ({
+      ...prev,
+      bankAccounts: prev.bankAccounts.filter((_, i) => i !== index),
+    }));
   };
 
   return (
@@ -719,34 +745,79 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
 
             {/* Bank Accounts */}
             <div className="space-y-4 border-t border-slate-200 pt-6">
-              <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-2">
-                Daftar Rekening Bank Tujuan Transfer
-              </h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                <div>
+                  <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-emerald-600" />
+                    <span>Daftar Rekening Bank & Metode Transfer Resmi</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Rekening yang terdaftar di bawah otomatis menjadi opsi <strong>Metode Pembayaran Transfer</strong> di Form Pembayaran Iuran & Portal Anggota.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleAddBank}
+                  className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl border border-emerald-200 transition-colors inline-flex items-center gap-1.5 cursor-pointer shrink-0 self-start sm:self-auto"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tambah Rekening Bank</span>
+                </button>
+              </div>
 
               <div className="space-y-3">
                 {formData.bankAccounts.map((bank, index) => (
-                  <div key={index} className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                    <input
-                      type="text"
-                      placeholder="Nama Bank"
-                      value={bank.bankName}
-                      onChange={(e) => handleBankChange(index, 'bankName', e.target.value)}
-                      className="px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg outline-none font-bold"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Nomor Rekening"
-                      value={bank.accountNumber}
-                      onChange={(e) => handleBankChange(index, 'accountNumber', e.target.value)}
-                      className="px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg outline-none font-mono"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Atas Nama"
-                      value={bank.accountHolder}
-                      onChange={(e) => handleBankChange(index, 'accountHolder', e.target.value)}
-                      className="px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg outline-none"
-                    />
+                  <div key={`setting-bank-${index}-${bank.accountNumber || index}`} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider bg-slate-200/80 px-2 py-0.5 rounded-md">
+                        {index === 0 ? '★ Rekening Utama (Default)' : `Rekening #${index + 1}`}
+                      </span>
+
+                      {formData.bankAccounts.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveBank(index)}
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title="Hapus rekening ini"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Nama Bank</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Bank BCA / Mandiri / BRI / BSI"
+                          value={bank.bankName}
+                          onChange={(e) => handleBankChange(index, 'bankName', e.target.value)}
+                          className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg outline-none font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Nomor Rekening</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 8830-1928-33"
+                          value={bank.accountNumber}
+                          onChange={(e) => handleBankChange(index, 'accountNumber', e.target.value)}
+                          className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg outline-none font-mono font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Atas Nama Rekening</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. DANA KEMATIAN RUKUN SANTOSA"
+                          value={bank.accountHolder}
+                          onChange={(e) => handleBankChange(index, 'accountHolder', e.target.value)}
+                          className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg outline-none text-slate-800 focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Member, Dependent, Payment, BenefitClaim, SystemSettings, ClusterType, CLUSTERS, AppUser } from '../types';
+import { Member, Dependent, Payment, BenefitClaim, SystemSettings, ClusterType, CLUSTERS, AppUser, BenefitMaster, DEFAULT_BENEFITS } from '../types';
 import { DocumentQualityReport } from '../lib/documentQualityValidator';
 import { MemberDetailModal } from './MemberDetailModal';
 import { DigitalKtaModal } from './DigitalKtaModal';
@@ -72,6 +72,7 @@ interface MemberRegistrationProps {
   payments?: Payment[];
   claims?: BenefitClaim[];
   settings?: SystemSettings;
+  benefits?: BenefitMaster[];
   users?: AppUser[];
   activeUser?: AppUser;
   onAddMember: (newMember: Member) => void;
@@ -100,6 +101,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
     dependentBenefitAmount: 6000000,
     bankAccounts: [],
   },
+  benefits = DEFAULT_BENEFITS,
   users = [],
   activeUser,
   onAddMember,
@@ -948,7 +950,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                 <div>
                   <p className="text-xs font-bold text-slate-700">Belum ada tanggungan keluarga terdaftar</p>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Daftarkan suami, istri, anak, atau orang tua serumah agar terlindungi santunan dana kematian.
+                    Daftarkan anggota keluarga serumah yang tercatat dalam Kartu Keluarga (KK). Hak santunan duka cita diberikan sesuai paket Master Hak & Manfaat.
                   </p>
                 </div>
                 <button
@@ -979,7 +981,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                     
                     <div className="flex items-center gap-2">
                       <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 font-bold text-[10px] rounded-md border border-emerald-200">
-                        Hak Santunan Aktif
+                        Tercatat di KK
                       </span>
                       <button
                         type="button"
@@ -995,14 +997,28 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
               </div>
             )}
 
-            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-2">
               <div className="flex items-center gap-1.5 font-bold text-slate-800">
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span>Hak Manfaat Santunan Terjamin</span>
+                <span>Hak Manfaat Santunan Terdaftar (Sesuai Master Hak & Manfaat)</span>
               </div>
-              <p>
-                Setiap jiwa keluarga di atas (total <strong className="text-slate-900">{myMember.dependentsCount + 1} jiwa</strong> termasuk Kepala Keluarga) berhak atas santunan kematian sebesar <strong className="text-emerald-800 font-mono">{formatIDR(settings.dependentBenefitAmount || 6000000)}</strong> dan bantuan proses fardhu kifayah jenazah.
+              <p className="text-[11px] text-slate-600">
+                Keluarga yang tercatat resmi mendapatkan hak santunan duka cita dan fasilitas pemakaman sesuai paket aktif yang terdaftar pada Master Hak & Manfaat Paguyuban:
               </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                {benefits.filter(b => b.isActive).map(b => (
+                  <div key={b.id} className="p-2.5 bg-white rounded-lg border border-slate-200 shadow-2xs flex justify-between items-center text-xs">
+                    <div>
+                      <span className="font-bold text-slate-800 block">{b.categoryName}</span>
+                      <span className="text-[10px] text-slate-500">Target: {b.targetRelationship}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-mono font-bold text-emerald-700 block">{formatIDR(b.defaultTotalPackage)}</span>
+                      <span className="text-[10px] text-slate-400">Tunai: {formatIDR(b.maxCashAmount)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -1033,6 +1049,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
           member={memberToEdit || myMember}
           members={members}
           settings={settings}
+          benefits={benefits}
           onClose={() => {
             setIsEditBiodataModalOpen(false);
             setMemberToEdit(null);
@@ -2573,6 +2590,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
           member={memberToEdit}
           members={members}
           settings={settings}
+          benefits={benefits}
           onClose={() => {
             setIsEditBiodataModalOpen(false);
             setMemberToEdit(null);

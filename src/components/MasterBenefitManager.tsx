@@ -54,8 +54,6 @@ const QUICK_SERVICE_SUGGESTIONS = [
 
 const TARGET_RELATIONSHIPS = [
   'Anggota Utama',
-  'Suami/Istri',
-  'Anak',
   'Orang Tua',
   'Tanggungan Lain',
 ];
@@ -325,7 +323,7 @@ export const MasterBenefitManager: React.FC<MasterBenefitManagerProps> = ({
             <button
               type="button"
               onClick={() => {
-                if (window.confirm('Kembalikan Master Hak & Manfaat ke standar 5 paket default?')) {
+                if (window.confirm('Kembalikan Master Hak & Manfaat ke konfigurasi standar default?')) {
                   onResetBenefits();
                   showNotification('Master Hak & Manfaat dikembalikan ke konfigurasi default.');
                 }
@@ -352,42 +350,24 @@ export const MasterBenefitManager: React.FC<MasterBenefitManagerProps> = ({
       </div>
 
       {/* Quick Metric Ribbon */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
           <p className="text-[11px] font-bold uppercase text-slate-400">Total Kategori</p>
           <p className="text-xl font-black text-slate-900 mt-1">{benefits.length} Paket</p>
           <p className="text-[10px] text-slate-500 mt-0.5">{activeCount} Aktif digunakan</p>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <p className="text-[11px] font-bold uppercase text-emerald-600">Santunan Anggota KK</p>
-          <p className="text-xl font-black text-emerald-700 mt-1">
-            {formatIDR(
-              benefits.find((b) => b.targetRelationship === 'Anggota Utama')?.defaultTotalPackage || 10000000
-            )}
-          </p>
-          <p className="text-[10px] text-slate-500 mt-0.5">Estimasi paket penuh</p>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <p className="text-[11px] font-bold uppercase text-teal-600">Santunan Pasangan</p>
-          <p className="text-xl font-black text-teal-700 mt-1">
-            {formatIDR(
-              benefits.find((b) => b.targetRelationship === 'Suami/Istri')?.defaultTotalPackage || 6000000
-            )}
-          </p>
-          <p className="text-[10px] text-slate-500 mt-0.5">Suami / Istri sah</p>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <p className="text-[11px] font-bold uppercase text-cyan-600">Santunan Anak</p>
-          <p className="text-xl font-black text-cyan-700 mt-1">
-            {formatIDR(
-              benefits.find((b) => b.targetRelationship === 'Anak')?.defaultTotalPackage || 4500000
-            )}
-          </p>
-          <p className="text-[10px] text-slate-500 mt-0.5">Dalam tanggungan KK</p>
-        </div>
+        {benefits.slice(0, 2).map((b, idx) => (
+          <div key={b.id || idx} className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+            <p className="text-[11px] font-bold uppercase text-emerald-600 truncate">{b.categoryName}</p>
+            <p className="text-xl font-black text-emerald-700 mt-1 font-mono">
+              {formatIDR(b.defaultTotalPackage)}
+            </p>
+            <p className="text-[10px] text-slate-500 mt-0.5">
+              Santunan Tunai: <strong className="font-mono text-slate-700">{formatIDR(b.maxCashAmount)}</strong>
+            </p>
+          </div>
+        ))}
       </div>
 
       {/* FORM: Tambah / Edit Paket Hak & Manfaat */}

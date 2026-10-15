@@ -123,13 +123,6 @@ export const PersistentRoleFloatingDock: React.FC<PersistentRoleFloatingDockProp
         icon: QrCode,
         isActive: currentTab === 'member-portal',
         onClick: () => {
-          if (currentTab === 'public') {
-            const el = document.getElementById('section-cek-status');
-            if (el) {
-              el.scrollIntoView({ behavior: 'smooth' });
-              return;
-            }
-          }
           setCurrentTab('member-portal');
         },
       },
@@ -513,13 +506,6 @@ export const PersistentRoleFloatingDock: React.FC<PersistentRoleFloatingDockProp
         icon: QrCode,
         isActive: currentTab === 'member-portal',
         onClick: () => {
-          if (currentTab === 'public') {
-            const el = document.getElementById('section-cek-status');
-            if (el) {
-              el.scrollIntoView({ behavior: 'smooth' });
-              return;
-            }
-          }
           setCurrentTab('member-portal');
         },
       },

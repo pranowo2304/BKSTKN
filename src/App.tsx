@@ -244,8 +244,51 @@ export default function App() {
           },
           onBenefitsChange: (cloudBenefits) => {
             if (cloudBenefits && cloudBenefits.length > 0) {
-              setBenefits(cloudBenefits);
-              saveStoredBenefits(cloudBenefits);
+              const hasOld = cloudBenefits.some(
+                (b) =>
+                  b.id === 'bnf-2' ||
+                  b.id === 'bnf-3' ||
+                  b.code === 'BNF-PASANGAN' ||
+                  b.code === 'BNF-ANAK' ||
+                  b.targetRelationship === 'Suami/Istri' ||
+                  b.targetRelationship === 'Anak' ||
+                  b.categoryName?.toLowerCase().includes('pasangan') ||
+                  b.categoryName?.toLowerCase().includes('istri') ||
+                  b.categoryName?.toLowerCase().includes('suami') ||
+                  b.categoryName?.toLowerCase().includes('anak')
+              );
+              if (hasOld) {
+                deleteBenefitFromCloud('bnf-2').catch(() => {});
+                deleteBenefitFromCloud('bnf-3').catch(() => {});
+                cloudBenefits
+                  .filter(
+                    (b) =>
+                      b.code === 'BNF-PASANGAN' ||
+                      b.code === 'BNF-ANAK' ||
+                      b.targetRelationship === 'Suami/Istri' ||
+                      b.targetRelationship === 'Anak' ||
+                      b.categoryName?.toLowerCase().includes('pasangan') ||
+                      b.categoryName?.toLowerCase().includes('istri') ||
+                      b.categoryName?.toLowerCase().includes('suami') ||
+                      b.categoryName?.toLowerCase().includes('anak')
+                  )
+                  .forEach((b) => deleteBenefitFromCloud(b.id).catch(() => {}));
+              }
+              const cleaned = cloudBenefits.filter(
+                (b) =>
+                  b.id !== 'bnf-2' &&
+                  b.id !== 'bnf-3' &&
+                  b.code !== 'BNF-PASANGAN' &&
+                  b.code !== 'BNF-ANAK' &&
+                  b.targetRelationship !== 'Suami/Istri' &&
+                  b.targetRelationship !== 'Anak' &&
+                  !b.categoryName?.toLowerCase().includes('pasangan') &&
+                  !b.categoryName?.toLowerCase().includes('istri') &&
+                  !b.categoryName?.toLowerCase().includes('suami') &&
+                  !b.categoryName?.toLowerCase().includes('anak')
+              );
+              setBenefits(cleaned.length > 0 ? cleaned : DEFAULT_BENEFITS);
+              saveStoredBenefits(cleaned.length > 0 ? cleaned : DEFAULT_BENEFITS);
             }
             setIsInitialLoading(false);
           },
@@ -1751,6 +1794,7 @@ export default function App() {
             payments={payments}
             claims={claims}
             settings={settings}
+            benefits={benefits}
             users={users}
             activeUser={activeUser}
             onAddMember={handleAddMember}

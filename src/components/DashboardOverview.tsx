@@ -903,11 +903,11 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <div className="space-y-2.5 text-xs">
                 {settings.bankAccounts && settings.bankAccounts.length > 0 ? (
                   settings.bankAccounts.map((acc, idx) => (
-                    <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200/70 flex items-center justify-between">
+                    <div key={`dash-bank-${idx}-${acc.accountNumber || idx}`} className="p-3 bg-slate-50 rounded-xl border border-slate-200/70 flex items-center justify-between">
                       <div>
                         <span className="font-bold text-slate-900">{acc.bankName}</span>
                         <p className="font-mono text-xs text-slate-600 mt-0.5">{acc.accountNumber}</p>
-                        <p className="text-[10px] text-slate-500">a.n. {acc.holderName}</p>
+                        <p className="text-[10px] text-slate-500">a.n. {acc.accountHolder || (acc as any).holderName}</p>
                       </div>
                       <span className="px-2 py-0.5 bg-white text-slate-700 font-mono text-[10px] rounded border border-slate-200">
                         Transfer

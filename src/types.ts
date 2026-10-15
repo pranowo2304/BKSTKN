@@ -109,8 +109,8 @@ export const DEFAULT_CLUSTERS: ClusterMaster[] = [
 
 export interface BenefitMaster {
   id: string;
-  categoryName: string; // e.g. "Kepala Keluarga (Anggota Utama)", "Suami / Istri (Pasangan)"
-  code?: string; // e.g. "BNF-KK", "BNF-PASANGAN"
+  categoryName: string; // e.g. "Kepala Keluarga (Anggota Utama)", "Orang Tua / Mertua"
+  code?: string; // e.g. "BNF-KK", "BNF-ORTU"
   targetRelationship: 'Anggota Utama' | 'Suami/Istri' | 'Anak' | 'Orang Tua' | 'Tanggungan Lain' | string;
   maxCashAmount: number; // Santunan Tunai Cepat (Rp)
   defaultTotalPackage: number; // Estimasi Total Paket Manfaat & Layanan (Rp)
@@ -147,48 +147,6 @@ export const DEFAULT_BENEFITS: BenefitMaster[] = [
     termsAndConditions: 'Telah terdaftar aktif dan menyelesaikan iuran kas tahunan.'
   },
   {
-    id: 'bnf-2',
-    categoryName: 'Suami / Istri (Pasangan Sah)',
-    code: 'BNF-PASANGAN',
-    targetRelationship: 'Suami/Istri',
-    maxCashAmount: 3000000,
-    defaultTotalPackage: 6000000,
-    servicesIncluded: [
-      'Santunan Duka Tunai Cepat untuk Keluarga',
-      'Kain Kafan & Perlengkapan Pemulasaraan Jenazah',
-      'Mobil Jenazah / Ambulans ke TPU',
-      'Fasilitas Sewa Tenda Duka & Kursi (2 Hari)',
-      'Pendampingan Pemulasaraan dari DKM'
-    ],
-    waitingPeriodDays: 0,
-    badgeColor: 'teal',
-    isActive: true,
-    orderIndex: 2,
-    description: 'Hak santunan bagi pasangan sah (suami/istri) anggota yang tercatat dalam tanggungan.',
-    termsAndConditions: 'Tercatat resmi dalam daftar tanggungan kartu keluarga anggota.'
-  },
-  {
-    id: 'bnf-3',
-    categoryName: 'Anak Kandung (Dalam Tanggungan)',
-    code: 'BNF-ANAK',
-    targetRelationship: 'Anak',
-    maxCashAmount: 2000000,
-    defaultTotalPackage: 4500000,
-    servicesIncluded: [
-      'Santunan Duka Tunai untuk Orang Tua',
-      'Kain Kafan & Perlengkapan Jenazah',
-      'Mobil Jenazah / Ambulans ke TPU',
-      'Fasilitas Tenda Duka & Kursi',
-      'Bantuan Pengurusan Pemakaman'
-    ],
-    waitingPeriodDays: 0,
-    badgeColor: 'cyan',
-    isActive: true,
-    orderIndex: 3,
-    description: 'Hak santunan bagi anak kandung anggota yang belum menikah dan dalam tanggungan.',
-    termsAndConditions: 'Anak kandung yang terdaftar dalam data tanggungan anggota.'
-  },
-  {
     id: 'bnf-4',
     categoryName: 'Orang Tua / Mertua (Serumah)',
     code: 'BNF-ORTU',
@@ -204,7 +162,7 @@ export const DEFAULT_BENEFITS: BenefitMaster[] = [
     waitingPeriodDays: 30,
     badgeColor: 'amber',
     isActive: true,
-    orderIndex: 4,
+    orderIndex: 2,
     description: 'Hak santunan duka cita bagi Orang Tua atau Mertua yang tinggal satu rumah dengan anggota.',
     termsAndConditions: 'Tinggal satu rumah dan telah terdaftar minimal 30 hari masa keanggotaan.'
   },
@@ -222,7 +180,7 @@ export const DEFAULT_BENEFITS: BenefitMaster[] = [
     waitingPeriodDays: 30,
     badgeColor: 'purple',
     isActive: true,
-    orderIndex: 5,
+    orderIndex: 3,
     description: 'Santunan duka gotong royong sosial untuk tanggungan resmi lainnya yang serumah.',
     termsAndConditions: 'Disetujui oleh pengurus RT dan Paguyuban.'
   }
@@ -339,7 +297,16 @@ export interface AppUser {
 
 export type PaymentType = 'Iuran Tahunan' | 'Iuran Bulanan' | 'Iuran Pendaftaran' | 'Iuran Sukarela' | 'Iuran Duka Khusus' | 'Iuran Tahunan & Pendaftaran';
 export type PaymentStatus = 'Pending' | 'Verified' | 'Rejected';
-export type PaymentMethod = 'Transfer BCA' | 'Transfer Mandiri' | 'Transfer BRI' | 'QRIS' | 'Tunai';
+export type PaymentMethod =
+  | 'Transfer BCA'
+  | 'Transfer Mandiri'
+  | 'Transfer BRI'
+  | 'Transfer BSI'
+  | 'QRIS'
+  | 'QRIS Paguyuban'
+  | 'Tunai'
+  | 'Tunai ke Pengurus'
+  | (string & {});
 
 export interface Payment {
   id: string;

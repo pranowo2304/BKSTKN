@@ -120,7 +120,7 @@ export const BenefitRealization: React.FC<BenefitRealizationProps> = ({
 
   const [rtMemberId, setRtMemberId] = useState(displayMembers[0]?.id || members[0]?.id || '');
   const [rtDeceasedName, setRtDeceasedName] = useState('');
-  const [rtRelationship, setRtRelationship] = useState<'Anggota Utama' | 'Suami/Istri' | 'Anak' | 'Orang Tua' | 'Tanggungan Lain'>('Anggota Utama');
+  const [rtRelationship, setRtRelationship] = useState<string>('Anggota Utama');
   const [rtDateOfDeath, setRtDateOfDeath] = useState(new Date().toISOString().split('T')[0]);
   const [rtCauseOfDeath, setRtCauseOfDeath] = useState('');
   const [rtNotes, setRtNotes] = useState('Laporan warga berduka. Berkas surat kematian RT/RS telah diverifikasi.');
@@ -786,18 +786,18 @@ export const BenefitRealization: React.FC<BenefitRealizationProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Hubungan Dengan Anggota <span className="text-rose-500">*</span>
+                  Kategori Manfaat Santunan (Sesuai Master) <span className="text-rose-500">*</span>
                 </label>
                 <select
                   value={rtRelationship}
-                  onChange={(e) => setRtRelationship(e.target.value as any)}
+                  onChange={(e) => setRtRelationship(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
                 >
-                  <option value="Anggota Utama">Anggota Utama</option>
-                  <option value="Suami/Istri">Suami/Istri</option>
-                  <option value="Anak">Anak Tanggungan</option>
-                  <option value="Orang Tua">Orang Tua (Serumah)</option>
-                  <option value="Tanggungan Lain">Tanggungan Lain</option>
+                  {benefits.filter((b) => b.isActive).map((b) => (
+                    <option key={b.id} value={b.targetRelationship || b.categoryName}>
+                      {b.categoryName} — Paket: {formatIDR(b.defaultTotalPackage)} (Tunai: {formatIDR(b.maxCashAmount)})
+                    </option>
+                  ))}
                 </select>
               </div>
 

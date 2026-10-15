@@ -9,7 +9,6 @@ import { PrintMemberCardModal } from './PrintMemberCardModal';
 import { FamilyCardModal } from './FamilyCardModal';
 import { ReceiptModal } from './ReceiptModal';
 import { ContactAdminModal } from './ContactAdminModal';
-import { MemberKtaGallery } from './MemberKtaGallery';
 import { MemberKtaQrGeneratorModal } from './MemberKtaQrGeneratorModal';
 import { MembershipCertificateModal } from './MembershipCertificateModal';
 import { RoleMobileAppMenu } from './RoleMobileAppMenu';
@@ -74,7 +73,7 @@ interface MemberPortalProps {
   setCurrentTab?: (tab: string) => void;
 }
 
-type MemberPortalSection = 'semua' | 'kartu-anggota' | 'galeri-kta' | 'bayar-iuran' | 'nilai-manfaat' | 'riwayat-pembayaran' | 'riwayat-pendaftaran';
+type MemberPortalSection = 'semua' | 'kartu-anggota' | 'bayar-iuran' | 'nilai-manfaat' | 'riwayat-pembayaran' | 'riwayat-pendaftaran';
 
 export const MemberPortal: React.FC<MemberPortalProps> = ({
   activeUser,
@@ -138,10 +137,20 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
     return getMemberKtaIssuanceInfo(member, payments);
   }, [member, payments]);
 
-  // Benefit packages configured by admin / settings
+  // Benefit packages configured by admin / settings (hanya yang terdaftar di Master Hak & Manfaat)
   const effectiveBenefits = useMemo(() => {
     const list = benefits && benefits.length > 0 ? benefits : DEFAULT_BENEFITS;
-    const activeList = list.filter((b) => b.isActive !== false);
+    const activeList = list.filter((b) =>
+      b.isActive !== false &&
+      b.code !== 'BNF-PASANGAN' &&
+      b.code !== 'BNF-ANAK' &&
+      b.targetRelationship !== 'Suami/Istri' &&
+      b.targetRelationship !== 'Anak' &&
+      !b.categoryName?.toLowerCase().includes('pasangan') &&
+      !b.categoryName?.toLowerCase().includes('istri') &&
+      !b.categoryName?.toLowerCase().includes('suami') &&
+      !b.categoryName?.toLowerCase().includes('anak')
+    );
     return activeList.length > 0 ? activeList : DEFAULT_BENEFITS;
   }, [benefits]);
 
@@ -179,10 +188,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
     }, 600);
   };
 
-  // Active status of logged-in member for KTA gallery
-  const isMyKtaActive = useMemo(() => {
-    return Boolean(member && (member.status === 'Aktif' || member.isKtaIssued));
-  }, [member]);
+
 
   // QR Code Payload
   const qrPayload = useMemo(() => {
@@ -999,28 +1005,6 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
 
         <button
           type="button"
-          onClick={() => handleSectionChange('galeri-kta')}
-          className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
-            activeSection === 'galeri-kta'
-              ? 'bg-emerald-700 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-          }`}
-        >
-          <Sparkles className="w-4 h-4 text-emerald-300" />
-          <span>2. Galeri KTA Saya</span>
-          {isMyKtaActive ? (
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-mono font-bold">
-              Aktif
-            </span>
-          ) : (
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-mono">
-              Pending
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
           onClick={() => handleSectionChange('bayar-iuran')}
           className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
             activeSection === 'bayar-iuran'
@@ -1029,7 +1013,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
           }`}
         >
           <CreditCard className="w-4 h-4" />
-          <span>3. Bayar Iuran ({formatIDR(settings.annualFeeAmount || 300000)})</span>
+          <span>2. Bayar Iuran ({formatIDR(settings.annualFeeAmount || 300000)})</span>
         </button>
 
         <button
@@ -1042,7 +1026,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
           }`}
         >
           <HeartHandshake className="w-4 h-4 text-amber-300" />
-          <span>4. Nilai Manfaat Anggota</span>
+          <span>3. Nilai Manfaat Anggota</span>
           <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-mono font-bold">
             s/d {formatIDR(maxBenefitAmount)}
           </span>
@@ -1058,7 +1042,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
           }`}
         >
           <Receipt className="w-4 h-4" />
-          <span>5. Riwayat Pembayaran</span>
+          <span>4. Riwayat Pembayaran</span>
           <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-mono">
             {memberPayments.length}
           </span>
@@ -1074,7 +1058,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
           }`}
         >
           <FileText className="w-4 h-4" />
-          <span>6. Berkas & Tanggungan</span>
+          <span>5. Berkas & Tanggungan</span>
           <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-mono">
             {member.statusHistory?.length || 1}
           </span>
@@ -1109,20 +1093,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
         </div>
       )}
 
-      {/* ================= GALERI KTA DIGITAL ANGGOTA (KHUSUS KTA PRIBADI) ================= */}
-      {(activeSection === 'semua' || activeSection === 'galeri-kta') && (
-        <div id="galeri-kta-section" className="space-y-4">
-          <MemberKtaGallery
-            members={member ? [member] : []}
-            payments={payments}
-            settings={settings}
-            activeUser={activeUser}
-            currentMember={member}
-            onNavigateToPayment={onNavigateToPayment}
-            onOpenPrintModal={() => setIsPrintKtaModalOpen(true)}
-          />
-        </div>
-      )}
+
 
       {/* ================= 2. TOMBOL & STATUS BAYAR IURAN (TEPAT DI BAWAH KARTU ANGGOTA) ================= */}
       {(activeSection === 'semua' || activeSection === 'bayar-iuran') && (

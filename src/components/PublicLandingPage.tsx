@@ -37,6 +37,7 @@ import {
   Sparkles,
   FileCheck,
   UserPlus,
+  UserCheck,
   Send,
   Upload,
   Check,
@@ -124,7 +125,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
   onRegisterStateChange,
 }) => {
   // Navigation within landing page
-  const [activeSection, setActiveSection] = useState<'beranda' | 'cek-status' | 'daftar' | 'manfaat' | 'login' | 'kontak'>('beranda');
+  const [activeSection, setActiveSection] = useState<'beranda' | 'daftar' | 'manfaat' | 'login' | 'kontak'>('beranda');
 
   // Mobile App specific UI state
   const [showBalance, setShowBalance] = useState(true);
@@ -169,10 +170,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
     }, 60);
   };
 
-  // Search & Status Check State
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResult, setSearchResult] = useState<Member | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
+  // Member Modals State
   const [selectedKtaMember, setSelectedKtaMember] = useState<Member | null>(null);
   const [selectedQrGeneratorMember, setSelectedQrGeneratorMember] = useState<Member | null>(null);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -403,7 +401,16 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
   const [payingMember, setPayingMember] = useState<Member | null>(null);
   const [payType, setPayType] = useState<PaymentType>('Iuran Tahunan');
   const [payAmount, setPayAmount] = useState<number>(settings.annualFeeAmount || 300000);
-  const [payMethod, setPayMethod] = useState<PaymentMethod>('Transfer BCA');
+
+  const defaultPublicPayMethod = useMemo(() => {
+    if (settings.bankAccounts && settings.bankAccounts.length > 0) {
+      const cleanName = settings.bankAccounts[0].bankName?.trim() || 'Bank';
+      return cleanName.toLowerCase().startsWith('transfer') ? cleanName : `Transfer ${cleanName}`;
+    }
+    return 'Transfer Bank';
+  }, [settings.bankAccounts]);
+
+  const [payMethod, setPayMethod] = useState<PaymentMethod>(defaultPublicPayMethod);
   const [payProofImage, setPayProofImage] = useState<string | null>(null);
   const [payProofFileName, setPayProofFileName] = useState('');
   const [paySuccessMsg, setPaySuccessMsg] = useState(false);
@@ -417,29 +424,34 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
     return clusters.filter((c) => c.isActive);
   }, [clusters]);
 
+  // Benefits filtered according to Master Hak dan Manfaat (no pasangan or anak)
+  const effectiveLandingBenefits = useMemo(() => {
+    const list = benefits && benefits.length > 0 ? benefits : DEFAULT_BENEFITS;
+    const active = list.filter(
+      (b) =>
+        b.isActive !== false &&
+        b.code !== 'BNF-PASANGAN' &&
+        b.code !== 'BNF-ANAK' &&
+        b.targetRelationship !== 'Suami/Istri' &&
+        b.targetRelationship !== 'Anak' &&
+        !b.categoryName?.toLowerCase().includes('pasangan') &&
+        !b.categoryName?.toLowerCase().includes('istri') &&
+        !b.categoryName?.toLowerCase().includes('suami') &&
+        !b.categoryName?.toLowerCase().includes('anak')
+    );
+    return active.length > 0 ? active : DEFAULT_BENEFITS;
+  }, [benefits]);
+
+  const maxLandingBenefit = useMemo(() => {
+    return Math.max(...effectiveLandingBenefits.map((b) => b.maxCashAmount || 0), 5000000);
+  }, [effectiveLandingBenefits]);
+
   // Statistics calculation
   const totalVerifiedMembers = members.filter(
     (m) => m.status === 'Aktif' || m.verificationStatus === 'Verified'
   ).length;
   const totalClaimsPaid = claims.reduce((acc, c) => acc + (c.amount || 0), 0);
 
-  // Handle Search Member
-  const handleSearch = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return;
-
-    setHasSearched(true);
-    const found = members.find((m) => {
-      const matchNik = m.nik && m.nik.toLowerCase() === query;
-      const matchPhone = m.phone && m.phone.replace(/[^0-9]/g, '') === query.replace(/[^0-9]/g, '');
-      const matchName = m.name && m.name.toLowerCase().includes(query);
-      const matchNo = m.memberNumber && m.memberNumber.toLowerCase() === query;
-      return matchNik || matchPhone || matchName || matchNo;
-    });
-
-    setSearchResult(found || null);
-  };
 
   // Handle Add Dependent
   const handleAddTempDependent = () => {
@@ -490,11 +502,8 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
     if (dupCheck.isDuplicate) {
       if (dupCheck.duplicateField === 'nik') {
         alert(
-          `PENDAFTARAN DITOLAK (DATA DOUBLE NIK TERDETEKSI):\n\nNIK "${regForm.nik}" sudah terdaftar dalam sistem atas nama warga "${dupCheck.duplicateMember?.name}" (${dupCheck.duplicateMember?.cluster || 'Cluster'}).\n\nSilakan gunakan menu "Cek Status Keanggotaan" untuk mengecek status kepesertaan Anda.`
+          `PENDAFTARAN DITOLAK (DATA DOUBLE NIK TERDETEKSI):\n\nNIK "${regForm.nik}" sudah terdaftar dalam sistem atas nama warga "${dupCheck.duplicateMember?.name}" (${dupCheck.duplicateMember?.cluster || 'Cluster'}).\n\nSilakan gunakan menu Portal Warga untuk masuk ke akun Anda.`
         );
-        setSearchQuery(dupCheck.duplicateMember?.nik || regForm.nik);
-        handleSearch();
-        setActiveSection('cek-status');
       } else {
         alert(
           `PENDAFTARAN DITOLAK (DATA DOUBLE NOMOR KK TERDETEKSI):\n\nNomor Kartu Keluarga "${regForm.familyCardNumber}" sudah terdaftar dalam sistem atas nama Kepala Keluarga "${dupCheck.duplicateMember?.name}" (${dupCheck.duplicateMember?.cluster || 'Cluster'}).\n\nSatu Kartu Keluarga (KK) hanya boleh didaftarkan untuk satu kepala keluarga/rumah tangga.`
@@ -582,7 +591,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
     setPayingMember(member);
     setPayType('Iuran Tahunan');
     setPayAmount(settings.annualFeeAmount || 300000);
-    setPayMethod('Transfer BCA');
+    setPayMethod(defaultPublicPayMethod);
     setPayProofImage(null);
     setPayProofFileName('');
     setPaySuccessMsg(false);
@@ -665,7 +674,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                 <div className="flex items-center gap-1.5 text-xs text-white pt-0.5">
                   <ShieldCheck className="w-4 h-4 text-amber-300 shrink-0" />
                   <p className="line-clamp-2 sm:line-clamp-1 font-medium text-white">
-                    Seluruh Menu Layanan Terpadu & Akses Mandiri Warga
+                    Seluruh Menu Layanan Terpadu Paguyuban Rukun Santosa
                   </p>
                 </div>
               </div>
@@ -703,25 +712,29 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
             </span>
           </button>
 
-          {/* Menu 2: Cek KTA & Status */}
+          {/* Menu 2: Portal Warga / Login */}
           <button
             type="button"
-            onClick={() => navigateToSection('section-cek-status', { mobileNav: 'status' })}
+            onClick={() => {
+              if (onOpenLoginModal) {
+                onOpenLoginModal();
+              }
+            }}
             className="group flex flex-col items-center text-center p-2 rounded-2xl hover:bg-teal-50/70 transition-all cursor-pointer active:scale-95"
           >
             <div className="relative">
               <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center text-white shadow-md shadow-teal-600/20 group-hover:scale-105 group-hover:shadow-teal-600/30 transition-all">
-                <QrCode className="w-6 h-6 sm:w-7 sm:h-7" />
+                <UserCheck className="w-6 h-6 sm:w-7 sm:h-7" />
               </div>
               <span className="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 bg-teal-700 text-white font-black text-[9px] rounded-full uppercase tracking-wider shadow-xs">
-                Kartu
+                Akun
               </span>
             </div>
             <span className="mt-2 text-xs font-bold text-slate-800 group-hover:text-teal-700 transition-colors whitespace-nowrap">
-              KTA Digital
+              Portal Warga
             </span>
             <span className="text-[10px] text-slate-400 mt-0.5 leading-tight hidden sm:block whitespace-nowrap">
-              Cek Keaktifan
+              Masuk Akun
             </span>
           </button>
 
@@ -976,7 +989,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
         <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory">
           {/* Banner Awal: Besaran Iuran Kas Paguyuban Sesuai Pengaturan Sistem */}
           <div
-            onClick={() => navigateToSection('section-cek-status', { mobileNav: 'status' })}
+            onClick={() => navigateToSection('section-transparansi')}
             className="snap-start shrink-0 w-[88%] sm:w-[380px] bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 text-white rounded-2xl p-4 sm:p-5 border-2 border-emerald-500/40 shadow-lg cursor-pointer hover:border-emerald-400 hover:shadow-xl transition-all relative overflow-hidden group"
           >
             {/* Subtle glow effect */}
@@ -1009,7 +1022,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
 
             <div className="relative z-10 mt-3.5 flex items-center justify-between text-xs font-bold text-amber-300 pt-2 border-t border-slate-800">
               <span className="flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                <span>Cek Status & Pembayaran</span>
+                <span>Rekening & Laporan Kas</span>
                 <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
               </span>
               <span className="text-[10px] text-emerald-300 font-mono bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/20">
@@ -1032,10 +1045,10 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
               <HeartHandshake className="w-5 h-5 text-emerald-300 shrink-0" />
             </div>
             <h4 className="text-sm font-black mt-2 leading-snug">
-              Santunan Duka Hingga Rp 5.000.000,-
+              Santunan Duka Hingga {formatIDR(maxLandingBenefit)}
             </h4>
             <p className="text-xs text-emerald-100/80 mt-1 line-clamp-2">
-              Layanan fardhu kifayah jenazah dan santunan tunai cepat untuk anggota dan keluarga inti terdaftar.
+              Layanan fardhu kifayah jenazah dan santunan duka cita resmi sesuai ketentuan Master Hak & Manfaat.
             </p>
             <div className="mt-3 flex items-center gap-1 text-xs font-bold text-emerald-300">
               <span>Lihat Rincian Manfaat</span>
@@ -1045,7 +1058,11 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
 
           {/* Banner 2: KTA QR Code */}
           <div
-            onClick={() => navigateToSection('section-cek-status', { mobileNav: 'status' })}
+            onClick={() => {
+              if (onOpenLoginModal) {
+                onOpenLoginModal();
+              }
+            }}
             className="snap-start shrink-0 w-[85%] sm:w-[360px] bg-gradient-to-r from-teal-800 via-teal-900 to-slate-900 text-white rounded-2xl p-4 border border-teal-700/50 shadow-md cursor-pointer hover:shadow-lg transition-all"
           >
             <div className="flex items-start justify-between gap-2">
@@ -1058,10 +1075,10 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
               KTA Digital dengan QR Code Resmi
             </h4>
             <p className="text-xs text-teal-100/80 mt-1 line-clamp-2">
-              Verifikasi keabsahan anggota dapat dipindai secara instan oleh Ketua RT, DKM, dan Bendahara.
+              Login ke Portal Warga untuk mengakses kartu anggota digital serta riwayat iuran Anda.
             </p>
             <div className="mt-3 flex items-center gap-1 text-xs font-bold text-teal-300">
-              <span>Cek Kartu Anggota Saya</span>
+              <span>Buka Portal Warga</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </div>
           </div>
@@ -1111,13 +1128,6 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
         </button>
         <button
           type="button"
-          onClick={() => navigateToSection('section-cek-status', { mobileNav: 'status' })}
-          className="px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap bg-white text-slate-700 border border-slate-300 hover:bg-slate-50"
-        >
-          Cek KTA & Status
-        </button>
-        <button
-          type="button"
           onClick={() => navigateToSection('manfaat-section', { mobileNav: 'manfaat' })}
           className="px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap bg-white text-slate-700 border border-slate-300 hover:bg-slate-50"
         >
@@ -1145,426 +1155,6 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
           Bantuan (FAQ)
         </button>
       </div>
-
-      {/* 2. FITUR UTAMA: CEK STATUS KEANGGOTAAN CEPAT (NIK / NO HP / NAMA) */}
-      <section id="section-cek-status" className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
-        <div className="max-w-3xl mx-auto text-center space-y-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-bold border border-emerald-200">
-            <Search className="w-3.5 h-3.5" />
-            <span>Pengecekan Mandiri Warga</span>
-          </div>
-          <h2 className="text-2xl font-black text-slate-900">
-            Cek Status Pendaftaran & KTA Digital Anda
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-600">
-            Masukkan Nomor KTP (NIK), Nomor WhatsApp yang terdaftar, atau Nama Kepala Keluarga untuk melihat status verifikasi dan kartu anggota.
-          </p>
-
-          <form onSubmit={handleSearch} className="pt-3 max-w-xl mx-auto">
-            <div className="flex flex-col sm:flex-row items-stretch gap-2">
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                <input
-                  type="text"
-                  required
-                  placeholder="Ketik NIK 16-digit, No. WA, atau Nama..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-2xl text-xs sm:text-sm font-medium text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none shadow-inner"
-                />
-              </div>
-              <button
-                type="submit"
-                className="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm rounded-2xl shadow-md transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer"
-              >
-                <span>Cari Data</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsScannerOpen(true)}
-                className="px-4 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm rounded-2xl shadow-md transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer border border-slate-700"
-                title="Pindai QR Code KTA Digital"
-              >
-                <QrCode className="w-4 h-4 text-emerald-400" />
-                <span>Pindai QR KTA</span>
-              </button>
-            </div>
-          </form>
-        </div>
-
-        {/* Search Results Display */}
-        {hasSearched && (
-          <div className="max-w-3xl mx-auto animate-in fade-in zoom-in-95 pt-2">
-            {searchResult ? (
-              <div className="bg-gradient-to-br from-slate-50 to-emerald-50/30 rounded-2xl border-2 border-emerald-300 p-5 sm:p-6 shadow-md space-y-4">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-emerald-200/80 pb-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-lg font-black text-slate-900">{searchResult.name}</h3>
-                      <span className="text-xs font-mono font-bold bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-700">
-                        {searchResult.memberNumber}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-600 mt-0.5 flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>{searchResult.cluster} • {searchResult.address}</span>
-                    </p>
-                  </div>
-
-                  {/* Status Badge */}
-                  <div>
-                    {searchResult.status === 'Aktif' || (searchResult.verificationStatus === 'Verified' && searchResult.status !== 'Menunggu Pembayaran' && searchResult.status !== 'Menunggu Validasi Bendahara') ? (
-                      <span className="px-3.5 py-1.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1.5 shadow-xs">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        <span>Anggota Aktif & Terlindungi</span>
-                      </span>
-                    ) : searchResult.status === 'Menunggu Verifikasi RT' || searchResult.verificationStatus === 'Pending' ? (
-                      <span className="px-3.5 py-1.5 rounded-full text-xs font-black bg-amber-100 text-amber-900 border border-amber-300 inline-flex items-center gap-1.5 animate-pulse">
-                        <Clock className="w-4 h-4 text-amber-600" />
-                        <span>Tahap 1: Menunggu Verifikasi RT</span>
-                      </span>
-                    ) : searchResult.status === 'Menunggu Pembayaran' ? (
-                      <span className="px-3.5 py-1.5 rounded-full text-xs font-black bg-sky-100 text-sky-900 border border-sky-300 inline-flex items-center gap-1.5 animate-pulse">
-                        <CreditCard className="w-4 h-4 text-sky-600" />
-                        <span>Tahap 2: Disetujui RT • Siap Bayar & Upload Bukti</span>
-                      </span>
-                    ) : searchResult.status === 'Menunggu Validasi Bendahara' ? (
-                      <span className="px-3.5 py-1.5 rounded-full text-xs font-black bg-indigo-100 text-indigo-900 border border-indigo-300 inline-flex items-center gap-1.5 animate-pulse">
-                        <Clock className="w-4 h-4 text-indigo-600" />
-                        <span>Tahap 3: Menunggu Validasi Kas Bendahara</span>
-                      </span>
-                    ) : searchResult.status === 'Ditolak' || searchResult.verificationStatus === 'Rejected' ? (
-                      <span className="px-3.5 py-1.5 rounded-full text-xs font-black bg-rose-100 text-rose-800 border border-rose-300 inline-flex items-center gap-1.5">
-                        <AlertCircle className="w-4 h-4 text-rose-600" />
-                        <span>Verifikasi Ditolak</span>
-                      </span>
-                    ) : (
-                      <span className="px-3.5 py-1.5 rounded-full text-xs font-black bg-slate-200 text-slate-700">
-                        {searchResult.status}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Progress Step Timeline - 5 Stages based on the 7-Step Workflow */}
-                <div className="bg-white p-4 rounded-xl border border-emerald-200/60 shadow-inner">
-                  <p className="text-xs font-bold text-slate-700 mb-3">Status Alur Keanggotaan & Pembayaran Iuran:</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 text-xs">
-                    {/* Step 1: Registrasi Warga */}
-                    <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <div>
-                        <p className="font-bold text-[11px]">1. Pendaftaran</p>
-                        <p className="text-[10px] text-emerald-700">Terdaftar di Sistem</p>
-                      </div>
-                    </div>
-
-                    {/* Step 2: Persetujuan Ketua RT */}
-                    {(() => {
-                      const isRtApproved = searchResult.verificationStatus === 'Verified' || searchResult.status === 'Menunggu Pembayaran' || searchResult.status === 'Menunggu Validasi Bendahara' || searchResult.status === 'Aktif';
-                      const isRtRejected = searchResult.status === 'Ditolak' || searchResult.verificationStatus === 'Rejected';
-                      return (
-                        <div
-                          className={`flex items-center gap-2 p-2 rounded-lg font-medium border ${
-                            isRtApproved
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : isRtRejected
-                              ? 'bg-rose-50 text-rose-800 border-rose-200'
-                              : 'bg-amber-50 text-amber-900 border-amber-300 animate-pulse'
-                          }`}
-                        >
-                          {isRtApproved ? (
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                          ) : isRtRejected ? (
-                            <X className="w-4 h-4 text-rose-600 shrink-0" />
-                          ) : (
-                            <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-                          )}
-                          <div>
-                            <p className="font-bold text-[11px]">2. Verifikasi RT</p>
-                            <p className="text-[10px]">
-                              {isRtApproved ? `Disetujui ${searchResult.rtVerifiedBy || 'RT'}` : isRtRejected ? 'Ditolak RT' : 'Sedang Diproses'}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Step 3: Konfirmasi Pembayaran & Upload Bukti Transfer */}
-                    {(() => {
-                      const hasUploadedPayment = payments.some(
-                        (p) => p.memberId === searchResult.id || p.memberNumber === searchResult.memberNumber
-                      );
-                      const isReadyToPay = searchResult.status === 'Menunggu Pembayaran';
-                      return (
-                        <div
-                          className={`flex items-center gap-2 p-2 rounded-lg font-medium border ${
-                            hasUploadedPayment
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : isReadyToPay
-                              ? 'bg-sky-50 text-sky-900 border-sky-300 ring-2 ring-sky-400/30'
-                              : 'bg-slate-50 text-slate-400 border-slate-200'
-                          }`}
-                          title={
-                            hasUploadedPayment
-                              ? 'Bukti pembayaran telah dikirim'
-                              : isReadyToPay
-                              ? 'Pendaftaran disetujui RT! Silakan lakukan pembayaran'
-                              : 'Pendaftar baru bisa melakukan pembayaran setelah verifikasi dari RT'
-                          }
-                        >
-                          {hasUploadedPayment ? (
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                          ) : isReadyToPay ? (
-                            <Upload className="w-4 h-4 text-sky-600 shrink-0 animate-bounce" />
-                          ) : (
-                            <Lock className="w-4 h-4 text-slate-400 shrink-0" />
-                          )}
-                          <div>
-                            <p className="font-bold text-[11px]">3. Bayar Iuran</p>
-                            <p className="text-[10px]">
-                              {hasUploadedPayment ? 'Bukti Terkirim' : isReadyToPay ? 'Siap Bayar (RT ✓)' : 'Terkunci (Tunggu RT)'}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Step 4: Validasi Bendahara */}
-                    {(() => {
-                      const verifiedPayments = payments.filter(
-                        (p) => (p.memberId === searchResult.id || p.memberNumber === searchResult.memberNumber) && p.status === 'Verified'
-                      );
-                      const isTreasurerVerified = verifiedPayments.length > 0 || searchResult.status === 'Aktif';
-                      const isPendingTreasurer = searchResult.status === 'Menunggu Validasi Bendahara' || payments.some(
-                        (p) => (p.memberId === searchResult.id || p.memberNumber === searchResult.memberNumber) && p.status === 'Pending'
-                      );
-                      return (
-                        <div
-                          className={`flex items-center gap-2 p-2 rounded-lg font-medium border ${
-                            isTreasurerVerified
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : isPendingTreasurer
-                              ? 'bg-indigo-50 text-indigo-900 border-indigo-300 animate-pulse'
-                              : 'bg-slate-50 text-slate-400 border-slate-200'
-                          }`}
-                        >
-                          {isTreasurerVerified ? (
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                          ) : isPendingTreasurer ? (
-                            <Clock className="w-4 h-4 text-indigo-600 shrink-0" />
-                          ) : (
-                            <ShieldCheck className="w-4 h-4 text-slate-400 shrink-0" />
-                          )}
-                          <div>
-                            <p className="font-bold text-[11px]">4. Validasi Kas</p>
-                            <p className="text-[10px]">
-                              {isTreasurerVerified ? 'Divalidasi Kas' : isPendingTreasurer ? 'Antrean Kas' : 'Menunggu Bukti'}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Step 5: KTA & Sertifikat Terbit */}
-                    {(() => {
-                      const searchKta = getMemberKtaIssuanceInfo(searchResult, payments);
-                      return (
-                        <div
-                          className={`flex items-center gap-2 p-2 rounded-lg font-medium border ${
-                            searchKta.isIssued
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : 'bg-slate-50 text-slate-400 border-slate-200'
-                          }`}
-                          title={
-                            searchKta.isIssued
-                              ? 'KTA & Sertifikat resmi telah disetujui Ketua Paguyuban dan terbit sah'
-                              : 'Sertifikat bisa terbit setelah disetujui ketua paguyuban'
-                          }
-                        >
-                          {searchKta.isIssued ? (
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                          ) : (
-                            <Lock className="w-4 h-4 text-slate-400 shrink-0" />
-                          )}
-                          <div>
-                            <p className="font-bold text-[11px]">5. Sertifikat & KTA</p>
-                            <p className="text-[10px]">
-                              {searchKta.isIssued ? 'Terbit & Sah' : 'Menunggu Ketua'}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                {/* RT Contact Info & Action Buttons */}
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-                  <div className="text-xs text-slate-600">
-                    {(() => {
-                      const matchedCluster = clusters.find((c) => c.name === searchResult.cluster);
-                      if (matchedCluster && matchedCluster.leaderPhone) {
-                        return (
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-slate-700">Kontak Ketua RT ({searchResult.cluster}):</span>
-                            <a
-                              href={`https://wa.me/${matchedCluster.leaderPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                                `Halo Pak RT ${matchedCluster.leaderName || ''}, saya ${searchResult.name} ingin menanyakan verifikasi pendaftaran Dana Kematian dengan nomor registrasi ${searchResult.memberNumber}. Terima kasih.`
-                              )}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 font-bold text-emerald-700 hover:text-emerald-800 underline"
-                            >
-                              <Phone className="w-3.5 h-3.5" />
-                              <span>{matchedCluster.leaderName} ({matchedCluster.leaderPhone})</span>
-                            </a>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </div>
-
-                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                    {/* Payment / Transfer Upload Button strictly following rule 1, 2, 3 */}
-                    {(() => {
-                      const isPendingRt = searchResult.status === 'Menunggu Verifikasi RT' || searchResult.verificationStatus === 'Pending';
-                      const isRejectedRt = searchResult.status === 'Ditolak' || searchResult.verificationStatus === 'Rejected';
-                      const isAwaitingPayment = searchResult.status === 'Menunggu Pembayaran';
-                      const isAwaitingTreasurer = searchResult.status === 'Menunggu Validasi Bendahara';
-
-                      return (
-                        <button
-                          type="button"
-                          disabled={isPendingRt || isRejectedRt}
-                          onClick={() => handleOpenPaymentForMember(searchResult)}
-                          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-sm ${
-                            isPendingRt
-                              ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
-                              : isRejectedRt
-                              ? 'bg-rose-100 text-rose-400 cursor-not-allowed border border-rose-200'
-                              : isAwaitingPayment
-                              ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/20 cursor-pointer ring-2 ring-emerald-400/40 animate-pulse'
-                              : isAwaitingTreasurer
-                              ? 'bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer'
-                              : 'bg-slate-900 hover:bg-slate-800 text-white cursor-pointer'
-                          }`}
-                          title={
-                            isPendingRt
-                              ? 'Pendaftaran masih menunggu verifikasi Ketua RT sebelum dapat membayar'
-                              : isRejectedRt
-                              ? 'Pendaftaran ditolak oleh Ketua RT'
-                              : 'Konfirmasi Pembayaran & Upload Bukti Transfer'
-                          }
-                        >
-                          <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>
-                            {isPendingRt
-                              ? 'Belum Bisa Bayar (Menunggu Persetujuan RT)'
-                              : isRejectedRt
-                              ? 'Pendaftaran Ditolak RT'
-                              : isAwaitingPayment
-                              ? 'Upload Bukti Transfer Iuran'
-                              : isAwaitingTreasurer
-                              ? 'Lihat / Kirim Ulang Bukti'
-                              : 'Bayar / Konfirmasi Iuran'}
-                          </span>
-                        </button>
-                      );
-                    })()}
-
-                    {(() => {
-                      const searchKta = getMemberKtaIssuanceInfo(searchResult, payments);
-                      return (
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedQrGeneratorMember(searchResult)}
-                            className="px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-sm bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white cursor-pointer hover:scale-105 active:scale-95"
-                            title="Buka Generator QR Code unik KTA untuk dibagikan & discan"
-                          >
-                            <QrCode className="w-3.5 h-3.5 text-amber-300" />
-                            <span>QR Code NPA</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (onOpenKtaModal) {
-                                onOpenKtaModal(searchResult);
-                              } else {
-                                setSelectedKtaMember(searchResult);
-                              }
-                            }}
-                            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-sm ${
-                              searchKta.isIssued
-                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                                : 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
-                            }`}
-                          >
-                            {searchKta.isIssued ? (
-                              <QrCode className="w-3.5 h-3.5" />
-                            ) : (
-                              <Lock className="w-3.5 h-3.5 text-amber-700" />
-                            )}
-                            <span>{searchKta.isIssued ? 'Buka KTA Digital' : 'Lihat Status KTA'}</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setSelectedCertificateMember(searchResult)}
-                            className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-sm cursor-pointer ${
-                              searchKta.isIssued
-                                ? 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white shadow-amber-950/20 hover:scale-105 active:scale-95'
-                                : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300'
-                            }`}
-                            title={
-                              searchKta.isIssued
-                                ? 'Lihat & Unduh Sertifikat Keanggotaan Resmi (A4 Landscape)'
-                                : 'Sertifikat bisa terbit setelah disetujui ketua paguyuban'
-                            }
-                          >
-                            {searchKta.isIssued ? (
-                              <Award className="w-3.5 h-3.5 text-amber-200" />
-                            ) : (
-                              <Lock className="w-3.5 h-3.5 text-amber-700" />
-                            )}
-                            <span>{searchKta.isIssued ? 'Sertifikat Resmi' : 'Sertifikat (Menunggu Ketua Paguyuban)'}</span>
-                          </button>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 text-center space-y-3">
-                <AlertCircle className="w-8 h-8 text-amber-500 mx-auto" />
-                <h4 className="text-base font-bold text-slate-800">
-                  Data dengan kata kunci "{searchQuery}" Tidak Ditemukan
-                </h4>
-                <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  Pastikan NIK atau No. WhatsApp yang Anda masukkan benar. Jika Anda belum pernah mendaftar, silakan isi formulir pendaftaran di bawah ini.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsRegistering(true);
-                    const el = document.getElementById('section-daftar');
-                    el?.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all inline-flex items-center gap-2 shadow-sm"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  <span>Daftar Jadi Anggota Sekarang</span>
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </section>
 
       {/* 3. FORMULIR PENDAFTARAN WARGA MANDIRI (HANYA MUNCUL JIKA MEMILIH MENU DAFTAR) */}
       {(isRegistering || regSuccess) && (
@@ -1648,26 +1238,12 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                         setIsRegistering(false);
                         onOpenLoginModal();
                       }}
-                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
+                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md inline-flex items-center gap-1.5 cursor-pointer"
                     >
-                      <LogIn className="w-4 h-4 text-emerald-400" />
-                      <span>Login ke Halaman Anggota</span>
+                      <LogIn className="w-4 h-4" />
+                      <span>Masuk ke Akun Portal Warga</span>
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearchQuery(regSuccess.nik);
-                      handleSearch();
-                      setActiveSection('cek-status');
-                      const el = document.getElementById('section-cek-status');
-                      el?.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-sm inline-flex items-center gap-1.5"
-                  >
-                    <Search className="w-4 h-4" />
-                    <span>Cek Status Pendaftaran</span>
-                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -1902,7 +1478,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                         <span>Anggota Keluarga yang Ditanggung ({regForm.dependents.length})</span>
                       </h3>
                       <p className="text-[11px] text-slate-500">
-                        Istri / Suami, Anak Kandung, atau Orang Tua/Mertua yang tinggal satu rumah dan berhak menerima santunan.
+                        Anggota keluarga satu rumah yang tercatat dalam Kartu Keluarga (KK). Hak santunan duka cita diberikan sesuai paket Master Hak & Manfaat.
                       </p>
                     </div>
                   </div>
@@ -2088,7 +1664,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {(benefits.filter((b) => b.isActive).length > 0 ? benefits.filter((b) => b.isActive) : DEFAULT_BENEFITS).map((benefit, idx) => {
+          {effectiveLandingBenefits.map((benefit, idx) => {
             // Determine dynamic badge/card theme
             const color = benefit.badgeColor || 'emerald';
             let pillClass = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
@@ -2199,11 +1775,13 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
 
           <button
             type="button"
-            onClick={() => navigateToSection('section-cek-status')}
+            onClick={() => {
+              if (onOpenLoginModal) onOpenLoginModal();
+            }}
             className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
           >
             <CreditCard className="w-3.5 h-3.5" />
-            <span>Bayar Iuran Anggota</span>
+            <span>Bayar Iuran via Portal Warga</span>
           </button>
         </div>
 
@@ -2255,39 +1833,44 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
               </div>
               <div>
                 <h4 className="text-sm font-bold text-white">Rekening Resmi Pembayaran Iuran</h4>
-                <p className="text-xs text-slate-400">Gunakan transfer bank atau ATM resmi berikut:</p>
+                <p className="text-xs text-slate-400">
+                  Daftar rekening resmi terdaftar di pengaturan sistem ({settings.bankAccounts?.length || 0} Bank):
+                </p>
               </div>
             </div>
-
-            {settings.bankAccounts[0]?.accountNumber && (
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(settings.bankAccounts[0]?.accountNumber || '');
-                  setCopiedBank(true);
-                  setTimeout(() => setCopiedBank(false), 2500);
-                }}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                {copiedBank ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedBank ? 'Tersalin!' : 'Salin No. Rekening'}</span>
-              </button>
-            )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-800 text-xs">
-            <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
-              <p className="text-slate-400 text-[10px] uppercase font-bold">Bank Penerima</p>
-              <p className="text-sm font-black text-white mt-0.5">{settings.bankAccounts[0]?.bankName || 'BCA (Bank Central Asia)'}</p>
-            </div>
-            <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
-              <p className="text-slate-400 text-[10px] uppercase font-bold">Nomor Rekening</p>
-              <p className="text-sm font-black text-emerald-400 font-mono mt-0.5">{settings.bankAccounts[0]?.accountNumber || '7890-123-456'}</p>
-            </div>
-            <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
-              <p className="text-slate-400 text-[10px] uppercase font-bold">Atas Nama Rekening</p>
-              <p className="text-sm font-black text-white mt-0.5">{settings.bankAccounts[0]?.accountHolder || settings.treasurerName || 'KAS DANA KEMATIAN'}</p>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2 border-t border-slate-800 text-xs">
+            {settings.bankAccounts && settings.bankAccounts.length > 0 ? (
+              settings.bankAccounts.map((bank, idx) => (
+                <div key={`pub-bank-card-${idx}-${bank.accountNumber || idx}`} className="bg-slate-950/70 p-3.5 rounded-xl border border-slate-800 flex flex-col justify-between gap-2">
+                  <div>
+                    <div className="flex justify-between items-center text-emerald-400 font-bold mb-1">
+                      <span className="text-[11px] uppercase font-bold text-slate-300">{bank.bankName}</span>
+                      <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded uppercase">Resmi</span>
+                    </div>
+                    <p className="text-base font-black text-emerald-400 font-mono tracking-wider">{bank.accountNumber}</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">a.n. {bank.accountHolder}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(bank.accountNumber);
+                      setCopiedBank(true);
+                      setTimeout(() => setCopiedBank(false), 2000);
+                    }}
+                    className="w-full mt-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-emerald-400 border border-slate-700 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Salin No. Rekening</span>
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 text-slate-400 sm:col-span-3">
+                Hubungi pengurus atau bendahara untuk informasi rekening pembayaran.
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -2484,7 +2067,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
             },
             {
               q: 'Berapa besaran iuran dan dibayarkan ke mana?',
-              a: `Iuran tahunan sebesar ${formatIDR(settings.annualFeeAmount || 300000)} per tahun per Kepala Keluarga. Pembayaran dapat ditransfer ke rekening resmi bendahara paguyuban di ${settings.bankAccounts[0]?.bankName || 'BCA'} ${settings.bankAccounts[0]?.accountNumber || '7890-123-456'} a.n ${settings.bankAccounts[0]?.accountHolder || settings.treasurerName}.`,
+              a: `Iuran tahunan sebesar ${formatIDR(settings.annualFeeAmount || 300000)} per tahun per Kepala Keluarga. Pembayaran dapat ditransfer ke salah satu rekening resmi paguyuban yang terdaftar di pengaturan sistem: ${settings.bankAccounts?.map(b => `${b.bankName} ${b.accountNumber} (a.n ${b.accountHolder})`).join(' atau ')}.`,
             },
             {
               q: 'Apakah KTA Digital berlaku resmi?',
@@ -2544,12 +2127,51 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
               </div>
             ) : (
               <form onSubmit={handlePaymentSubmit} className="space-y-4 text-xs">
-                {/* Bank Target Info */}
-                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 space-y-1">
-                  <p className="font-bold text-emerald-900">Rekening Resmi Tujuan Transfer:</p>
-                  <p className="text-slate-800 font-medium">
-                    {settings.bankAccounts[0]?.bankName || 'BCA'}: <strong className="font-mono text-emerald-900">{settings.bankAccounts[0]?.accountNumber || '7890-123-456'}</strong> a.n {settings.bankAccounts[0]?.accountHolder || settings.treasurerName}
-                  </p>
+                {/* Bank Target Info - Disesuaikan dengan rekening yang terdaftar di pengaturan sistem */}
+                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <p className="font-bold text-emerald-950 flex items-center gap-1.5">
+                      <Landmark className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>Rekening Resmi Tujuan Pembayaran:</span>
+                    </p>
+                    <span className="text-[10px] bg-emerald-200 text-emerald-900 font-bold px-1.5 py-0.5 rounded">
+                      Pengaturan Sistem
+                    </span>
+                  </div>
+
+                  {(() => {
+                    const matchedBank = settings.bankAccounts?.find((b) => {
+                      const cleanName = b.bankName?.trim() || '';
+                      const id = cleanName.toLowerCase().startsWith('transfer') ? cleanName : `Transfer ${cleanName}`;
+                      return id === payMethod;
+                    }) || settings.bankAccounts?.[0];
+
+                    if (!matchedBank) {
+                      return <p className="text-slate-600 text-[11px]">Hubungi bendahara untuk informasi rekening resmi.</p>;
+                    }
+
+                    return (
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pt-1 border-t border-emerald-200/60">
+                        <div className="text-slate-800 text-[11px]">
+                          <span className="font-bold">{matchedBank.bankName}:</span>{' '}
+                          <strong className="font-mono text-emerald-900 font-black text-xs">{matchedBank.accountNumber}</strong>{' '}
+                          <span className="text-slate-600">a.n {matchedBank.accountHolder}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(matchedBank.accountNumber);
+                            setCopiedBank(true);
+                            setTimeout(() => setCopiedBank(false), 2000);
+                          }}
+                          className="text-[10px] bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-2 py-1 rounded-lg shrink-0 self-start sm:self-auto cursor-pointer flex items-center gap-1 transition-colors"
+                        >
+                          {copiedBank ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedBank ? 'Tersalin' : 'Salin Rekening'}</span>
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div>
@@ -2582,17 +2204,29 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Metode Transfer</label>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Metode Pembayaran (Sesuai Rekening Sistem)
+                  </label>
                   <select
                     value={payMethod}
                     onChange={(e) => setPayMethod(e.target.value as PaymentMethod)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-medium"
                   >
-                    <option value="Transfer BCA">Transfer Bank BCA</option>
-                    <option value="Transfer Mandiri">Transfer Bank Mandiri</option>
-                    <option value="Transfer BSI">Transfer Bank BSI</option>
-                    <option value="QRIS Paguyuban">QRIS Paguyuban</option>
-                    <option value="Tunai ke Pengurus">Tunai ke Pengurus RT</option>
+                    {settings.bankAccounts && settings.bankAccounts.length > 0 ? (
+                      settings.bankAccounts.map((bank, idx) => {
+                        const cleanName = bank.bankName?.trim() || '';
+                        const methodId = cleanName.toLowerCase().startsWith('transfer') ? cleanName : `Transfer ${cleanName}`;
+                        return (
+                          <option key={`opt-bank-acc-${idx}-${bank.accountNumber || idx}-${cleanName}`} value={methodId}>
+                            {methodId} — {bank.accountNumber} (a.n. {bank.accountHolder})
+                          </option>
+                        );
+                      })
+                    ) : (
+                      <option key="opt-bank-fallback-single" value="Transfer Bank">Transfer Bank Resmi</option>
+                    )}
+                    <option key="opt-qris-method" value="QRIS Paguyuban">QRIS Paguyuban (Scan Barcode)</option>
+                    <option key="opt-tunai-method" value="Tunai ke Pengurus">Tunai ke Pengurus RT / Bendahara</option>
                   </select>
                 </div>
 
@@ -2655,11 +2289,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
           setSelectedKtaMember(mem);
         }}
         onSelectMember={(mem) => {
-          setSearchResult(mem);
-          setHasSearched(true);
-          setSearchQuery(mem.memberNumber);
-          const el = document.getElementById('section-cek-status');
-          el?.scrollIntoView({ behavior: 'smooth' });
+          setSelectedKtaMember(mem);
         }}
         onSelectMemberForPayment={(mem) => {
           handleOpenPaymentForMember(mem);
