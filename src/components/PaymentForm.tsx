@@ -21,6 +21,7 @@ import {
   Copy,
   Landmark,
   Banknote,
+  LayoutDashboard,
 } from 'lucide-react';
 import { KtaQrScannerModal } from './KtaQrScannerModal';
 
@@ -32,6 +33,7 @@ interface PaymentFormProps {
   onAddPayment: (payment: Payment) => void;
   onNavigateToValidation?: () => void;
   onNavigateToVerification?: () => void;
+  onNavigateToDashboard?: () => void;
 }
 
 export const PaymentForm: React.FC<PaymentFormProps> = ({
@@ -42,6 +44,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
   onAddPayment,
   onNavigateToValidation,
   onNavigateToVerification,
+  onNavigateToDashboard,
 }) => {
   const isAnggota = activeUser?.authority === 'Anggota';
   const isKetuaRt = activeUser?.authority === 'Ketua RT (Cluster)';
@@ -279,14 +282,26 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300">
       {/* Title Card */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
-        <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-          <CreditCard className="w-6 h-6 text-emerald-600" />
-          <span>Pembayaran Iuran & Upload Bukti Transfer</span>
-        </h2>
-        <p className="text-xs text-slate-500 mt-1">
-          Lakukan pembayaran iuran bulanan atau pendaftaran dan unggah bukti transfer untuk diverifikasi oleh admin/pengurus.
-        </p>
+      <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <CreditCard className="w-6 h-6 text-emerald-600" />
+            <span>Pembayaran Iuran & Upload Bukti Transfer</span>
+          </h2>
+          <p className="text-xs text-slate-500 mt-1">
+            Lakukan pembayaran iuran bulanan atau pendaftaran dan unggah bukti transfer untuk diverifikasi oleh admin/pengurus.
+          </p>
+        </div>
+        {onNavigateToDashboard && (
+          <button
+            type="button"
+            onClick={onNavigateToDashboard}
+            className="self-start sm:self-center px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200"
+          >
+            <LayoutDashboard className="w-4 h-4 text-emerald-600" />
+            <span>Ke Dashboard</span>
+          </button>
+        )}
       </div>
 
       {isReadOnlyRole && (

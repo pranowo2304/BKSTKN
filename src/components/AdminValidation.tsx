@@ -40,7 +40,7 @@ import { DigitalSignatureModal } from './DigitalSignatureModal';
 import { SignatureData } from './DigitalSignaturePad';
 import { PostVerifyWhatsAppModal } from './PostVerifyWhatsAppModal';
 import { RoleMobileAppMenu } from './RoleMobileAppMenu';
-import { Landmark, Users, Receipt, FileSpreadsheet, CreditCard } from 'lucide-react';
+import { Landmark, Users, Receipt, FileSpreadsheet, CreditCard, LayoutDashboard } from 'lucide-react';
 import { AppUser } from '../types';
 import { useRolePermissions } from '../lib/permissions';
 
@@ -49,6 +49,7 @@ interface AdminValidationProps {
   members?: Member[];
   settings: SystemSettings;
   activeUser?: AppUser;
+  setCurrentTab?: (tab: string) => void;
   onVerifyPayment: (
     paymentId: string,
     adminNotes?: string,
@@ -66,6 +67,7 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
   members = [],
   settings,
   activeUser,
+  setCurrentTab,
   onVerifyPayment,
   onRejectPayment,
   onViewReceipt,
@@ -178,15 +180,29 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
       {/* ========================================================================= */}
       <RoleMobileAppMenu
         activeUser={activeUser}
-        roleTitle="BENDAHARA PAGUYUBAN"
+        roleTitle={activeUser?.authority === 'Admin' ? 'ADMINISTRATOR UTAMA' : 'BENDAHARA PAGUYUBAN'}
         userName={activeUser?.name || settings.treasurerName || 'Bendahara Paguyuban'}
-        roleSubtitle="Bendahara Paguyuban • Validasi Kas, Kwitansi & Mutasi Iuran"
+        roleSubtitle={activeUser?.authority === 'Admin' ? 'Admin Utama • Validasi Kas, Kwitansi & Mutasi Iuran' : 'Bendahara Paguyuban • Validasi Kas, Kwitansi & Mutasi Iuran'}
         counterLabel="ANTREAN STRUK"
         counterValue={`${pendingPayments.length} Bukti`}
         counterHighlight={pendingPayments.length > 0}
-        sectionTitle="MENU CEPAT BENDAHARA"
-        sectionSubtitle="Kelola verifikasi mutasi rekening & kwitansi kas"
+        sectionTitle={activeUser?.authority === 'Admin' ? 'MENU CEPAT ADMINISTRATOR' : 'MENU CEPAT BENDAHARA'}
+        sectionSubtitle="Kelola verifikasi mutasi rekening, kwitansi kas & dashboard"
         actions={[
+          {
+            id: 'menu-dashboard',
+            label: activeUser?.authority === 'Admin' ? 'Dashboard Admin' : 'Dashboard Kas',
+            subLabel: 'Ringkasan Kas & Mutasi',
+            badge: 'Utama',
+            badgeColor: 'sky',
+            gradient: activeUser?.authority === 'Admin' ? 'from-indigo-600 to-purple-600' : 'from-emerald-600 to-teal-500',
+            icon: LayoutDashboard,
+            onClick: () => {
+              if (setCurrentTab) {
+                setCurrentTab('dashboard');
+              }
+            },
+          },
           {
             id: 'antrean-kas',
             label: 'Validasi Struk',
@@ -241,6 +257,16 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
           },
         ]}
         pills={[
+          {
+            id: 'pill-ke-dashboard',
+            label: activeUser?.authority === 'Admin' ? 'Ke Dashboard Admin' : 'Ke Dashboard Kas',
+            icon: LayoutDashboard,
+            onClick: () => {
+              if (setCurrentTab) {
+                setCurrentTab('dashboard');
+              }
+            },
+          },
           {
             id: 'pill-antrean',
             label: 'Antrean Validasi',

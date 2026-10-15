@@ -11,6 +11,7 @@ import {
   Settings,
   Globe,
   UserCheck,
+  LayoutDashboard,
 } from 'lucide-react';
 import { AppUser, UserAuthority, Member, Payment, BenefitClaim } from '../types';
 import { MobileAppNavAction } from '../components/RoleMobileAppMenu';
@@ -63,6 +64,23 @@ export function getAllNavigationActionsForUser(params: NavigationActionParams): 
   const permittedTabs = !activeUser ? ['public'] : getPermittedTabsForRole(authority, permissions);
 
   const actions: MobileAppNavAction[] = [];
+
+  // 0. Dashboard Utama (Fitur Dashboard untuk Admin, Bendahara, dan Pengurus)
+  if (permittedTabs.includes('dashboard')) {
+    const isBendahara = authority === 'Bendahara';
+    const isAdmin = authority === 'Admin';
+    actions.push({
+      id: 'dashboard',
+      label: isBendahara ? 'Dashboard Kas' : isAdmin ? 'Dashboard Admin' : 'Dashboard Utama',
+      subLabel: isBendahara ? 'Ringkasan Kas & Mutasi Realtime' : 'Statistik & Monitoring Wilayah',
+      gradient: isBendahara ? 'from-emerald-600 to-teal-500' : 'from-indigo-600 to-purple-600',
+      icon: LayoutDashboard,
+      badge: isBendahara && pendingCount > 0 ? `${pendingCount} Validasi` : 'Utama',
+      badgeColor: isBendahara && pendingCount > 0 ? 'amber' : 'sky',
+      isActive: currentTab === 'dashboard',
+      onClick: () => setCurrentTab('dashboard'),
+    });
+  }
 
   // 1. Halaman Anggota (Khusus Anggota)
   if (permittedTabs.includes('member-portal')) {

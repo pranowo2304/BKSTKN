@@ -24,6 +24,7 @@ import {
   ArrowRight,
   Shield,
   User,
+  UserCog,
   Crown,
   Landmark,
   Building2,
@@ -103,6 +104,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const userDropdownRef = useRef<HTMLDivElement>(null);
 
   const authority: UserAuthority = activeUser ? activeUser.authority : 'Anggota';
+  const isBendahara = authority === 'Bendahara';
   const isBendaharaOrAdmin = authority === 'Bendahara' || authority === 'Admin';
   // Tombol ganti peran hanya untuk Admin
   const canSwitchRole = authority === 'Admin';
@@ -685,6 +687,36 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </div>
 
+          {/* Quick Dashboard Button for Admin & Bendahara in Top Header Bar */}
+          {isBendaharaOrAdmin && (
+            <button
+              type="button"
+              onClick={() => setCurrentTab('dashboard')}
+              title={`Buka ${isBendahara ? 'Dashboard Kas Bendahara' : 'Dashboard Administrator'}`}
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border shadow-sm ${
+                currentTab === 'dashboard'
+                  ? isBendahara
+                    ? 'bg-emerald-600 text-white border-emerald-400 ring-2 ring-emerald-500/30'
+                    : 'bg-indigo-600 text-white border-indigo-400 ring-2 ring-indigo-500/30'
+                  : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 hover:text-white border-slate-700/80 hover:border-slate-600'
+              }`}
+            >
+              <LayoutDashboard className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="inline">
+                {isBendahara ? 'Dashboard Bendahara' : 'Dashboard Admin'}
+              </span>
+              {isBendahara && pendingCount > 0 ? (
+                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono font-black bg-rose-500 text-white">
+                  {pendingCount}
+                </span>
+              ) : authority === 'Admin' && totalPendingNotifications > 0 ? (
+                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono font-black bg-amber-500 text-slate-950">
+                  {totalPendingNotifications}
+                </span>
+              ) : null}
+            </button>
+          )}
+
           {/* Unduh Laporan CSV Button (Hanya tampil untuk Admin, Bendahara, Ketua Paguyuban, dan Ketua DKM) */}
           {onOpenExportModal && canAccessReport && (
             <button
@@ -710,6 +742,196 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
       </div>
+
+      {/* 🧭 HORIZONTAL NAVIGATION BAR (FITUR DASHBOARD & MODUL UNTUK ADMIN DAN BENDAHARA) */}
+      {activeUser && (
+        <div className="bg-slate-950/80 border-t border-slate-800/80 backdrop-blur-md">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-2 overflow-x-auto scrollbar-none py-1.5">
+            <nav className="flex items-center gap-1 sm:gap-1.5 shrink-0" aria-label="Navigasi Menu Bar">
+              {/* 1. TOMBOL DASHBOARD (FITUR UTAMA UNTUK ADMIN & BENDAHARA) */}
+              <button
+                type="button"
+                onClick={() => setCurrentTab('dashboard')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                  currentTab === 'dashboard'
+                    ? isBendahara
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/50 ring-1 ring-emerald-400'
+                      : 'bg-indigo-600 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-400'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
+                }`}
+              >
+                <LayoutDashboard className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  {isBendahara ? 'Dashboard Bendahara' : authority === 'Admin' ? 'Dashboard Admin' : 'Dashboard'}
+                </span>
+                {isBendahara && pendingCount > 0 ? (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black bg-rose-500 text-white animate-pulse">
+                    {pendingCount}
+                  </span>
+                ) : authority === 'Admin' && totalPendingNotifications > 0 ? (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black bg-amber-500 text-slate-950">
+                    {totalPendingNotifications}
+                  </span>
+                ) : null}
+              </button>
+
+              {/* 2. VALIDASI KAS (BENDAHARA & ADMIN) */}
+              {isBendaharaOrAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('validation')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                    currentTab === 'validation'
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-400'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
+                  }`}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                  <span>Validasi Kas</span>
+                  {pendingCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black bg-amber-500 text-slate-950">
+                      {pendingCount}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {/* 3. TERIMA / INPUT IURAN (BENDAHARA & ADMIN) */}
+              {isBendaharaOrAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('payment')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                    currentTab === 'payment'
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-400'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
+                  }`}
+                >
+                  <CreditCard className="w-3.5 h-3.5 shrink-0" />
+                  <span>{isBendahara ? 'Terima Iuran' : 'Input Iuran'}</span>
+                </button>
+              )}
+
+              {/* 4. REALISASI SANTUNAN */}
+              {(isBendaharaOrAdmin || authority === 'Ketua DKM' || authority === 'Ketua Paguyuban') && (
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('realization')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                    currentTab === 'realization'
+                      ? 'bg-rose-600 text-white shadow-md shadow-rose-950/50 ring-1 ring-rose-400'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
+                  }`}
+                >
+                  <HeartHandshake className="w-3.5 h-3.5 shrink-0" />
+                  <span>Realisasi Duka</span>
+                  {claimCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono text-slate-400 bg-slate-800">
+                      {claimCount}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {/* 5. LAPORAN KAS & REKAP (BENDAHARA & ADMIN) */}
+              {isBendaharaOrAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('history')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                    currentTab === 'history'
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/50 ring-1 ring-emerald-400'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
+                  }`}
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" />
+                  <span>Laporan Kas</span>
+                </button>
+              )}
+
+              {/* 6. DATA WARGA & TANGGUNGAN */}
+              {(isBendaharaOrAdmin || authority === 'Ketua RT (Cluster)' || authority === 'Ketua RW') && (
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('registration')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                    currentTab === 'registration'
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-400'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5 shrink-0" />
+                  <span>Data Warga</span>
+                  {memberCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono text-slate-400 bg-slate-800">
+                      {memberCount}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {/* 7. KHUSUS ADMIN: PENGGUNA & OTORITAS */}
+              {authority === 'Admin' && (
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('users')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                    currentTab === 'users'
+                      ? 'bg-purple-600 text-white shadow-md shadow-purple-950/50 ring-1 ring-purple-400'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
+                  }`}
+                >
+                  <UserCog className="w-3.5 h-3.5 shrink-0" />
+                  <span>Pengguna & Otoritas</span>
+                </button>
+              )}
+
+              {/* 8. KHUSUS ADMIN: PENGATURAN SISTEM */}
+              {authority === 'Admin' && (
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('settings')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                    currentTab === 'settings'
+                      ? 'bg-purple-600 text-white shadow-md shadow-purple-950/50 ring-1 ring-purple-400'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
+                  }`}
+                >
+                  <Settings className="w-3.5 h-3.5 shrink-0" />
+                  <span>Pengaturan</span>
+                </button>
+              )}
+            </nav>
+
+            {/* Quick Links kanan: Modal Menu Cepat & Portal Publik */}
+            <div className="flex items-center gap-1.5 shrink-0 pl-2 border-l border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsQuickMenuOpen(true)}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800/80 hover:bg-slate-700 text-amber-300 hover:text-amber-200 border border-slate-700 transition-all cursor-pointer"
+                title="Buka Menu Cepat Aplikasi Mobile"
+              >
+                <Sparkles className="w-3 h-3 text-amber-400" />
+                <span className="hidden md:inline">Menu Cepat</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCurrentTab('public')}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  currentTab === 'public'
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                }`}
+                title="Buka Halaman Portal Publik"
+              >
+                <Globe className="w-3 h-3 text-emerald-400" />
+                <span className="hidden sm:inline">Portal Publik</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick Operational Menu Modal */}
       <QuickOperationalMenuModal

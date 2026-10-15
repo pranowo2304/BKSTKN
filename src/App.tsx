@@ -1847,6 +1847,7 @@ export default function App() {
             onAddPayment={handleAddPayment}
             onNavigateToValidation={() => setCurrentTab('validation')}
             onNavigateToVerification={can(activeUser?.authority, 'verify_rt_members') ? () => setCurrentTab('rt-verification') : undefined}
+            onNavigateToDashboard={() => setCurrentTab('dashboard')}
           />
         )}
 
@@ -1856,6 +1857,7 @@ export default function App() {
             members={members}
             settings={settings}
             activeUser={activeUser}
+            setCurrentTab={setCurrentTab}
             onVerifyPayment={handleVerifyPayment}
             onRejectPayment={handleRejectPayment}
             onViewReceipt={(p) => setSelectedReceiptPayment(p)}
@@ -1877,6 +1879,7 @@ export default function App() {
             onRejectClaim={handleRejectClaim}
             onOpenExportModal={() => setIsExportModalOpen(true)}
             onClearClaims={handleClearClaims}
+            onNavigateToDashboard={() => setCurrentTab('dashboard')}
           />
         )}
 
@@ -1888,6 +1891,7 @@ export default function App() {
             activeUser={activeUser}
             onViewReceipt={(p) => setSelectedReceiptPayment(p)}
             onOpenExportModal={() => setIsExportModalOpen(true)}
+            onNavigateToDashboard={() => setCurrentTab('dashboard')}
           />
         )}
 

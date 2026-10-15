@@ -13,7 +13,6 @@ import {
   Building2,
   Globe,
   UserCheck,
-  QrCode,
 } from 'lucide-react';
 import { AppUser } from '../types';
 import { useRolePermissions } from '../lib/permissions';
@@ -57,10 +56,10 @@ export const PersistentRoleFloatingDock: React.FC<PersistentRoleFloatingDockProp
   // Bangun daftar item navigasi bawah sesuai peran (Role) pengguna
   let dockItems: DockItemDef[] = [];
 
-  // 0. Untuk Publik Portal / Tamu (Belum Login atau di Tab Publik)
-  // Menunya : Registrasi, KTA Digital, Iuran
-  // Dengan urutan dari kiri ke kanan : Iuran, Registrasi, KTA Digital
-  if (currentTab === 'public' || !activeUser) {
+  // 0. Untuk Publik Portal / Tamu (Belum Login)
+  // Menunya : Iuran & Registrasi
+  // Dengan urutan dari kiri ke kanan : Iuran, Registrasi
+  if (!activeUser) {
     dockItems = [
       {
         id: 'dock-public-bayar',
@@ -117,23 +116,15 @@ export const PersistentRoleFloatingDock: React.FC<PersistentRoleFloatingDockProp
           setTimeout(trigger, 220);
         },
       },
-      {
-        id: 'dock-public-kta',
-        label: 'KTA Digital',
-        icon: QrCode,
-        isActive: currentTab === 'member-portal',
-        onClick: () => {
-          setCurrentTab('member-portal');
-        },
-      },
     ];
   } else if (isAdminRole || authority === 'Admin') {
     // 1. Role: ADMIN
     dockItems = [
       {
         id: 'dock-dashboard',
-        label: 'Dashboard',
+        label: 'Dashboard Admin',
         icon: LayoutDashboard,
+        badge: (pendingRtVerificationCount + pendingCount + pendingPaguyubanApprovalCount) > 0 ? (pendingRtVerificationCount + pendingCount + pendingPaguyubanApprovalCount) : undefined,
         isActive: currentTab === 'dashboard',
         onClick: () => setCurrentTab('dashboard'),
       },
@@ -215,8 +206,9 @@ export const PersistentRoleFloatingDock: React.FC<PersistentRoleFloatingDockProp
     dockItems = [
       {
         id: 'dock-dashboard',
-        label: 'Dashboard',
+        label: 'Dashboard Kas',
         icon: LayoutDashboard,
+        badge: pendingCount > 0 ? pendingCount : undefined,
         isActive: currentTab === 'dashboard',
         onClick: () => setCurrentTab('dashboard'),
       },
@@ -443,7 +435,7 @@ export const PersistentRoleFloatingDock: React.FC<PersistentRoleFloatingDockProp
     ];
   } else {
     // 8. Role: Guest / Mode Publik (Belum Login)
-    // Urutan dari kiri ke kanan : Iuran, Registrasi, KTA Digital
+    // Urutan dari kiri ke kanan : Iuran, Registrasi
     dockItems = [
       {
         id: 'dock-public-bayar',
@@ -498,15 +490,6 @@ export const PersistentRoleFloatingDock: React.FC<PersistentRoleFloatingDockProp
           trigger();
           setTimeout(trigger, 80);
           setTimeout(trigger, 220);
-        },
-      },
-      {
-        id: 'dock-public-kta',
-        label: 'KTA Digital',
-        icon: QrCode,
-        isActive: currentTab === 'member-portal',
-        onClick: () => {
-          setCurrentTab('member-portal');
         },
       },
     ];

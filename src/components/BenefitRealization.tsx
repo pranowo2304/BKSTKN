@@ -51,6 +51,7 @@ import {
   LayoutGrid,
   ArrowUpDown,
   ChevronDown,
+  LayoutDashboard,
 } from 'lucide-react';
 import { DigitalSignaturePad } from './DigitalSignaturePad';
 
@@ -67,6 +68,7 @@ interface BenefitRealizationProps {
   onRejectClaim?: (claimId: string, reason: string) => void;
   onOpenExportModal?: () => void;
   onClearClaims?: () => void;
+  onNavigateToDashboard?: () => void;
 }
 
 export const BenefitRealization: React.FC<BenefitRealizationProps> = ({
@@ -82,6 +84,7 @@ export const BenefitRealization: React.FC<BenefitRealizationProps> = ({
   onRejectClaim,
   onOpenExportModal,
   onClearClaims,
+  onNavigateToDashboard,
 }) => {
   const isAnggota = activeUser?.authority === 'Anggota';
   const isRt =
@@ -533,6 +536,16 @@ export const BenefitRealization: React.FC<BenefitRealizationProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          {onNavigateToDashboard && (
+            <button
+              type="button"
+              onClick={onNavigateToDashboard}
+              className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs sm:text-sm rounded-xl border border-slate-700 transition-all inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
+            >
+              <LayoutDashboard className="w-4 h-4 text-amber-400" />
+              <span>Ke Dashboard</span>
+            </button>
+          )}
           {!isAnggota && (
             <button
               onClick={() => {

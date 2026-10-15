@@ -57,6 +57,7 @@ import {
   Lock,
   Eye,
   Plus,
+  LayoutDashboard,
   Edit3,
   Check,
   ChevronRight,
@@ -2267,6 +2268,13 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 },
               ]
             : [
+                {
+                  id: 'pill-dashboard-overview',
+                  label: isBendahara ? 'Dashboard Kas' : 'Dashboard Utama',
+                  icon: LayoutDashboard,
+                  isActive: currentTab === 'dashboard',
+                  onClick: () => setCurrentTab('dashboard'),
+                },
                 {
                   id: 'pill-antrean',
                   label: isBendahara

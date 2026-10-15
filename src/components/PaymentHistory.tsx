@@ -28,6 +28,7 @@ import {
   Building2,
   User,
   Sparkles,
+  LayoutDashboard,
 } from 'lucide-react';
 
 interface PaymentHistoryProps {
@@ -37,6 +38,7 @@ interface PaymentHistoryProps {
   activeUser?: AppUser;
   onViewReceipt: (payment: Payment) => void;
   onOpenExportModal?: () => void;
+  onNavigateToDashboard?: () => void;
 }
 
 export const PaymentHistory: React.FC<PaymentHistoryProps> = ({ 
@@ -46,6 +48,7 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
   activeUser,
   onViewReceipt,
   onOpenExportModal,
+  onNavigateToDashboard,
 }) => {
   const isAnggota = activeUser?.authority === 'Anggota';
   const isBendahara = activeUser?.authority === 'Bendahara';
@@ -220,6 +223,15 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {onNavigateToDashboard && (
+            <button
+              onClick={onNavigateToDashboard}
+              className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 border border-slate-200"
+            >
+              <LayoutDashboard className="w-4 h-4 text-emerald-600" />
+              <span>Ke Dashboard</span>
+            </button>
+          )}
           {!isAnggota && (
             <button
               onClick={handleExportCSV}
