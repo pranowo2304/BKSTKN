@@ -1,5 +1,5 @@
 import { Member, Payment, SystemSettings, WhatsAppNotificationLog, WhatsAppTriggerEvent } from '../types';
-import { cleanPhoneNumberForWhatsApp, formatPhoneDisplay } from './receiptUtils';
+import { cleanPhoneNumberForWhatsApp, formatPhoneDisplay, getEffectivePaymentPeriod } from './receiptUtils';
 import { formatIDR } from './storage';
 
 const WHATSAPP_LOGS_STORAGE_KEY = 'adk_whatsapp_notification_logs';
@@ -84,7 +84,7 @@ Alhamdulillah, kami informasikan bahwa pembayaran iuran Anda telah *BERHASIL DIV
 📋 *Rincian Validasi Pembayaran:*
 • No. Kuitansi: *${payment.receiptNumber || 'KW-' + payment.id.substring(0, 8).toUpperCase()}*
 • Jenis Iuran: *${payment.paymentType}*
-• Periode: *${payment.periodMonth || '-'}*
+• Periode: *${getEffectivePaymentPeriod(payment, settings)}*
 • Jumlah Disahkan: *${formatIDR(payment.amount)}*
 • Metode: *${payment.paymentMethod || 'Transfer Bank'}*
 • Divalidasi Oleh: *${verifier}*

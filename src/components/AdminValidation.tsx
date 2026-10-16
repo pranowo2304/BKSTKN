@@ -5,6 +5,7 @@ import {
   findMemberForPayment,
   generateReceiptWhatsAppUrl,
   formatPhoneDisplay,
+  getEffectivePaymentPeriod,
 } from '../lib/receiptUtils';
 import {
   calculatePendingGracePeriod,
@@ -663,7 +664,7 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
                       {/* Jenis & Periode */}
                       <td className="py-3.5 px-4 align-middle">
                         <span className="font-bold text-slate-800 block">{payment.paymentType}</span>
-                        <span className="text-xs text-slate-500">{payment.periodMonth}</span>
+                        <span className="text-xs text-slate-600 font-semibold">{getEffectivePaymentPeriod(payment, settings)}</span>
                         {payment.receiptNumber && (
                           <span className="font-mono text-[10px] text-slate-400 block mt-0.5">
                             {payment.receiptNumber}
@@ -922,7 +923,7 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
                       </div>
                       <div>
                         <span className="text-slate-400 text-[10px] uppercase font-bold block">Periode</span>
-                        <span className="font-semibold text-slate-800">{payment.periodMonth}</span>
+                        <span className="font-semibold text-slate-800">{getEffectivePaymentPeriod(payment, settings)}</span>
                       </div>
                       <div>
                         <span className="text-slate-400 text-[10px] uppercase font-bold block">Metode Transfer</span>

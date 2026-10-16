@@ -57,6 +57,89 @@ export const findMemberForPayment = (
 };
 
 /**
+ * Resolves the official membership/payment period determined in System Settings.
+ * Evaluates:
+ * 1. Fixed Period Mode:
+ *    - Custom Range: settings.membershipPeriod.customPeriodName || `${customStartDate} s/d ${customEndDate}`
+ *    - Calendar Year: `Tahun ${activePeriodYear}` (e.g. "Tahun 2026")
+ * 2. Payment Date Mode (Bergulir):
+ *    - `Masa Aktif ${durationMonths} Bulan Bergulir`
+ */
+export const getSystemConfiguredPeriod = (settings?: SystemSettings): string => {
+  const periodConfig = settings?.membershipPeriod;
+  if (!periodConfig) {
+    return `Tahun ${new Date().getFullYear()}`;
+  }
+
+  if (periodConfig.mode === 'fixed_period') {
+    if (periodConfig.fixedType === 'custom_range') {
+      if (periodConfig.customPeriodName && periodConfig.customPeriodName.trim()) {
+        return periodConfig.customPeriodName.trim();
+      }
+      if (periodConfig.customStartDate && periodConfig.customEndDate) {
+        return `Periode ${periodConfig.customStartDate} s/d ${periodConfig.customEndDate}`;
+      }
+      return `Periode ${periodConfig.activePeriodYear || new Date().getFullYear()}`;
+    }
+    // calendar_year (1 Jan - 31 Des per tahun buku)
+    const yr = periodConfig.activePeriodYear?.trim() || String(new Date().getFullYear());
+    return yr.toLowerCase().startsWith('tahun') ? yr : `Tahun ${yr}`;
+  }
+
+  // payment_date mode (bergulir)
+  const months = periodConfig.durationMonths || 12;
+  return `Masa Aktif ${months} Bulan Bergulir`;
+};
+
+/**
+ * Resolves the payment period displayed on the official receipt (Kwitansi),
+ * ensuring it adheres strictly to the period determined in System Settings:
+ *
+ * 1. If System Settings defines a fixed period policy (fixed_period):
+ *    - Follows the system settings period (e.g. "Tahun 2026", "Periode 2026/2027", etc.)
+ *    - If the payment is a monthly payment with a specific month (e.g. "Agustus"),
+ *      formats as: "Agustus 2026 (Periode Tahun 2026)".
+ * 2. If System Settings defines rolling validity (payment_date):
+ *    - If payment has periodMonth recorded, uses payment.periodMonth
+ *    - Otherwise uses system period or payment year.
+ * 3. Fallback to system period or current year.
+ */
+export const getEffectivePaymentPeriod = (
+  payment?: Payment | null,
+  settings?: SystemSettings
+): string => {
+  if (!payment) return getSystemConfiguredPeriod(settings);
+
+  const periodConfig = settings?.membershipPeriod;
+
+  // If system settings has a fixed period policy active
+  if (periodConfig && periodConfig.mode === 'fixed_period') {
+    const systemPeriod = getSystemConfiguredPeriod(settings);
+
+    // If payment is monthly payment with specific month mentioned
+    if (payment.paymentType === 'Iuran Bulanan' && payment.periodMonth) {
+      const lower = payment.periodMonth.toLowerCase();
+      const months = ['januari', 'februari', 'maret', 'april', 'mei', 'juni', 'juli', 'agustus', 'september', 'oktober', 'november', 'desember'];
+      const hasMonth = months.some(m => lower.includes(m));
+      if (hasMonth && !lower.includes(systemPeriod.toLowerCase())) {
+        return `${payment.periodMonth} (${systemPeriod})`;
+      }
+      return payment.periodMonth;
+    }
+
+    // For annual fee or standard payment: follow system settings period!
+    return systemPeriod;
+  }
+
+  // If mode === 'payment_date' or default:
+  if (payment.periodMonth && payment.periodMonth.trim()) {
+    return payment.periodMonth.trim();
+  }
+
+  return getSystemConfiguredPeriod(settings);
+};
+
+/**
  * Generates a clean, official, beautifully structured WhatsApp receipt message in Indonesian.
  */
 export const generateReceiptTextMessage = (
@@ -71,6 +154,7 @@ export const generateReceiptTextMessage = (
   const terbilangText = terbilang(payment.amount);
   const tanggalBayar = payment.verifiedAt || payment.createdAt;
   const clusterName = member?.cluster ? ` (Cluster: ${member.cluster})` : '';
+  const effectivePeriod = getEffectivePaymentPeriod(payment, settings);
 
   return `*━━━━━━━━━━━━━━━━━━━━━━━━*
 *🧾 KWITANSI PEMBAYARAN RESMI*
@@ -87,7 +171,7 @@ ${member?.phone ? `📱 No. Terdaftar: *${member.phone}*\n` : ''}
 📄 *No. Kwitansi:* \`${payment.receiptNumber}\`
 📅 *Tanggal & Waktu:* ${tanggalBayar}
 📌 *Jenis Pembayaran:* *${payment.paymentType}*
-🗓️ *Periode:* *${payment.periodMonth}*
+🗓️ *Periode:* *${effectivePeriod}*
 💳 *Metode Bayar:* ${payment.paymentMethod}
 
 💰 *TOTAL NOMINAL DITERIMA:*
@@ -147,9 +231,10 @@ export const buildReceiptValidationUrl = (receiptNumber: string): string => {
 export const generateReceiptQrPayload = (
   payment: Payment,
   member?: Member | null,
-  _settings?: SystemSettings
+  settings?: SystemSettings
 ): string => {
   const validationUrl = buildReceiptValidationUrl(payment.receiptNumber);
+  const effectivePeriod = getEffectivePaymentPeriod(payment, settings);
 
   return JSON.stringify({
     app: 'KWITANSI-PAGUYUBAN',
@@ -157,7 +242,7 @@ export const generateReceiptQrPayload = (
     npa: payment.memberNumber,
     nama: payment.memberName,
     kwitansi: payment.receiptNumber,
-    periode: payment.periodMonth,
+    periode: effectivePeriod,
     nominal: payment.amount,
     status: 'LUNAS',
     cluster: member?.cluster || '—',

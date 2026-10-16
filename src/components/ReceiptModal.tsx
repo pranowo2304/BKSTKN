@@ -12,6 +12,8 @@ import {
   generateReceiptWhatsAppUrl,
   generateReceiptQrPayload,
   buildReceiptValidationUrl,
+  getEffectivePaymentPeriod,
+  getSystemConfiguredPeriod,
 } from '../lib/receiptUtils';
 import {
   X,
@@ -151,10 +153,12 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
       qrCodeDataUrl: qrDataUrl,
     });
 
+    const effectivePeriod = getEffectivePaymentPeriod(activePayment, settings);
     const safeReceipt = (activePayment.receiptNumber || 'KW').replace(/[^a-zA-Z0-9_-]/g, '_');
     const safeNpa = (activePayment.memberNumber || '').replace(/[^a-zA-Z0-9_-]/g, '_');
     const safeName = (activePayment.memberName || 'Warga').replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
-    const filename = `Kwitansi-${safeReceipt}-${safeNpa}-${safeName}.pdf`;
+    const safePeriod = effectivePeriod.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
+    const filename = `Kwitansi-${safeReceipt}-${safeNpa}-${safeName}-${safePeriod}.pdf`;
 
     return { doc, blob: doc.output('blob'), filename };
   };
@@ -373,15 +377,15 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               type="button"
               onClick={handleDownloadPdf}
               disabled={isGeneratingPdf}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl transition-all border border-slate-700 disabled:opacity-50"
-              title="Download Kwitansi format file PDF"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all shadow-md shadow-emerald-950/40 border border-emerald-400/40 hover:scale-105 active:scale-95 disabled:opacity-50 cursor-pointer"
+              title="Unduh Kwitansi resmi berformat PDF bersih & profesional"
             >
               {isGeneratingPdf ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
               ) : (
-                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <FileDown className="w-3.5 h-3.5 text-white" />
               )}
-              <span className="hidden sm:inline">Download PDF</span>
+              <span>Unduh PDF</span>
             </button>
             <button
               type="button"
@@ -477,6 +481,21 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
                 <button
                   type="button"
+                  onClick={handleDownloadPdf}
+                  disabled={isGeneratingPdf}
+                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-emerald-950 text-xs font-black rounded-lg transition-all shadow-sm hover:scale-105 active:scale-95 inline-flex items-center gap-1.5 border border-emerald-300 disabled:opacity-50 cursor-pointer"
+                  title="Unduh berkas dokumen PDF Kwitansi resmi ke komputer / perangkat"
+                >
+                  {isGeneratingPdf ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-700" />
+                  ) : (
+                    <FileDown className="w-3.5 h-3.5 text-emerald-700" />
+                  )}
+                  <span>Unduh PDF</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={handleSharePdfToWhatsApp}
                   disabled={isSharingFile}
                   className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 text-emerald-100 hover:text-white text-xs font-bold rounded-lg border border-emerald-600 transition-all inline-flex items-center gap-1.5 disabled:opacity-50"
@@ -547,6 +566,48 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
         {/* PRINTABLE RECEIPT CONTENT */}
         <div className="p-4 sm:p-8 bg-slate-50/50 print:p-0 print:bg-white" id="receipt-printable">
+          {/* Quick Print & Download Action Banner (Screen only) */}
+          <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2.5 p-3 bg-white rounded-xl border border-slate-200 shadow-2xs print:hidden text-xs">
+            <div className="flex items-center gap-2.5 text-slate-700">
+              <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-800 shrink-0 border border-emerald-300">
+                <FileDown className="w-4 h-4 text-emerald-700" />
+              </div>
+              <div>
+                <span className="font-bold text-slate-900 block leading-tight">
+                  Format Cetak Kwitansi Resmi Bersih & Profesional (A4)
+                </span>
+                <span className="text-slate-500 text-[11px]">
+                  Dilengkapi QR otentikasi digital, stempel kas paguyuban, dan tanda tangan sah.
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadPdf}
+                disabled={isGeneratingPdf}
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl transition-all inline-flex items-center gap-1.5 shadow-sm hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50"
+                title="Unduh berkas dokumen PDF Kwitansi Resmi"
+              >
+                {isGeneratingPdf ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <FileDown className="w-3.5 h-3.5" />
+                )}
+                <span>Unduh PDF Resmi</span>
+              </button>
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all inline-flex items-center gap-1.5 border border-slate-300 shadow-2xs cursor-pointer"
+                title="Cetak langsung ke printer fisik atau simpan PDF browser"
+              >
+                <Printer className="w-3.5 h-3.5 text-slate-600" />
+                <span>Cetak Kwitansi</span>
+              </button>
+            </div>
+          </div>
+
           <div 
             id="receipt-printable-card"
             className="bg-white border-2 border-slate-300 rounded-xl p-5 sm:p-8 relative shadow-sm overflow-hidden print:border-none print:shadow-none"
@@ -557,37 +618,45 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               <ShieldCheck className="w-64 h-64 text-emerald-800" />
             </div>
 
-            {/* Receipt Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-5 sm:pb-6 border-b-2 border-slate-800 gap-4">
-              <div className="flex items-center gap-3.5">
-                {settings.logoUrl ? (
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-white border border-slate-200 p-1 flex items-center justify-center shrink-0 shadow-2xs">
-                    <img
-                      src={settings.logoUrl}
-                      alt={settings.communityName}
-                      className="max-h-full max-w-full object-contain"
-                      referrerPolicy="no-referrer"
-                    />
+            {/* Receipt Header (Kop Surat Resmi: Background Putih, Tulisan Hitam) */}
+            <div className="bg-white pb-3 sm:pb-4 border-b-2 border-black">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="flex items-center gap-3.5">
+                  {settings.logoUrl ? (
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-white border-2 border-black p-1 flex items-center justify-center shrink-0 shadow-2xs">
+                      <img
+                        src={settings.logoUrl}
+                        alt={settings.communityName}
+                        className="max-h-full max-w-full object-contain"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-12 h-12 rounded-xl bg-white border-2 border-black flex items-center justify-center text-black shrink-0">
+                      <HeartHandshake className="w-6 h-6 text-black" />
+                    </div>
+                  )}
+                  <div>
+                    <h2 className="text-base sm:text-xl font-black text-black tracking-tight uppercase leading-tight">
+                      {settings.communityName}
+                    </h2>
+                    <p className="text-xs text-black font-semibold mt-1 max-w-md">{settings.communityAddress}</p>
+                    <p className="text-[11px] text-black font-medium mt-0.5">Pengelola Dana Kematian Masyarakat • Transparan, Amanah & Akuntabel</p>
                   </div>
-                ) : (
-                  <div className="w-12 h-12 rounded-xl bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-800 shrink-0">
-                    <HeartHandshake className="w-6 h-6" />
+                </div>
+                <div className="text-left sm:text-right border-t sm:border-t-0 pt-2.5 sm:pt-0 w-full sm:w-auto border-black shrink-0">
+                  <div className="inline-block px-3 py-1 bg-white border-2 border-black text-black text-xs font-black rounded-md uppercase tracking-wider mb-1">
+                    KWITANSI RESMI
                   </div>
-                )}
-                <div>
-                  <h2 className="text-base sm:text-xl font-extrabold text-slate-900 tracking-tight uppercase">
-                    {settings.communityName}
-                  </h2>
-                  <p className="text-xs text-slate-600 mt-0.5 sm:mt-1 max-w-md">{settings.communityAddress}</p>
-                  <p className="text-[11px] text-emerald-700 font-bold mt-0.5">Pengelola Dana Kematian Masyarakat</p>
+                  <p className="font-mono text-sm font-black text-black">No. {activePayment.receiptNumber}</p>
+                  <p className="text-[11px] text-black font-semibold mt-0.5">Tgl: {activePayment.verifiedAt || activePayment.createdAt}</p>
                 </div>
               </div>
-              <div className="text-left sm:text-right border-t sm:border-t-0 pt-2.5 sm:pt-0 w-full sm:w-auto border-slate-200 shrink-0">
-                <div className="inline-block px-3 py-1 bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-bold rounded-md uppercase tracking-wider mb-1">
-                  KWITANSI RESMI
-                </div>
-                <p className="font-mono text-sm font-bold text-slate-800">{activePayment.receiptNumber}</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">Tgl: {activePayment.verifiedAt || activePayment.createdAt}</p>
+
+              {/* Garis Ganda Kop Surat Resmi Indonesia (Hitam) */}
+              <div className="mt-3.5 sm:mt-4">
+                <div className="h-[2.5px] bg-black w-full"></div>
+                <div className="h-[1px] bg-black w-full mt-[2px]"></div>
               </div>
             </div>
 
@@ -609,9 +678,20 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 border-b border-slate-100 pb-3">
                 <span className="text-slate-500 font-medium">Untuk Pembayaran</span>
-                <span className="sm:col-span-2 font-medium text-slate-900">
-                  {activePayment.paymentType} — <span className="font-bold text-slate-800">{activePayment.periodMonth}</span>
-                </span>
+                <div className="sm:col-span-2">
+                  <div className="flex flex-wrap items-center gap-1.5 font-medium text-slate-900">
+                    <span>{activePayment.paymentType}</span>
+                    <span>—</span>
+                    <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                      {getEffectivePaymentPeriod(activePayment, settings)}
+                    </span>
+                    {settings?.membershipPeriod && (
+                      <span className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md font-bold border border-emerald-200 print:hidden">
+                        ✓ Sesuai Pengaturan Sistem
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 border-b border-slate-100 pb-3">
@@ -636,8 +716,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               </div>
             </div>
 
-            {/* Footer Signature & QR Code */}
-            <div className="mt-6 sm:mt-8 pt-5 sm:pt-6 border-t-2 border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-5 items-end">
+            {/* Footer Signature, Stempel Sah & QR Code */}
+            <div className="mt-6 sm:mt-8 pt-5 sm:pt-6 border-t-2 border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-5 items-center">
               <div>
                 {/* Real QR Code of Member Number (NPA) & Transaction Verification */}
                 <div className="flex items-center gap-3.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
@@ -650,8 +730,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                       bgColor="#FFFFFF"
                       fgColor="#022c22"
                     />
-                    {/* Hidden high-res canvas used for direct vector PDF export */}
-                    <div className="hidden">
+                    {/* High-res off-screen canvas used for direct vector PDF export */}
+                    <div style={{ position: 'fixed', left: -9999, top: -9999, opacity: 0, pointerEvents: 'none' }}>
                       <QRCodeCanvas
                         ref={qrCanvasRef}
                         value={receiptQrPayload}
@@ -684,7 +764,34 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 </div>
               </div>
 
-              <div className="text-right flex flex-col items-end min-w-[220px]">
+              {/* STEMPEL SAH RESMI (NAMA PAGUYUBAN SESUAI PENGATURAN SYSTEM) */}
+              <div className="flex flex-col items-center justify-center py-1 sm:py-2">
+                <div className="relative w-32 h-32 rounded-full border-[2.5px] border-emerald-600 p-1 flex items-center justify-center shadow-xs -rotate-3 transition-transform hover:rotate-0 select-none bg-emerald-50/30">
+                  {/* Inner ring */}
+                  <div className="w-full h-full rounded-full border border-emerald-500/80 flex flex-col items-center justify-center p-1.5 text-center">
+                    {/* Nama Paguyuban dari Pengaturan System */}
+                    <span className="text-[9px] font-black text-emerald-800 tracking-tight leading-tight uppercase px-1 line-clamp-2">
+                      ★ {settings.communityName || 'PAGUYUBAN DANA KEMATIAN'} ★
+                    </span>
+                    <div className="w-4/5 h-[1.5px] bg-emerald-600 my-1"></div>
+                    <span className="text-xs font-black text-emerald-700 tracking-wider">
+                      LUNAS & SAH
+                    </span>
+                    <span className="text-[8px] font-bold text-slate-900 uppercase tracking-tighter mt-0.5">
+                      KAS DANA KEMATIAN
+                    </span>
+                    <div className="w-4/5 h-[1.5px] bg-emerald-600 my-1"></div>
+                    <span className="text-[7.5px] font-bold text-emerald-800 tracking-wider">
+                      TERVERIFIKASI RESMI
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[9px] font-extrabold text-emerald-800 mt-1 uppercase tracking-wider print:hidden">
+                  Stempel Sah Kas Paguyuban
+                </span>
+              </div>
+
+              <div className="text-right flex flex-col items-end min-w-[200px]">
                 <p className="text-[11px] text-slate-500">
                   {settings.communityAddress ? settings.communityAddress.split(',')[0] : 'Jakarta'}, {activePayment.verifiedAt ? activePayment.verifiedAt.split(' ')[0] : (activePayment.createdAt ? activePayment.createdAt.split(' ')[0] : '—')}
                 </p>
@@ -696,7 +803,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 <div className="my-1.5 flex flex-col items-end">
                   {activePayment.adminSignature || settings.defaultAdminSignature ? (
                     <div className="flex flex-col items-end">
-                      <div className="h-16 sm:h-20 w-44 flex items-center justify-center p-1 border border-dashed border-slate-300 rounded-lg bg-slate-50/60 overflow-hidden">
+                      <div className="h-16 sm:h-20 w-40 flex items-center justify-center p-1 border border-dashed border-slate-300 rounded-lg bg-slate-50/60 overflow-hidden">
                         <img
                           src={activePayment.adminSignature || settings.defaultAdminSignature}
                           alt="Tanda Tangan Digital Verifikasi"
@@ -848,22 +955,18 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               type="button"
               onClick={handleDownloadPdf}
               disabled={isGeneratingPdf}
-              className={`px-4 py-2 text-xs sm:text-sm font-extrabold rounded-xl transition-all inline-flex items-center justify-center gap-1.5 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-50 ${
-                !canSendReceipt
-                  ? 'text-white bg-emerald-600 hover:bg-emerald-500 shadow-md shadow-emerald-950/20'
-                  : 'text-emerald-900 bg-emerald-100 hover:bg-emerald-200 hover:text-emerald-950 border border-emerald-300'
-              }`}
-              title="Unduh kwitansi resmi langsung dalam bentuk file dokumen PDF"
+              className="px-4 py-2 text-xs sm:text-sm font-extrabold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-xl transition-all inline-flex items-center justify-center gap-1.5 shadow-md shadow-emerald-950/20 border border-emerald-400/30 hover:scale-105 active:scale-95 disabled:opacity-50 cursor-pointer"
+              title="Unduh kwitansi pembayaran resmi dalam bentuk dokumen PDF format bersih & profesional"
             >
               {isGeneratingPdf ? (
                 <>
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Mengunduh...</span>
+                  <span>Menyiapkan PDF...</span>
                 </>
               ) : (
                 <>
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download PDF</span>
+                  <FileDown className="w-4 h-4 text-emerald-100" />
+                  <span>Unduh PDF Resmi</span>
                 </>
               )}
             </button>

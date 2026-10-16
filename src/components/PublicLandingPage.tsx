@@ -16,6 +16,7 @@ import { formatIDR } from '../lib/storage';
 import { calculateMemberExpiry } from '../lib/expiryUtils';
 import { getMemberKtaIssuanceInfo } from '../lib/ktaUtils';
 import { checkDuplicateMember, findDuplicateNikMember, findDuplicateKkMember } from '../lib/duplicateValidator';
+import { getSystemConfiguredPeriod } from '../lib/receiptUtils';
 import { FamilyCardUploader } from './FamilyCardUploader';
 import {
   HeartHandshake,
@@ -612,8 +613,8 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
       memberName: payingMember.name,
       memberNumber: payingMember.memberNumber,
       paymentType: payType,
-      periodMonth: `Tahun ${currentYear}`,
-      periodYear: `${currentYear}`,
+      periodMonth: getSystemConfiguredPeriod(settings),
+      periodYear: settings?.membershipPeriod?.activePeriodYear || `${currentYear}`,
       amount: payAmount,
       paymentMethod: payMethod,
       proofImageUrl: payProofImage || undefined,

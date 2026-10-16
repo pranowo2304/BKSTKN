@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Member, Payment, SystemSettings, PaymentType, PaymentMethod, AppUser } from '../types';
 import { formatIDR, getMemberForUser } from '../lib/storage';
+import { getSystemConfiguredPeriod } from '../lib/receiptUtils';
 import {
   CreditCard,
   Upload,
@@ -65,9 +66,17 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
     if (myLinkedMember) return myLinkedMember.id;
     return selectableMembers[0]?.id || '';
   });
+  const systemPeriod = useMemo(() => getSystemConfiguredPeriod(settings), [settings]);
   const [paymentType, setPaymentType] = useState<PaymentType>('Iuran Tahunan');
-  const [periodMonth, setPeriodMonth] = useState('Tahun 2026');
+  const [periodMonth, setPeriodMonth] = useState(() => systemPeriod);
   const [amount, setAmount] = useState<number>(settings.annualFeeAmount || 300000);
+
+  // Sync default period if settings change
+  useEffect(() => {
+    if (systemPeriod) {
+      setPeriodMonth(systemPeriod);
+    }
+  }, [systemPeriod]);
 
   // Dynamic payment methods adjusted to registered bank accounts in system settings
   const paymentMethodOptions = useMemo(() => {
@@ -584,23 +593,52 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                       onChange={(e) => setPeriodMonth(e.target.value)}
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none font-medium"
                     />
-                    <div className="flex flex-wrap items-center gap-1 text-[10px]">
+                    <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
                       <span className="text-slate-400 font-semibold">Pilih Cepat:</span>
-                      {['Tahun 2026', 'Tahun 2027', 'Tahun 2025'].map((yr) => (
-                        <button
-                          key={yr}
-                          type="button"
-                          onClick={() => setPeriodMonth(yr)}
-                          className={`px-2 py-0.5 rounded border transition-colors ${
-                            periodMonth === yr 
-                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold' 
-                              : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
-                          }`}
-                        >
-                          {yr}
-                        </button>
-                      ))}
+                      {(() => {
+                        const items: string[] = [];
+                        if (systemPeriod) items.push(systemPeriod);
+                        const curYear = new Date().getFullYear();
+                        const baseYear = settings?.membershipPeriod?.activePeriodYear 
+                          ? Number(settings.membershipPeriod.activePeriodYear) || curYear 
+                          : curYear;
+                        const nextY = `Tahun ${baseYear + 1}`;
+                        const prevY = `Tahun ${baseYear - 1}`;
+                        if (!items.includes(`Tahun ${baseYear}`)) items.push(`Tahun ${baseYear}`);
+                        if (!items.includes(nextY)) items.push(nextY);
+                        if (!items.includes(prevY)) items.push(prevY);
+
+                        return items.map((opt) => {
+                          const isConfigured = opt === systemPeriod;
+                          const isSelected = periodMonth === opt;
+                          return (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => setPeriodMonth(opt)}
+                              className={`px-2 py-0.5 rounded-lg border transition-all inline-flex items-center gap-1 ${
+                                isSelected
+                                  ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-2xs'
+                                  : isConfigured
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold hover:bg-emerald-100'
+                                  : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                              }`}
+                            >
+                              <span>{opt}</span>
+                              {isConfigured && !isSelected && (
+                                <span className="text-[9px] text-emerald-600 font-bold">(Pengaturan Sistem)</span>
+                              )}
+                            </button>
+                          );
+                        });
+                      })()}
                     </div>
+                    {settings?.membershipPeriod && (
+                      <p className="text-[11px] text-emerald-700 font-medium flex items-center gap-1 mt-0.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>Kwitansi resmi akan mencatat periode pembayaran sesuai Pengaturan Sistem: <strong>{systemPeriod}</strong></span>
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
