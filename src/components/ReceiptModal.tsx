@@ -310,7 +310,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         }
       `}</style>
 
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-200 my-6 sm:my-8 print:my-0 print:border-none print:shadow-none print:max-w-none print:w-full">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl sm:max-w-4xl overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-200 my-6 sm:my-8 print:my-0 print:border-none print:shadow-none print:max-w-none print:w-full">
         
         {/* Top Control Header */}
         <div className="bg-slate-900 text-white px-4 sm:px-6 py-3.5 flex items-center justify-between print:hidden border-b border-slate-800">
@@ -621,7 +621,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             {/* Receipt Header (Kop Surat Resmi: Background Putih, Tulisan Hitam) */}
             <div className="bg-white pb-3 sm:pb-4 border-b-2 border-black">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div className="flex items-center gap-3.5">
+                <div className="flex items-center gap-3.5 min-w-0 flex-1">
                   {settings.logoUrl ? (
                     <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-white border-2 border-black p-1 flex items-center justify-center shrink-0 shadow-2xs">
                       <img
@@ -636,11 +636,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                       <HeartHandshake className="w-6 h-6 text-black" />
                     </div>
                   )}
-                  <div>
-                    <h2 className="text-base sm:text-xl font-black text-black tracking-tight uppercase leading-tight">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-base sm:text-xl font-black text-black tracking-tight uppercase leading-tight break-words">
                       {settings.communityName}
                     </h2>
-                    <p className="text-xs text-black font-semibold mt-1 max-w-md">{settings.communityAddress}</p>
+                    <p className="text-xs text-black font-semibold mt-1 break-words line-clamp-2">{settings.communityAddress}</p>
                     <p className="text-[11px] text-black font-medium mt-0.5">Pengelola Dana Kematian Masyarakat • Transparan, Amanah & Akuntabel</p>
                   </div>
                 </div>
@@ -676,17 +676,17 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 border-b border-slate-100 pb-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 border-b border-slate-100 pb-3 items-baseline">
                 <span className="text-slate-500 font-medium">Untuk Pembayaran</span>
-                <div className="sm:col-span-2">
+                <div className="sm:col-span-2 min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5 font-medium text-slate-900">
-                    <span>{activePayment.paymentType}</span>
-                    <span>—</span>
-                    <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                    <span className="font-semibold">{activePayment.paymentType}</span>
+                    <span className="text-slate-400">—</span>
+                    <span className="font-bold text-slate-900 bg-slate-100 px-2.5 py-0.5 rounded-md border border-slate-200 text-xs sm:text-sm break-words">
                       {getEffectivePaymentPeriod(activePayment, settings)}
                     </span>
                     {settings?.membershipPeriod && (
-                      <span className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md font-bold border border-emerald-200 print:hidden">
+                      <span className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md font-bold border border-emerald-200 print:hidden whitespace-nowrap">
                         ✓ Sesuai Pengaturan Sistem
                       </span>
                     )}
@@ -703,28 +703,28 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             </div>
 
             {/* Total Amount Box */}
-            <div className="my-4 bg-slate-900 text-white rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="my-4 bg-slate-900 text-white rounded-xl p-4 flex flex-col sm:flex-row print:flex-row items-start sm:items-center print:items-center justify-between gap-3 print:bg-white print:text-black print:border-2 print:border-black">
               <div>
-                <p className="text-[11px] text-slate-300 font-medium uppercase tracking-wider">Total Nominal Terbayar</p>
-                <p className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono mt-0.5">
+                <p className="text-[11px] text-slate-300 print:text-slate-600 font-medium uppercase tracking-wider">Total Nominal Terbayar</p>
+                <p className="text-2xl sm:text-3xl font-black text-emerald-400 print:text-black font-mono mt-0.5">
                   {formatIDR(activePayment.amount)}
                 </p>
               </div>
-              <div className="flex items-center gap-2 bg-emerald-900/60 border border-emerald-500/40 px-3 py-1.5 rounded-lg text-emerald-300 text-xs font-semibold">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <div className="flex items-center gap-2 bg-emerald-900/60 print:bg-emerald-50 border border-emerald-500/40 print:border-emerald-600 px-3 py-1.5 rounded-lg text-emerald-300 print:text-emerald-800 text-xs font-semibold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 print:text-emerald-600" />
                 <span>LUNAS & TERVERIFIKASI</span>
               </div>
             </div>
 
             {/* Footer Signature, Stempel Sah & QR Code */}
-            <div className="mt-6 sm:mt-8 pt-5 sm:pt-6 border-t-2 border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-5 items-center">
-              <div>
+            <div className="mt-6 sm:mt-8 pt-5 sm:pt-6 border-t-2 border-slate-800 grid grid-cols-1 md:grid-cols-3 print:grid-cols-3 gap-5 items-center">
+              <div className="min-w-0">
                 {/* Real QR Code of Member Number (NPA) & Transaction Verification */}
-                <div className="flex items-center gap-3.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                  <div className="p-1.5 bg-white rounded-lg border border-slate-300 shadow-xs shrink-0 flex items-center justify-center">
+                <div className="flex items-center gap-3 bg-slate-50 p-2.5 rounded-xl border border-slate-200 min-w-0 overflow-hidden">
+                  <div className="p-1 bg-white rounded-lg border border-slate-300 shadow-xs shrink-0 flex items-center justify-center">
                     <QRCodeSVG
                       value={receiptQrPayload}
-                      size={68}
+                      size={58}
                       level="M"
                       includeMargin={false}
                       bgColor="#FFFFFF"
@@ -743,76 +743,123 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                       />
                     </div>
                   </div>
-                  <div className="text-[10px] text-slate-600 space-y-0.5">
+                  <div className="text-[10px] text-slate-600 space-y-0.5 min-w-0 flex-1 overflow-hidden">
                     <div className="flex items-center gap-1">
-                      <QrCode className="w-3 h-3 text-emerald-700" />
-                      <span className="font-bold uppercase tracking-wider text-emerald-800 text-[9px]">
-                        QR Code Validasi Resmi
+                      <QrCode className="w-3 h-3 text-emerald-700 shrink-0" />
+                      <span className="font-bold uppercase tracking-wider text-emerald-800 text-[9px] truncate">
+                        QR Validasi Resmi
                       </span>
                     </div>
-                    <p className="font-mono font-bold text-slate-900 text-xs">
+                    <p className="font-mono font-bold text-slate-900 text-xs truncate">
                       NPA: {activePayment.memberNumber}
                     </p>
-                    <p className="text-[9px] text-slate-500 font-mono">
-                      No. Kwitansi: {activePayment.receiptNumber}
+                    <p className="text-[9px] text-slate-500 font-mono truncate">
+                      No: {activePayment.receiptNumber}
                     </p>
-                    <p className="text-emerald-700 font-bold text-[9px] flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
-                      Status: Lunas & Terverifikasi
+                    <p className="text-emerald-700 font-bold text-[9px] flex items-center gap-1 truncate">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block shrink-0"></span>
+                      <span>Lunas & Terverifikasi</span>
                     </p>
                   </div>
                 </div>
               </div>
 
-              {/* STEMPEL SAH RESMI (NAMA PAGUYUBAN SESUAI PENGATURAN SYSTEM) */}
-              <div className="flex flex-col items-center justify-center py-1 sm:py-2">
-                <div className="relative w-32 h-32 rounded-full border-[2.5px] border-emerald-600 p-1 flex items-center justify-center shadow-xs -rotate-3 transition-transform hover:rotate-0 select-none bg-emerald-50/30">
-                  {/* Inner ring */}
-                  <div className="w-full h-full rounded-full border border-emerald-500/80 flex flex-col items-center justify-center p-1.5 text-center">
-                    {/* Nama Paguyuban dari Pengaturan System */}
-                    <span className="text-[9px] font-black text-emerald-800 tracking-tight leading-tight uppercase px-1 line-clamp-2">
-                      ★ {settings.communityName || 'PAGUYUBAN DANA KEMATIAN'} ★
-                    </span>
-                    <div className="w-4/5 h-[1.5px] bg-emerald-600 my-1"></div>
-                    <span className="text-xs font-black text-emerald-700 tracking-wider">
-                      LUNAS & SAH
-                    </span>
-                    <span className="text-[8px] font-bold text-slate-900 uppercase tracking-tighter mt-0.5">
-                      KAS DANA KEMATIAN
-                    </span>
-                    <div className="w-4/5 h-[1.5px] bg-emerald-600 my-1"></div>
-                    <span className="text-[7.5px] font-bold text-emerald-800 tracking-wider">
-                      TERVERIFIKASI RESMI
-                    </span>
-                  </div>
-                </div>
-                <span className="text-[9px] font-extrabold text-emerald-800 mt-1 uppercase tracking-wider print:hidden">
-                  Stempel Sah Kas Paguyuban
-                </span>
+              {/* STEMPEL SAH RESMI (NAMA PAGUYUBAN SESUAI PENGATURAN SYSTEM - VECTOR SVG DENGAN TEKS LENGKUNG PROPORSIONAL) */}
+              <div className="flex flex-col items-center justify-center py-1">
+                {(() => {
+                  const stampCommunityName = (settings.communityName || 'PAGUYUBAN DANA KEMATIAN').trim().toUpperCase();
+                  const nameLen = stampCommunityName.length;
+                  const arcFontSize = nameLen > 36 ? '6.2' : nameLen > 24 ? '7.2' : '8.2';
+                  return (
+                    <div className="relative flex flex-col items-center select-none">
+                      <svg
+                        viewBox="0 0 140 140"
+                        className="w-28 h-28 sm:w-32 sm:h-32 select-none -rotate-2 hover:rotate-0 transition-transform shrink-0 drop-shadow-2xs"
+                        aria-label={`Stempel Sah ${stampCommunityName}`}
+                      >
+                        <defs>
+                          {/* Top Arc for Community Name */}
+                          <path id="stamp-top-arc" d="M 20,70 A 50,50 0 0,1 120,70" fill="none" />
+                          {/* Bottom Arc for Verification */}
+                          <path id="stamp-bottom-arc" d="M 120,70 A 50,50 0 0,1 20,70" fill="none" />
+                        </defs>
+
+                        {/* Outer Double Ring */}
+                        <circle cx="70" cy="70" r="66" fill="#ecfdf5" fillOpacity="0.45" stroke="#059669" strokeWidth="2.5" />
+                        <circle cx="70" cy="70" r="59" fill="none" stroke="#10b981" strokeWidth="1" />
+
+                        {/* Curved Community Name along Top Arc */}
+                        <text
+                          fontSize={arcFontSize}
+                          fontWeight="900"
+                          fill="#047857"
+                          textAnchor="middle"
+                          style={{ letterSpacing: '0.4px' }}
+                        >
+                          <textPath href="#stamp-top-arc" startOffset="50%">
+                            ★ {stampCommunityName} ★
+                          </textPath>
+                        </text>
+
+                        {/* Center Inner Divider Lines (Length 76, safe inside circle) */}
+                        <line x1="32" y1="53" x2="108" y2="53" stroke="#059669" strokeWidth="1.2" />
+
+                        {/* Center Status: LUNAS & SAH */}
+                        <text x="70" y="67" textAnchor="middle" fontSize="12" fontWeight="900" fill="#047857" letterSpacing="0.8px">
+                          LUNAS &amp; SAH
+                        </text>
+                        {/* Center Status: KAS DANA KEMATIAN */}
+                        <text x="70" y="79" textAnchor="middle" fontSize="7.5" fontWeight="800" fill="#0f172a" letterSpacing="0.4px">
+                          KAS DANA KEMATIAN
+                        </text>
+
+                        {/* Center Inner Divider Lines */}
+                        <line x1="32" y1="85" x2="108" y2="85" stroke="#059669" strokeWidth="1.2" />
+
+                        {/* Curved Verification Text along Bottom Arc */}
+                        <text
+                          fontSize="7"
+                          fontWeight="800"
+                          fill="#047857"
+                          textAnchor="middle"
+                          style={{ letterSpacing: '0.8px' }}
+                        >
+                          <textPath href="#stamp-bottom-arc" startOffset="50%">
+                            TERVERIFIKASI RESMI
+                          </textPath>
+                        </text>
+                      </svg>
+                      <span className="text-[9px] font-extrabold text-emerald-800 mt-1 uppercase tracking-wider print:hidden">
+                        Stempel Sah Kas Paguyuban
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
-              <div className="text-right flex flex-col items-end min-w-[200px]">
-                <p className="text-[11px] text-slate-500">
+              {/* Tanda Tangan Digital & Bendahara */}
+              <div className="text-left md:text-right print:text-right flex flex-col items-start md:items-end print:items-end min-w-0 max-w-full">
+                <p className="text-[11px] text-slate-500 truncate max-w-full block">
                   {settings.communityAddress ? settings.communityAddress.split(',')[0] : 'Jakarta'}, {activePayment.verifiedAt ? activePayment.verifiedAt.split(' ')[0] : (activePayment.createdAt ? activePayment.createdAt.split(' ')[0] : '—')}
                 </p>
-                <p className="text-xs font-semibold text-slate-700 mt-0.5">
+                <p className="text-xs font-semibold text-slate-700 mt-0.5 truncate max-w-full block">
                   {activePayment.adminSignerTitle || 'Bendahara / Pengurus Dana'}
                 </p>
 
                 {/* Digital Signature Container */}
-                <div className="my-1.5 flex flex-col items-end">
+                <div className="my-1.5 flex flex-col items-start md:items-end print:items-end">
                   {activePayment.adminSignature || settings.defaultAdminSignature ? (
-                    <div className="flex flex-col items-end">
-                      <div className="h-16 sm:h-20 w-40 flex items-center justify-center p-1 border border-dashed border-slate-300 rounded-lg bg-slate-50/60 overflow-hidden">
+                    <div className="flex flex-col items-start md:items-end print:items-end">
+                      <div className="h-14 sm:h-16 w-36 sm:w-40 flex items-center justify-center p-1 border border-dashed border-slate-300 rounded-lg bg-slate-50/60 overflow-hidden">
                         <img
                           src={activePayment.adminSignature || settings.defaultAdminSignature}
                           alt="Tanda Tangan Digital Verifikasi"
                           className="max-h-full max-w-full object-contain"
                         />
                       </div>
-                      <div className="flex items-center gap-1 justify-end mt-1 text-[9px] font-black text-emerald-700">
+                      <div className="flex items-center gap-1 justify-end mt-1 text-[8.5px] font-black text-emerald-700">
                         <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-                        <span>TTD DIGITAL RESMI TERVERIFIKASI</span>
+                        <span>TTD DIGITAL RESMI</span>
                       </div>
 
                       {canSendReceipt && (
@@ -828,7 +875,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                       )}
                     </div>
                   ) : (
-                    <div className="py-1 flex flex-col items-end">
+                    <div className="py-1 flex flex-col items-start md:items-end print:items-end">
                       {canSendReceipt && (
                         <button
                           type="button"
@@ -841,8 +888,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                         </button>
                       )}
 
-                      <div className="h-9 flex items-center justify-end my-1">
-                        <div className="border-2 border-emerald-600 bg-emerald-50 text-emerald-900 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider rotate-[-2deg] shadow-xs">
+                      <div className="h-8 flex items-center justify-end my-0.5">
+                        <div className="border-2 border-emerald-600 bg-emerald-50 text-emerald-900 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider rotate-[-2deg] shadow-xs">
                           ✓ TERVERIFIKASI SAH
                         </div>
                       </div>
@@ -850,14 +897,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   )}
                 </div>
 
-                <p className="text-xs font-bold text-slate-900 underline">
+                <p className="text-xs sm:text-sm font-bold text-slate-900 underline truncate max-w-full block">
                   {activePayment.adminSignerName || settings?.treasurerName}
                 </p>
                 {settings?.treasurerPhone && (
-                  <p className="text-[10px] text-slate-500 font-mono">{settings.treasurerPhone}</p>
+                  <p className="text-[10px] sm:text-xs text-slate-500 font-mono truncate max-w-full block">{settings.treasurerPhone}</p>
                 )}
                 {activePayment.adminSignatureDate && (
-                  <p className="text-[9px] text-slate-400 font-mono mt-0.5">
+                  <p className="text-[9px] text-slate-400 font-mono mt-0.5 truncate max-w-full block">
                     Disahkan: {activePayment.adminSignatureDate}
                   </p>
                 )}
