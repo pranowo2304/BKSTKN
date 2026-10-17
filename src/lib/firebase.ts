@@ -628,6 +628,28 @@ export async function deleteMemberFromCloud(memberId: string): Promise<void> {
   const ref = doc(db, COLLECTIONS.MEMBERS, memberId);
   try {
     await deleteDoc(ref);
+
+    // Also remove associated user account from Firestore
+    try {
+      const usersSnap = await getDocs(collection(db, COLLECTIONS.USERS));
+      const userBatch = writeBatch(db);
+      let foundUser = false;
+      usersSnap.forEach((uDoc) => {
+        const uData = uDoc.data();
+        if (
+          uDoc.id === `usr-mem-${memberId}` ||
+          uData.memberId === memberId
+        ) {
+          userBatch.delete(uDoc.ref);
+          foundUser = true;
+        }
+      });
+      if (foundUser) {
+        await userBatch.commit();
+      }
+    } catch (userErr) {
+      console.warn(`Notice while deleting user for member ${memberId}:`, userErr);
+    }
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.DELETE, `${COLLECTIONS.MEMBERS}/${memberId}`);

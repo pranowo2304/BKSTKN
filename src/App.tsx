@@ -1937,7 +1937,7 @@ export default function App() {
             onResetBenefits={handleResetBenefits}
             onResetData={handleResetData}
             onClearTransactions={handleClearTransactions}
-            onClearDemoData={handleClearTransactions}
+            onClearDemoData={handleClearAllDemoData}
             onClearClaims={handleClearClaims}
             onNavigateToUsers={() => setCurrentTab('users')}
             onClose={() => setCurrentTab('dashboard')}

@@ -976,8 +976,8 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
         memberCount={memberCount}
         paymentCount={paymentCount}
         claimCount={claimCount}
-        onClearTransactions={onClearTransactions || onClearDemoData}
-        onClearDemoData={onClearTransactions || onClearDemoData}
+        onClearTransactions={onClearTransactions}
+        onClearDemoData={onClearDemoData || onClearTransactions}
         onRestoreDemoData={onResetData}
         onClearClaims={onClearClaims}
       />

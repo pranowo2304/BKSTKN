@@ -257,9 +257,26 @@ export const createMemberUser = (member: Member, customEmail?: string, customPas
 };
 
 export const syncMembersToUsers = (members: Member[] = [], existingUsers: AppUser[] = []): AppUser[] => {
-  const usersList = Array.isArray(existingUsers) ? [...existingUsers] : [];
+  if (!Array.isArray(existingUsers)) return [];
+
+  // Filter out any 'Anggota' user accounts whose registration was deleted
+  const validMemberIds = new Set(members.filter(Boolean).map((m) => m.id));
+  const validMemberNumbers = new Set(members.filter(Boolean).map((m) => m.memberNumber));
+  const validEmails = new Set(members.filter(Boolean).map((m) => m.email?.toLowerCase()).filter(Boolean) as string[]);
+
+  const usersList = existingUsers.filter((u) => {
+    if (!u) return false;
+    // Core staff/admin users are always preserved
+    if (u.authority !== 'Anggota') return true;
+    // Check if member registration still exists
+    if (u.memberId && validMemberIds.has(u.memberId)) return true;
+    if (u.memberNumber && validMemberNumbers.has(u.memberNumber)) return true;
+    if (u.email && validEmails.has(u.email.toLowerCase())) return true;
+    return false;
+  });
+
   if (!Array.isArray(members)) return usersList;
-  
+
   members.forEach((m) => {
     if (!m) return;
     const existingIndex = usersList.findIndex(

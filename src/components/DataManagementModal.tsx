@@ -42,11 +42,32 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
 }) => {
   const [confirmClearTransactionsStep, setConfirmClearTransactionsStep] = useState(false);
   const [confirmClearClaimsStep, setConfirmClearClaimsStep] = useState(false);
+  const [confirmClearAllStep, setConfirmClearAllStep] = useState(false);
   const [showAdvancedTesting, setShowAdvancedTesting] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  // Bersihkan Seluruh Data (Registrasi Warga, User Anggota, Pembayaran, & Realisasi Manfaat)
+  const handleClearAllData = async () => {
+    if (!onClearDemoData) return;
+    try {
+      setIsProcessing(true);
+      await onClearDemoData();
+      setConfirmClearAllStep(false);
+      setActionSuccess('Seluruh data registrasi warga, akun user anggota, pembayaran, dan realisasi manfaat berhasil dibersihkan.');
+      setTimeout(() => {
+        setActionSuccess(null);
+        onClose();
+      }, 2200);
+    } catch (error) {
+      console.error('Failed to clear all data in Firebase:', error);
+      alert('Gagal membersihkan data di database Firebase. Silakan periksa koneksi dan coba lagi.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   // Hapus Data Transaksi di Database Firebase
   const handleClearTransactions = async () => {
@@ -198,7 +219,85 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
             </div>
           </div>
 
-          {/* Action 1: Hapus Data Transaksi di Database Firebase (Fitur Utama Pengganti Hapus Data Demo) */}
+          {/* Action 1: Bersihkan Seluruh Data (Registrasi Warga, User Anggota, Pembayaran, & Realisasi Manfaat) */}
+          <div className="border-2 border-red-400 bg-red-50/60 rounded-2xl p-5 space-y-3.5">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-red-100 text-red-700 rounded-xl shrink-0 mt-0.5">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-black text-red-950">
+                    Bersihkan Seluruh Data Registrasi, Pembayaran & Realisasi
+                  </h3>
+                  <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-extrabold rounded-full">
+                    Admin Utama
+                  </span>
+                </div>
+                <p className="text-xs text-red-900/80 leading-relaxed">
+                  Menghapus bersih seluruh data pendaftaran warga/anggota ({memberCount} warga), akun login user anggota yang pendaftarannya dihapus, riwayat transaksi pembayaran iuran ({paymentCount} transaksi), dan klaim realisasi santunan ({claimCount} klaim) langsung dari Cloud Firestore.
+                </p>
+                <div className="mt-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-[11px] text-emerald-800 font-semibold">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Akun administrator/pengurus paguyuban, master kluster RT, master santunan, dan pengaturan sistem tetap aman dan tidak terhapus.</span>
+                </div>
+              </div>
+            </div>
+
+            {!confirmClearAllStep ? (
+              <div className="pt-2 text-right">
+                <button
+                  type="button"
+                  disabled={isProcessing}
+                  onClick={() => setConfirmClearAllStep(true)}
+                  className="px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-sm inline-flex items-center gap-2 cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Bersihkan Seluruh Data</span>
+                </button>
+              </div>
+            ) : (
+              <div className="mt-3 p-4 bg-white rounded-xl border-2 border-red-500 space-y-3 animate-in fade-in">
+                <div className="flex items-center gap-2 text-red-700 text-xs font-bold">
+                  <ShieldAlert className="w-4 h-4" />
+                  <span>Konfirmasi Pembersihan Seluruh Data</span>
+                </div>
+                <p className="text-xs text-slate-700 leading-relaxed">
+                  Apakah Anda yakin? Tindakan ini akan menghapus permanen data registrasi {memberCount} warga, seluruh akun user anggota, {paymentCount} pembayaran iuran, dan {claimCount} klaim realisasi santunan dari database Cloud Firestore.
+                </p>
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={isProcessing}
+                    onClick={() => setConfirmClearAllStep(false)}
+                    className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg transition-colors cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isProcessing}
+                    onClick={handleClearAllData}
+                    className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-lg transition-colors inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Membersihkan...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Ya, Bersihkan Seluruh Data</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Action 2: Hapus Data Transaksi di Database Firebase (Fitur Utama Pengganti Hapus Data Demo) */}
           <div className="border-2 border-rose-300 bg-rose-50/50 rounded-2xl p-5 space-y-3.5">
             <div className="flex items-start gap-3">
               <div className="p-2.5 bg-rose-100 text-rose-700 rounded-xl shrink-0 mt-0.5">
