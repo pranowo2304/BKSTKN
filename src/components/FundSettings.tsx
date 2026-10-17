@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { SystemSettings, ClusterMaster, BenefitMaster, AppUser } from '../types';
 import { 
   Settings, 
@@ -81,8 +81,14 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
   onNavigateToUsers,
   onClose,
 }) => {
-  const isAdmin = activeUser ? activeUser.authority === 'Admin' : true;
+  const isAdmin = activeUser?.authority === 'Admin';
   const [activeSubTab, setActiveSubTab] = useState<'general' | 'period' | 'clusters' | 'benefits' | 'whatsapp' | 'database'>('general');
+
+  useEffect(() => {
+    if (!isAdmin && activeSubTab === 'database') {
+      setActiveSubTab('general');
+    }
+  }, [isAdmin, activeSubTab]);
   const [formData, setFormData] = useState<SystemSettings>(settings);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isDataModalOpen, setIsDataModalOpen] = useState(false);
@@ -969,18 +975,20 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
         </div>
       )}
 
-      {/* Modal Dialog */}
-      <DataManagementModal
-        isOpen={isAdmin && isDataModalOpen}
-        onClose={() => setIsDataModalOpen(false)}
-        memberCount={memberCount}
-        paymentCount={paymentCount}
-        claimCount={claimCount}
-        onClearTransactions={onClearTransactions}
-        onClearDemoData={onClearDemoData || onClearTransactions}
-        onRestoreDemoData={onResetData}
-        onClearClaims={onClearClaims}
-      />
+      {/* Modal Dialog Management Database (Khusus Admin) */}
+      {isAdmin && (
+        <DataManagementModal
+          isOpen={isDataModalOpen}
+          onClose={() => setIsDataModalOpen(false)}
+          memberCount={memberCount}
+          paymentCount={paymentCount}
+          claimCount={claimCount}
+          onClearTransactions={onClearTransactions}
+          onClearDemoData={onClearDemoData || onClearTransactions}
+          onRestoreDemoData={onResetData}
+          onClearClaims={onClearClaims}
+        />
+      )}
 
       {/* Default Digital Signature Setup Modal */}
       <DigitalSignatureModal

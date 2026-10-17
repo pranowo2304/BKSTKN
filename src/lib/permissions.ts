@@ -352,7 +352,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissionsMap = {
     view_member_directory: true,
     manage_users: false,
     configure_authority: false,
-    configure_settings: true,
+    configure_settings: false,
     switch_simulation: true,
   },
   Anggota: {

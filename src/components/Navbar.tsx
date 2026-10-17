@@ -726,8 +726,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           )}
 
-          {/* Data Management & Clear Transactions Button (Admin / Ketua Paguyuban / Bendahara) */}
-          {(authority === 'Admin' || authority === 'Ketua Paguyuban' || authority === 'Bendahara') && (
+          {/* Data Management & Clear Transactions Button (Khusus Admin) */}
+          {authority === 'Admin' && (
             <button
               type="button"
               onClick={() => setIsDataModalOpen(true)}
@@ -876,18 +876,20 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       )}
 
-      {/* Data Management & Clear Transactions Modal */}
-      <DataManagementModal
-        isOpen={isDataModalOpen}
-        onClose={() => setIsDataModalOpen(false)}
-        memberCount={memberCount}
-        paymentCount={payments.length}
-        claimCount={claimCount}
-        onClearTransactions={onClearTransactions || onClearDemoData}
-        onClearDemoData={onClearTransactions || onClearDemoData}
-        onRestoreDemoData={onResetData}
-        onClearClaims={onClearClaims}
-      />
+      {/* Data Management & Clear Transactions Modal (Khusus Admin) */}
+      {authority === 'Admin' && (
+        <DataManagementModal
+          isOpen={isDataModalOpen}
+          onClose={() => setIsDataModalOpen(false)}
+          memberCount={memberCount}
+          paymentCount={payments.length}
+          claimCount={claimCount}
+          onClearTransactions={onClearTransactions}
+          onClearDemoData={onClearDemoData || onClearTransactions}
+          onRestoreDemoData={onResetData}
+          onClearClaims={onClearClaims}
+        />
+      )}
     </header>
   );
 };
