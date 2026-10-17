@@ -1055,50 +1055,7 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
                 </div>
 
                 {/* BOTTOM ACTION BAR */}
-                <div className="p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleTimeline(member.id)}
-                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Clock className="w-3.5 h-3.5 text-slate-500" />
-                      <span>{isTimelineExpanded ? 'Tutup Audit Timeline' : 'Lihat Audit Timeline'}</span>
-                      <ChevronDown className={`w-3 h-3 transition-transform ${isTimelineExpanded ? 'rotate-180' : ''}`} />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setSelectedDetailMember(member)}
-                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
-                    >
-                      <Eye className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Profil Lengkap</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setSelectedPreviewMember(member)}
-                      className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 text-xs font-bold rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
-                    >
-                      <Printer className="w-3.5 h-3.5 text-sky-600" />
-                      <span>Pratinjau KTA</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCertificateMember(member)}
-                      className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-colors flex items-center gap-1 cursor-pointer shadow-2xs ${
-                        member.isPaguyubanApproved
-                          ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
-                      }`}
-                      title={member.isPaguyubanApproved ? "Lihat & Cetak Sertifikat Keanggotaan Resmi (A4 Landscape)" : "Sertifikat bisa terbit setelah disetujui ketua paguyuban"}
-                    >
-                      {member.isPaguyubanApproved ? <Award className="w-3.5 h-3.5 text-amber-600" /> : <Lock className="w-3.5 h-3.5 text-slate-500" />}
-                      <span>{member.isPaguyubanApproved ? 'Sertifikat Sah' : 'Draf Sertifikat'}</span>
-                    </button>
-                  </div>
+                <div className="p-4 sm:p-5 flex flex-wrap items-center justify-end gap-3">
 
                   {/* Ketua Paguyuban Action Buttons */}
                   <div className="flex items-center gap-2 ml-auto">
@@ -1139,13 +1096,6 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
                     )}
                   </div>
                 </div>
-
-                {/* EXPANDABLE AUDIT TIMELINE ACCORDION */}
-                {isTimelineExpanded && (
-                  <div className="p-5 bg-slate-50 border-t border-slate-200 animate-in slide-in-from-top-2 duration-200">
-                    <MemberStatusTimeline member={member} payments={payments} />
-                  </div>
-                )}
               </div>
             );
           })}
