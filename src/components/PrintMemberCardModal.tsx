@@ -392,14 +392,14 @@ export const PrintMemberCardModal: React.FC<PrintMemberCardModalProps> = ({
                             <HeartHandshake className="w-5 h-5 text-white" />
                           </div>
                         )}
-                        <div>
+                        <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span className="text-[7.5px] font-black uppercase tracking-widest text-emerald-400">
                               KARTU TANDA ANGGOTA RESMI
                             </span>
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                           </div>
-                          <h4 className="font-black text-xs sm:text-sm tracking-tight leading-tight">
+                          <h4 className="font-black text-xs sm:text-sm text-amber-300 drop-shadow-sm tracking-tight leading-tight break-words uppercase">
                             {communityName}
                           </h4>
                           <p className="text-[8px] opacity-80 truncate max-w-[200px]">

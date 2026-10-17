@@ -584,22 +584,22 @@ export const PreviewKtaModal: React.FC<PreviewKtaModalProps> = ({
 
                       {/* CARD HEADER */}
                       <div className="flex items-start justify-between relative z-10 border-b border-white/15 pb-2">
-                        <div className="flex items-center gap-2">
-                          {settings.logoUrl ? (
-                            <div className="w-8 h-8 rounded-lg bg-white p-0.5 flex items-center justify-center shadow-xs shrink-0">
-                              <img
-                                src={settings.logoUrl}
-                                alt={communityName}
-                                className="max-h-full max-w-full object-contain"
-                                referrerPolicy="no-referrer"
-                              />
-                            </div>
-                          ) : (
-                            <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-black shadow-xs shrink-0">
-                              <HeartHandshake className="w-4 h-4 text-white" />
-                            </div>
-                          )}
-                          <div>
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <div className="w-8 h-8 rounded-lg bg-white p-0.5 flex items-center justify-center shadow-xs border border-amber-400/50 shrink-0 overflow-hidden">
+                            <img
+                              src={settings.logoUrl || '/app-icon.svg'}
+                              alt={communityName}
+                              className="max-h-full max-w-full object-contain"
+                              referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                const target = e.currentTarget;
+                                if (target.src && !target.src.includes('app-icon.svg')) {
+                                  target.src = '/app-icon.svg';
+                                }
+                              }}
+                            />
+                          </div>
+                          <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1">
                               <span className="text-[7px] font-black uppercase tracking-widest text-emerald-400">
                                 KARTU TANDA ANGGOTA
@@ -610,7 +610,13 @@ export const PreviewKtaModal: React.FC<PreviewKtaModalProps> = ({
                                 </span>
                               )}
                             </div>
-                            <h4 className="font-black text-xs sm:text-sm tracking-tight leading-tight">
+                            <h4 className={`font-black text-amber-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] tracking-tight leading-tight break-words uppercase ${
+                              communityName.length > 40
+                                ? 'text-[9.5px] sm:text-[10.5px]'
+                                : communityName.length > 25
+                                ? 'text-[11px] sm:text-xs'
+                                : 'text-xs sm:text-sm'
+                            }`}>
                               {communityName}
                             </h4>
                             <p className="text-[7.5px] opacity-80 truncate max-w-[180px]">
@@ -718,10 +724,30 @@ export const PreviewKtaModal: React.FC<PreviewKtaModalProps> = ({
                     >
                       {/* CARD BACK HEADER */}
                       <div className="flex items-center justify-between border-b border-white/15 pb-1 text-[8.5px]">
-                        <span className="font-black tracking-wider uppercase text-emerald-400">
-                          KETENTUAN & HAK ANGGOTA
-                        </span>
-                        <span className="text-[7.5px] opacity-75 font-mono">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                          <div className="w-5 h-5 rounded-md bg-white p-0.5 flex items-center justify-center shrink-0 overflow-hidden border border-amber-400/50">
+                            <img
+                              src={settings.logoUrl || '/app-icon.svg'}
+                              alt={communityName}
+                              className="max-h-full max-w-full object-contain"
+                              onError={(e) => {
+                                const target = e.currentTarget;
+                                if (target.src && !target.src.includes('app-icon.svg')) {
+                                  target.src = '/app-icon.svg';
+                                }
+                              }}
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="font-black text-amber-300 drop-shadow-xs uppercase leading-none block truncate">
+                              {communityName}
+                            </span>
+                            <span className="text-[6.5px] font-bold text-emerald-400 uppercase tracking-wider block mt-0.5">
+                              KETENTUAN & HAK ANGGOTA
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-[7.5px] opacity-75 font-mono shrink-0 ml-2">
                           NPA: {member.memberNumber}
                         </span>
                       </div>

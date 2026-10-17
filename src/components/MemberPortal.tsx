@@ -24,7 +24,6 @@ import {
   Printer,
   Eye,
   RotateCw,
-  Globe,
   Download,
   Share2,
   Calendar,
@@ -329,18 +328,6 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
             icon: Users,
             onClick: () => handleSectionChange('riwayat-pendaftaran'),
           },
-          {
-            id: 'portal-publik',
-            label: 'Portal Warga',
-            subLabel: 'Informasi Publik Paguyuban',
-            gradient: 'from-teal-600 to-emerald-600',
-            icon: Globe,
-            onClick: () => {
-              if (setCurrentTab) {
-                setCurrentTab('public');
-              }
-            },
-          },
         ]}
         pills={[
           {
@@ -482,15 +469,32 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
 
                     {/* Top Bar: Organization Branding & Flip Hint */}
                     <div className="flex justify-between items-start gap-2 border-b border-white/15 pb-2 relative z-10">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center font-black text-amber-300 shrink-0 shadow-inner">
-                          <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white p-1 flex items-center justify-center shadow-md border border-amber-400/50 shrink-0 overflow-hidden">
+                          <img
+                            src={settings.logoUrl || '/app-icon.svg'}
+                            alt={settings.communityName || 'Logo Organisasi'}
+                            className="w-full h-full object-contain"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              const target = e.currentTarget;
+                              if (target.src && !target.src.includes('app-icon.svg')) {
+                                target.src = '/app-icon.svg';
+                              }
+                            }}
+                          />
                         </div>
-                        <div>
-                          <p className="text-[9px] sm:text-[10px] font-extrabold uppercase tracking-widest text-emerald-200">
-                            KARTU TANDA ANGGOTA RESMI
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[8px] sm:text-[9px] font-extrabold uppercase tracking-widest text-emerald-200">
+                            {member.status === 'Aktif' || member.isKtaIssued ? 'KARTU TANDA ANGGOTA RESMI' : 'DRAFT KTA WARGA'}
                           </p>
-                          <h4 className="text-xs sm:text-sm font-black tracking-tight text-white line-clamp-1">
+                          <h4 className={`font-black tracking-tight text-amber-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] leading-tight break-words uppercase ${
+                            (settings.communityName || '').length > 40
+                              ? 'text-[10px] sm:text-[11px] md:text-xs'
+                              : (settings.communityName || '').length > 25
+                              ? 'text-[11px] sm:text-xs md:text-sm'
+                              : 'text-xs sm:text-sm md:text-base'
+                          }`}>
                             {settings.communityName || 'PAGUYUBAN DANA KEMATIAN'}
                           </h4>
                         </div>
@@ -587,13 +591,30 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
 
                     {/* Back Header: Title & Flip Notice */}
                     <div className="flex justify-between items-center border-b border-white/15 pb-1.5 relative z-10">
-                      <div className="flex items-center gap-1.5">
-                        <UserCheck className="w-3.5 h-3.5 text-teal-300" />
-                        <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-teal-300">
-                          DETAIL PROFIL & INFORMASI ANGGOTA
-                        </span>
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-white p-0.5 flex items-center justify-center shadow-xs border border-amber-400/50 shrink-0 overflow-hidden">
+                          <img
+                            src={settings.logoUrl || '/app-icon.svg'}
+                            alt={settings.communityName || 'Logo Organisasi'}
+                            className="w-full h-full object-contain"
+                            onError={(e) => {
+                              const target = e.currentTarget;
+                              if (target.src && !target.src.includes('app-icon.svg')) {
+                                target.src = '/app-icon.svg';
+                              }
+                            }}
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[7px] sm:text-[8px] font-extrabold uppercase tracking-wider text-teal-300/90 leading-tight">
+                            DETAIL PROFIL & INFORMASI ANGGOTA
+                          </p>
+                          <h5 className="text-[9px] sm:text-[10.5px] font-black text-amber-300 drop-shadow-xs uppercase leading-tight break-words">
+                            {settings.communityName || 'PAGUYUBAN DANA KEMATIAN'}
+                          </h5>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 shrink-0 ml-2">
                         <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-bold bg-white/15 text-white border border-white/20">
                           {member.memberNumber}
                         </span>
@@ -1116,8 +1137,8 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
             </div>
           </div>
 
-          {/* 4 Highlight Statistic Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* 3 Highlight Statistic Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Card 1: Besaran Iuran Pengaturan Kas */}
             <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/50 border border-emerald-200/80 shadow-xs relative overflow-hidden">
               <div className="flex items-center justify-between mb-2">
@@ -1137,28 +1158,6 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
               <p className="text-[10px] text-slate-500 mt-2 border-t border-emerald-200/60 pt-1.5 flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                 <span>Diatur dari Pengaturan Sistem oleh Admin</span>
-              </p>
-            </div>
-
-            {/* Card 2: Nilai Total Paket Santunan */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50/50 border border-amber-200/80 shadow-xs relative overflow-hidden">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-black tracking-wider uppercase text-amber-800">
-                  Nilai Paket Manfaat
-                </span>
-                <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
-                  <Award className="w-4 h-4" />
-                </div>
-              </div>
-              <p className="text-xl sm:text-2xl font-mono font-black text-amber-950">
-                Hingga {formatIDR(maxBenefitAmount)}
-              </p>
-              <p className="text-xs font-bold text-amber-700 mt-0.5">
-                per peristiwa duka cita keluarga
-              </p>
-              <p className="text-[10px] text-slate-500 mt-2 border-t border-amber-200/60 pt-1.5 flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3 text-amber-600" />
-                <span>Santunan tunai + paket layanan pemakaman</span>
               </p>
             </div>
 

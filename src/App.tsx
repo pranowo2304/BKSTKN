@@ -1967,6 +1967,10 @@ export default function App() {
         pendingPaguyubanApprovalCount={pendingPaguyubanApprovalCount}
         userCount={users.length}
         onOpenRegistration={handleOpenRegistrationFromDock}
+        onOpenPayment={() => {
+          setSelectedMemberForPayment(null);
+          setCurrentTab('payment');
+        }}
       />
 
       {/* Kwitansi Receipt Modal Popup */}

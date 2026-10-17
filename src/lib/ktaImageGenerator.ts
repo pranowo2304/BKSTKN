@@ -306,8 +306,8 @@ function drawKtaFront(
 
   // 5b. Header Titles: Label + FULL Organization Name in Gold
   const textLeft = padX + emblemSize + 18;
-  const pillW = 126;
-  const pillH = 36;
+  const pillW = 118;
+  const pillH = 34;
   const pillX = width - padX - pillW;
   const pillY = headerY + 10;
   const maxOrgWidth = pillX - textLeft - 16; // Maximum horizontal space available for organization name
@@ -325,43 +325,82 @@ function drawKtaFront(
   ctx.fillText(headerSubtitle, textLeft, headerY + 4);
 
   // Full Organization Name - Dynamic Font Sizing & Multi-line Support so it fits completely without truncation
-  const orgName = (settings.communityName || 'PAGUYUBAN DANA KEMATIAN').toUpperCase();
+  const orgName = (settings.communityName || 'PAGUYUBAN DANA KEMATIAN').trim().toUpperCase();
 
+  // Smart Font Size & Auto-Fitting Algorithm:
+  // Dynamically determines single line vs balanced multi-line and calculates optimal font size
   let orgFontSize = 24;
   ctx.font = `900 ${orgFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
   let measured = ctx.measureText(orgName).width;
 
-  // Auto-scale font size down to ensure the full name fits
-  while (measured > maxOrgWidth && orgFontSize > 13) {
-    orgFontSize -= 0.5;
-    ctx.font = `900 ${orgFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-    measured = ctx.measureText(orgName).width;
-  }
+  let orgLines: string[] = [orgName];
 
-  // If text is still wider than space at 13px, cleanly break into 2 lines
-  let orgLines: string[] = [];
   if (measured > maxOrgWidth) {
-    const words = orgName.split(' ');
-    const mid = Math.ceil(words.length / 2);
-    const line1 = words.slice(0, mid).join(' ');
-    const line2 = words.slice(mid).join(' ');
-    orgLines = [line1, line2];
-    orgFontSize = 14;
-    ctx.font = `900 ${orgFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-    measured = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width);
-  } else {
-    orgLines = [orgName];
+    // Check if scaling down to min 16px fits on a single line
+    let testSize = 23.5;
+    let fitsSingle = false;
+    while (testSize >= 15.5) {
+      ctx.font = `900 ${testSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+      if (ctx.measureText(orgName).width <= maxOrgWidth) {
+        orgFontSize = testSize;
+        measured = ctx.measureText(orgName).width;
+        fitsSingle = true;
+        break;
+      }
+      testSize -= 0.5;
+    }
+
+    // If still wider than maxOrgWidth, wrap into 2 balanced lines
+    if (!fitsSingle) {
+      const words = orgName.split(' ');
+      if (words.length > 1) {
+        let bestSplit = 1;
+        let minDiff = Infinity;
+        for (let i = 1; i < words.length; i++) {
+          const l1 = words.slice(0, i).join(' ');
+          const l2 = words.slice(i).join(' ');
+          const diff = Math.abs(l1.length - l2.length);
+          if (diff < minDiff) {
+            minDiff = diff;
+            bestSplit = i;
+          }
+        }
+        const line1 = words.slice(0, bestSplit).join(' ');
+        const line2 = words.slice(bestSplit).join(' ');
+        orgLines = [line1, line2];
+
+        orgFontSize = 16.5;
+        ctx.font = `900 ${orgFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+        measured = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width);
+
+        while (measured > maxOrgWidth && orgFontSize > 11) {
+          orgFontSize -= 0.5;
+          ctx.font = `900 ${orgFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+          measured = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width);
+        }
+      } else {
+        // Single word fallback scale down
+        while (measured > maxOrgWidth && orgFontSize > 11) {
+          orgFontSize -= 0.5;
+          ctx.font = `900 ${orgFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+          measured = ctx.measureText(orgName).width;
+        }
+      }
+    }
   }
 
   // Radiant Metallic Gold Color Styling for Organization Name
-  const goldGrad = ctx.createLinearGradient(textLeft, headerY + 20, textLeft + Math.min(measured, maxOrgWidth), headerY + 54);
-  goldGrad.addColorStop(0, '#fef08a');   // Soft bright gold
-  goldGrad.addColorStop(0.25, '#fde047'); // Vibrant bright gold
-  goldGrad.addColorStop(0.65, '#fbbf24'); // Pure amber gold
-  goldGrad.addColorStop(1, '#d97706');   // Warm metallic gold
+  const gradTop = orgLines.length === 1 ? headerY + 22 : headerY + 18;
+  const gradBottom = gradTop + (orgLines.length * (orgFontSize + 4));
+  const goldGrad = ctx.createLinearGradient(textLeft, gradTop, textLeft + Math.min(measured, maxOrgWidth), gradBottom);
+  goldGrad.addColorStop(0, '#fffbeb');   // Soft bright highlight gold
+  goldGrad.addColorStop(0.2, '#fef08a'); // Luminous yellow gold
+  goldGrad.addColorStop(0.5, '#fbbf24'); // Vibrant amber gold
+  goldGrad.addColorStop(0.85, '#f59e0b'); // Rich warm gold
+  goldGrad.addColorStop(1, '#d97706');   // Deep bronze gold
 
   ctx.save();
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
   ctx.shadowBlur = 4;
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 1.5;
@@ -370,9 +409,9 @@ function drawKtaFront(
   ctx.letterSpacing = '0.5px';
 
   if (orgLines.length === 1) {
-    ctx.fillText(orgLines[0], textLeft, headerY + 23);
+    ctx.fillText(orgLines[0], textLeft, headerY + 24);
   } else {
-    const lineSpacing = orgFontSize + 3;
+    const lineSpacing = orgFontSize + 3.5;
     ctx.fillText(orgLines[0], textLeft, headerY + 20);
     ctx.fillText(orgLines[1], textLeft, headerY + 20 + lineSpacing);
   }
@@ -558,40 +597,74 @@ function drawKtaBack(
   const padX = 44;
   const headerY = 36;
 
-  // 4. Header: Logo / UserCheck Icon + Title & NPA Pill
+  // 4. Header: Logo / UserCheck Icon + Organization Name in Gold & Title
+  const logoBadgeSize = 40;
+  const logoY = headerY - 6;
   if (logoImage) {
     ctx.save();
-    const logoBadgeSize = 36;
-    drawRoundedRect(ctx, padX, headerY - 4, logoBadgeSize, logoBadgeSize, 10);
+    drawRoundedRect(ctx, padX, logoY, logoBadgeSize, logoBadgeSize, 12);
     ctx.clip();
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(padX, headerY - 4, logoBadgeSize, logoBadgeSize);
-    ctx.drawImage(logoImage, padX + 2, headerY - 2, logoBadgeSize - 4, logoBadgeSize - 4);
+    ctx.fillRect(padX, logoY, logoBadgeSize, logoBadgeSize);
+    ctx.drawImage(logoImage, padX + 2, logoY + 2, logoBadgeSize - 4, logoBadgeSize - 4);
     ctx.restore();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-    ctx.lineWidth = 1;
-    drawRoundedRect(ctx, padX, headerY - 4, 36, 36, 10);
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.5)';
+    ctx.lineWidth = 1.5;
+    drawRoundedRect(ctx, padX, logoY, logoBadgeSize, logoBadgeSize, 12);
     ctx.stroke();
   } else {
-    drawUserCheckIcon(ctx, padX + 16, headerY + 14, 28, palette.accentTeal);
+    drawShieldCheckIcon(ctx, padX + logoBadgeSize / 2, logoY + logoBadgeSize / 2, 26, palette.gold);
   }
 
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = palette.accentTeal;
-  ctx.font = '900 17px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.letterSpacing = '1px';
-  ctx.fillText('DETAIL PROFIL & INFORMASI ANGGOTA', padX + (logoImage ? 46 : 44), headerY + 14);
+  const backTextLeft = padX + logoBadgeSize + 14;
+  const backOrgName = (settings.communityName || 'PAGUYUBAN DANA KEMATIAN').trim().toUpperCase();
+  const maxBackOrgW = width - padX - 220 - backTextLeft;
 
-  // Right Header Badges: NPA + Status
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+
+  // Subtitle
+  ctx.fillStyle = palette.accentTeal;
+  ctx.font = '800 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.letterSpacing = '1.2px';
+  ctx.fillText('DETAIL PROFIL & INFORMASI ANGGOTA', backTextLeft, headerY - 6);
+
+  // Full Org Name in Gold
+  let backOrgFontSize = 16;
+  ctx.font = `900 ${backOrgFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+  let backMeasured = ctx.measureText(backOrgName).width;
+  while (backMeasured > maxBackOrgW && backOrgFontSize > 10.5) {
+    backOrgFontSize -= 0.5;
+    ctx.font = `900 ${backOrgFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    backMeasured = ctx.measureText(backOrgName).width;
+  }
+
+  const backGoldGrad = ctx.createLinearGradient(backTextLeft, headerY + 10, backTextLeft + backMeasured, headerY + 30);
+  backGoldGrad.addColorStop(0, '#fffbeb');
+  backGoldGrad.addColorStop(0.3, '#fef08a');
+  backGoldGrad.addColorStop(0.7, '#fbbf24');
+  backGoldGrad.addColorStop(1, '#d97706');
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+  ctx.shadowBlur = 3;
+  ctx.shadowOffsetY = 1;
+  ctx.fillStyle = backGoldGrad;
+  ctx.font = `900 ${backOrgFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+  ctx.letterSpacing = '0.3px';
+  ctx.fillText(backOrgName, backTextLeft, headerY + 10);
+  ctx.restore();
+
+  // Right Header Badges: NPA
   const npaText = member.memberNumber || 'PDK-2026-000';
   ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
   ctx.font = '800 13px "Courier New", monospace';
   ctx.fillStyle = '#ffffff';
-  ctx.fillText(npaText, width - padX, headerY + 14);
+  ctx.fillText(`NPA: ${npaText}`, width - padX, headerY + 10);
 
   // Divider Line
-  const dividerY = headerY + 38;
+  const dividerY = headerY + 44;
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
@@ -849,13 +922,19 @@ export async function generateKtaCardCanvas({
     console.error('Failed to generate/load QR code image for KTA:', e);
   }
 
-  // 2. LOAD ORGANIZATION LOGO IF AVAILABLE
+  // 2. LOAD ORGANIZATION LOGO WITH BULLETPROOF FALLBACK
   let logoImg: HTMLImageElement | null = null;
-  if (settings.logoUrl) {
-    try {
-      logoImg = await loadImage(settings.logoUrl);
-    } catch (err) {
-      console.warn('Could not load organization logo image for KTA canvas:', err);
+  const primaryLogoUrl = settings.logoUrl || '/app-icon.svg';
+  try {
+    logoImg = await loadImage(primaryLogoUrl);
+  } catch (err) {
+    console.warn('Could not load primary organization logo image, trying /app-icon.svg fallback:', err);
+    if (primaryLogoUrl !== '/app-icon.svg') {
+      try {
+        logoImg = await loadImage('/app-icon.svg');
+      } catch (fallbackErr) {
+        console.warn('Both logo attempts failed, vector emblem will be drawn:', fallbackErr);
+      }
     }
   }
 

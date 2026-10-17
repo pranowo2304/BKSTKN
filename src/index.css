@@ -1,5 +1,28 @@
 @import "tailwindcss";
 
+/* Lock mobile viewport zooming & prevent unwanted zoom gestures */
+html,
+body {
+  touch-action: pan-x pan-y;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overscroll-behavior-y: none;
+}
+
+/* Prevent iOS Safari auto-zoom when tapping inputs on mobile */
+@media screen and (max-width: 768px) {
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="password"],
+  input[type="date"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 @keyframes shimmer {
   0% {
     transform: translateX(-100%);

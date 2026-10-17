@@ -417,29 +417,35 @@ export const DigitalKtaModal: React.FC<DigitalKtaModalProps> = ({
 
                   {/* KTA Header */}
                   <div className="flex items-start justify-between relative z-10 border-b border-emerald-900/80 pb-2">
-                    <div className="flex items-center gap-2.5">
-                      {settings?.logoUrl ? (
-                        <div className="w-9 h-9 rounded-xl bg-white p-1 flex items-center justify-center shadow-md shadow-emerald-950/40 border border-emerald-300/40 shrink-0">
-                          <img
-                            src={settings.logoUrl}
-                            alt={communityName}
-                            className="max-h-full max-w-full object-contain"
-                            referrerPolicy="no-referrer"
-                          />
-                        </div>
-                      ) : (
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-slate-950 shadow-md shadow-emerald-950/40 border border-emerald-300/40 shrink-0 font-bold">
-                          <HeartHandshake className="w-5 h-5 text-slate-950" />
-                        </div>
-                      )}
-                      <div>
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white p-1 flex items-center justify-center shadow-md shadow-emerald-950/40 border border-amber-400/50 shrink-0 overflow-hidden">
+                        <img
+                          src={settings?.logoUrl || '/app-icon.svg'}
+                          alt={communityName}
+                          className="max-h-full max-w-full object-contain"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            const target = e.currentTarget;
+                            if (target.src && !target.src.includes('app-icon.svg')) {
+                              target.src = '/app-icon.svg';
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[8px] font-black uppercase tracking-widest text-emerald-400">
                             {ktaInfo.isIssued ? 'KARTU TANDA ANGGOTA RESMI' : 'DRAFT KTA WARGA'}
                           </span>
                           <span className={`w-1.5 h-1.5 rounded-full ${ktaInfo.isIssued ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
                         </div>
-                        <h4 className="font-black text-xs sm:text-sm text-white tracking-tight leading-tight">
+                        <h4 className={`font-black text-amber-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] tracking-tight leading-tight break-words uppercase ${
+                          communityName.length > 40
+                            ? 'text-[10px] sm:text-[11px] md:text-xs'
+                            : communityName.length > 25
+                            ? 'text-[11px] sm:text-xs md:text-sm'
+                            : 'text-xs sm:text-sm md:text-base'
+                        }`}>
                           {communityName}
                         </h4>
                         <p className="text-[8px] text-slate-300 truncate max-w-[210px]">
@@ -553,13 +559,30 @@ export const DigitalKtaModal: React.FC<DigitalKtaModalProps> = ({
                 >
                   {/* Top Bar: Title & Flip indicator */}
                   <div className="border-b border-slate-800 pb-1.5 flex justify-between items-center">
-                    <div className="flex items-center gap-1.5">
-                      <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-                      <h4 className="font-black text-xs text-emerald-400 uppercase tracking-wider">
-                        PROFIL & KETENTUAN HAK SANTUNAN
-                      </h4>
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="w-6 h-6 rounded-lg bg-white p-0.5 flex items-center justify-center shadow-xs border border-amber-400/50 shrink-0 overflow-hidden">
+                        <img
+                          src={settings?.logoUrl || '/app-icon.svg'}
+                          alt={communityName}
+                          className="max-h-full max-w-full object-contain"
+                          onError={(e) => {
+                            const target = e.currentTarget;
+                            if (target.src && !target.src.includes('app-icon.svg')) {
+                              target.src = '/app-icon.svg';
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[7.5px] font-extrabold text-emerald-400 uppercase tracking-wider leading-none">
+                          PROFIL & KETENTUAN HAK SANTUNAN
+                        </p>
+                        <h5 className="text-[9px] sm:text-[10px] font-black text-amber-300 drop-shadow-xs uppercase leading-tight break-words">
+                          {communityName}
+                        </h5>
+                      </div>
                     </div>
-                    <span className="text-[8px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">
+                    <span className="text-[8px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded shrink-0 ml-2">
                       NPA: {member.memberNumber}
                     </span>
                   </div>

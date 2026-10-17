@@ -361,7 +361,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissionsMap = {
     view_audit_logs: false,
     approve_payments: false,
     reject_payments: false,
-    record_payments: false,
+    record_payments: true,
     issue_receipts: false,
     process_claims: false,
     view_claims: true,
@@ -435,6 +435,9 @@ export const getStoredRolePermissions = (): RolePermissionsMap => {
         merged[auth].view_claims = true;
         merged[auth].verify_rt_members = true;
       }
+      if (auth === 'Anggota') {
+        merged[auth].record_payments = true;
+      }
     });
     return merged;
   } catch (err) {
@@ -496,11 +499,10 @@ export const getPermittedTabsForRole = (
   const rolePerms = perms[effectiveRole] || DEFAULT_ROLE_PERMISSIONS[effectiveRole] || DEFAULT_ROLE_PERMISSIONS['Anggota'];
 
   if (effectiveRole === 'Anggota') {
-    const tabs = ['member-portal', 'public'];
-    if (rolePerms.record_payments) tabs.push('payment');
+    const tabs = ['member-portal', 'public', 'payment'];
     if (rolePerms.view_reports) tabs.push('history');
     if (rolePerms.view_claims || rolePerms.process_claims) tabs.push('realization');
-    return tabs;
+    return Array.from(new Set(tabs));
   }
 
   const tabs: string[] = ['dashboard'];

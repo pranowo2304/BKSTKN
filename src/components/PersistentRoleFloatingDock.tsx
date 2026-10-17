@@ -27,6 +27,7 @@ export interface PersistentRoleFloatingDockProps {
   pendingPaguyubanApprovalCount?: number;
   userCount?: number;
   onOpenRegistration?: () => void;
+  onOpenPayment?: () => void;
 }
 
 export interface DockItemDef {
@@ -49,6 +50,7 @@ export const PersistentRoleFloatingDock: React.FC<PersistentRoleFloatingDockProp
   pendingPaguyubanApprovalCount = 0,
   userCount = 0,
   onOpenRegistration,
+  onOpenPayment,
 }) => {
   const authority = activeUser?.authority;
   const { can } = useRolePermissions();
@@ -309,32 +311,11 @@ export const PersistentRoleFloatingDock: React.FC<PersistentRoleFloatingDockProp
         isCenterFloating: true,
         isActive: currentTab === 'payment',
         onClick: () => {
-          if (currentTab === 'public') {
-            const el = document.getElementById('section-informasi-pengumuman');
-            if (el) {
-              const navOffset = 100;
-              const elementPosition = el.getBoundingClientRect().top;
-              const offsetPosition = elementPosition + window.pageYOffset - navOffset;
-              window.scrollTo({
-                top: offsetPosition,
-                behavior: 'smooth',
-              });
-              return;
-            }
+          if (onOpenPayment) {
+            onOpenPayment();
+          } else {
+            setCurrentTab('payment');
           }
-          setCurrentTab('public');
-          setTimeout(() => {
-            const el = document.getElementById('section-informasi-pengumuman');
-            if (el) {
-              const navOffset = 100;
-              const elementPosition = el.getBoundingClientRect().top;
-              const offsetPosition = elementPosition + window.pageYOffset - navOffset;
-              window.scrollTo({
-                top: offsetPosition,
-                behavior: 'smooth',
-              });
-            }
-          }, 120);
         },
       },
       {

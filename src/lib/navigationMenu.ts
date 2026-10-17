@@ -292,8 +292,8 @@ export function getAllNavigationActionsForUser(params: NavigationActionParams): 
     });
   }
 
-  // 12. Portal Warga (Landing Page Publik)
-  if (permittedTabs.includes('public')) {
+  // 12. Portal Warga (Landing Page Publik) - hanya untuk non-anggota jika diizinkan
+  if (permittedTabs.includes('public') && authority !== 'Anggota') {
     actions.push({
       id: 'public',
       label: 'Portal Warga (Publik)',

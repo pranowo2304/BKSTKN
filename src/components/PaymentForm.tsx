@@ -593,46 +593,6 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                       onChange={(e) => setPeriodMonth(e.target.value)}
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none font-medium"
                     />
-                    <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-                      <span className="text-slate-400 font-semibold">Pilih Cepat:</span>
-                      {(() => {
-                        const items: string[] = [];
-                        if (systemPeriod) items.push(systemPeriod);
-                        const curYear = new Date().getFullYear();
-                        const baseYear = settings?.membershipPeriod?.activePeriodYear 
-                          ? Number(settings.membershipPeriod.activePeriodYear) || curYear 
-                          : curYear;
-                        const nextY = `Tahun ${baseYear + 1}`;
-                        const prevY = `Tahun ${baseYear - 1}`;
-                        if (!items.includes(`Tahun ${baseYear}`)) items.push(`Tahun ${baseYear}`);
-                        if (!items.includes(nextY)) items.push(nextY);
-                        if (!items.includes(prevY)) items.push(prevY);
-
-                        return items.map((opt) => {
-                          const isConfigured = opt === systemPeriod;
-                          const isSelected = periodMonth === opt;
-                          return (
-                            <button
-                              key={opt}
-                              type="button"
-                              onClick={() => setPeriodMonth(opt)}
-                              className={`px-2 py-0.5 rounded-lg border transition-all inline-flex items-center gap-1 ${
-                                isSelected
-                                  ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-2xs'
-                                  : isConfigured
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold hover:bg-emerald-100'
-                                  : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
-                              }`}
-                            >
-                              <span>{opt}</span>
-                              {isConfigured && !isSelected && (
-                                <span className="text-[9px] text-emerald-600 font-bold">(Pengaturan Sistem)</span>
-                              )}
-                            </button>
-                          );
-                        });
-                      })()}
-                    </div>
                     {settings?.membershipPeriod && (
                       <p className="text-[11px] text-emerald-700 font-medium flex items-center gap-1 mt-0.5">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
