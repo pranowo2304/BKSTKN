@@ -12,7 +12,6 @@ import {
   ShieldAlert, 
   Settings, 
   LayoutDashboard,
-  Sparkles,
   RotateCcw,
   UserCheck,
   ShieldCheck,
@@ -42,7 +41,6 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { DataManagementModal } from './DataManagementModal';
-import { QuickOperationalMenuModal } from './QuickOperationalMenuModal';
 import { AppIcon } from './AppIcon';
 
 interface NavbarProps {
@@ -99,7 +97,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [isDataModalOpen, setIsDataModalOpen] = useState(false);
-  const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
   const userDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -743,39 +740,12 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
-      {/* 🧭 HORIZONTAL NAVIGATION BAR (FITUR DASHBOARD & MODUL UNTUK ADMIN DAN BENDAHARA) */}
-      {activeUser && (
+      {/* 🧭 HORIZONTAL NAVIGATION BAR (MODUL OPERASIONAL UNTUK PENGURUS/ADMIN/BENDAHARA) */}
+      {activeUser && (isBendaharaOrAdmin || authority === 'Ketua RT (Cluster)' || authority === 'Ketua RW' || authority === 'Ketua DKM' || authority === 'Ketua Paguyuban') && (
         <div className="bg-slate-950/80 border-t border-slate-800/80 backdrop-blur-md">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-2 overflow-x-auto scrollbar-none py-1.5">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-start gap-2 overflow-x-auto scrollbar-none py-1.5">
             <nav className="flex items-center gap-1 sm:gap-1.5 shrink-0" aria-label="Navigasi Menu Bar">
-              {/* 1. TOMBOL DASHBOARD (FITUR UTAMA UNTUK ADMIN & BENDAHARA) */}
-              <button
-                type="button"
-                onClick={() => setCurrentTab('dashboard')}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
-                  currentTab === 'dashboard'
-                    ? isBendahara
-                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/50 ring-1 ring-emerald-400'
-                      : 'bg-indigo-600 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-400'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
-                }`}
-              >
-                <LayoutDashboard className="w-3.5 h-3.5 shrink-0" />
-                <span>
-                  {isBendahara ? 'Dashboard Bendahara' : authority === 'Admin' ? 'Dashboard Admin' : 'Dashboard'}
-                </span>
-                {isBendahara && pendingCount > 0 ? (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black bg-rose-500 text-white animate-pulse">
-                    {pendingCount}
-                  </span>
-                ) : authority === 'Admin' && totalPendingNotifications > 0 ? (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black bg-amber-500 text-slate-950">
-                    {totalPendingNotifications}
-                  </span>
-                ) : null}
-              </button>
-
-              {/* 2. VALIDASI KAS (BENDAHARA & ADMIN) */}
+              {/* 1. VALIDASI KAS (BENDAHARA & ADMIN) */}
               {isBendaharaOrAdmin && (
                 <button
                   type="button"
@@ -796,7 +766,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               )}
 
-              {/* 3. TERIMA / INPUT IURAN (BENDAHARA & ADMIN) */}
+              {/* 2. TERIMA / INPUT IURAN (BENDAHARA & ADMIN) */}
               {isBendaharaOrAdmin && (
                 <button
                   type="button"
@@ -812,7 +782,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               )}
 
-              {/* 4. REALISASI SANTUNAN */}
+              {/* 3. REALISASI SANTUNAN */}
               {(isBendaharaOrAdmin || authority === 'Ketua DKM' || authority === 'Ketua Paguyuban') && (
                 <button
                   type="button"
@@ -833,7 +803,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               )}
 
-              {/* 5. LAPORAN KAS & REKAP (BENDAHARA & ADMIN) */}
+              {/* 4. LAPORAN KAS & REKAP (BENDAHARA & ADMIN) */}
               {isBendaharaOrAdmin && (
                 <button
                   type="button"
@@ -849,7 +819,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               )}
 
-              {/* 6. DATA WARGA & TANGGUNGAN */}
+              {/* 5. DATA WARGA & TANGGUNGAN */}
               {(isBendaharaOrAdmin || authority === 'Ketua RT (Cluster)' || authority === 'Ketua RW') && (
                 <button
                   type="button"
@@ -870,7 +840,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               )}
 
-              {/* 7. KHUSUS ADMIN: PENGGUNA & OTORITAS */}
+              {/* 6. KHUSUS ADMIN: PENGGUNA & OTORITAS */}
               {authority === 'Admin' && (
                 <button
                   type="button"
@@ -886,7 +856,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               )}
 
-              {/* 8. KHUSUS ADMIN: PENGATURAN SISTEM */}
+              {/* 7. KHUSUS ADMIN: PENGATURAN SISTEM */}
               {authority === 'Admin' && (
                 <button
                   type="button"
@@ -902,55 +872,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               )}
             </nav>
-
-            {/* Quick Links kanan: Modal Menu Cepat & Portal Publik */}
-            <div className="flex items-center gap-1.5 shrink-0 pl-2 border-l border-slate-800">
-              <button
-                type="button"
-                onClick={() => setIsQuickMenuOpen(true)}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800/80 hover:bg-slate-700 text-amber-300 hover:text-amber-200 border border-slate-700 transition-all cursor-pointer"
-                title="Buka Menu Cepat Aplikasi Mobile"
-              >
-                <Sparkles className="w-3 h-3 text-amber-400" />
-                <span className="hidden md:inline">Menu Cepat</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setCurrentTab('public')}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  currentTab === 'public'
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-                }`}
-                title="Buka Halaman Portal Publik"
-              >
-                <Globe className="w-3 h-3 text-emerald-400" />
-                <span className="hidden sm:inline">Portal Publik</span>
-              </button>
-            </div>
           </div>
         </div>
       )}
-
-      {/* Quick Operational Menu Modal */}
-      <QuickOperationalMenuModal
-        isOpen={isQuickMenuOpen}
-        onClose={() => setIsQuickMenuOpen(false)}
-        currentTab={currentTab}
-        setCurrentTab={setCurrentTab}
-        activeUser={activeUser}
-        permissions={permissions}
-        pendingRtVerificationCount={pendingRtVerificationCount}
-        pendingCount={pendingCount}
-        pendingPaguyubanApprovalCount={pendingPaguyubanApprovalCount}
-        overdueGraceCount={graceSummary.overdueCount}
-        totalMembersCount={memberCount}
-        totalPaymentsCount={payments.length}
-        totalClaimsCount={claimCount}
-        totalUsersCount={users.length}
-        onOpenExportModal={onOpenExportModal}
-      />
 
       {/* Data Management & Clear Transactions Modal */}
       <DataManagementModal

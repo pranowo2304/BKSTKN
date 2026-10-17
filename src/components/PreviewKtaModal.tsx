@@ -32,9 +32,11 @@ import {
   HelpCircle,
   FileCheck2,
   PenTool,
-  Award
+  Award,
+  Download
 } from 'lucide-react';
 import { MembershipCertificateModal } from './MembershipCertificateModal';
+import { downloadKtaCardAsImage, KtaCardSide } from '../lib/ktaImageGenerator';
 
 interface PreviewKtaModalProps {
   member: Member | null;
@@ -62,6 +64,7 @@ export const PreviewKtaModal: React.FC<PreviewKtaModalProps> = ({
   const [includeSignatureBoxes, setIncludeSignatureBoxes] = useState(true);
   const [copied, setCopied] = useState(false);
   const [isCertModalOpen, setIsCertModalOpen] = useState(false);
+  const [downloadingPng, setDownloadingPng] = useState(false);
 
   const expiry = calculateMemberExpiry(member, payments, new Date(), settings);
   const ktaInfo = getMemberKtaIssuanceInfo(member, payments);
@@ -84,6 +87,26 @@ export const PreviewKtaModal: React.FC<PreviewKtaModalProps> = ({
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleDownloadPng = async (side: KtaCardSide = 'front') => {
+    if (!member) return;
+    try {
+      setDownloadingPng(true);
+      await downloadKtaCardAsImage({
+        member,
+        side,
+        theme: colorTheme === 'navy' ? 'navy' : colorTheme === 'monochrome' ? 'slate' : 'emerald',
+        settings: settings || { communityName },
+        payments,
+        qrPayload: previewQrPayload,
+      });
+    } catch (err) {
+      console.error('Error downloading KTA PNG:', err);
+      alert('Gagal mengunduh gambar KTA. Silakan coba kembali.');
+    } finally {
+      setDownloadingPng(false);
+    }
   };
 
   const handleCopySummary = () => {
@@ -216,6 +239,17 @@ export const PreviewKtaModal: React.FC<PreviewKtaModalProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleDownloadPng(printLayout === 'back-only' ? 'back' : printLayout === 'cards-both' ? 'both' : 'front')}
+                disabled={downloadingPng}
+                className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-sky-950/40 flex items-center gap-1.5 hover:scale-105 active:scale-95 disabled:opacity-50 cursor-pointer"
+                title="Unduh KTA sebagai gambar PNG presisi dengan QR Code"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{downloadingPng ? 'Menyiapkan...' : 'Unduh PNG'}</span>
+              </button>
+
               <button
                 type="button"
                 onClick={handlePrint}

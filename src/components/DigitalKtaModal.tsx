@@ -33,12 +33,14 @@ import {
   ExternalLink,
   Sparkles,
   Search,
-  Award
+  Award,
+  Download
 } from 'lucide-react';
 import { KtaCardSkeleton } from './KtaCardSkeleton';
 import { KtaAuthenticityVerificationModal } from './KtaAuthenticityVerificationModal';
 import { MemberKtaQrGeneratorModal } from './MemberKtaQrGeneratorModal';
 import { MembershipCertificateModal } from './MembershipCertificateModal';
+import { downloadKtaCardAsImage, KtaCardSide } from '../lib/ktaImageGenerator';
 
 interface DigitalKtaModalProps {
   member: Member | null;
@@ -71,6 +73,7 @@ export const DigitalKtaModal: React.FC<DigitalKtaModalProps> = ({
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
   const [isQrGeneratorOpen, setIsQrGeneratorOpen] = useState(false);
   const [isCertModalOpen, setIsCertModalOpen] = useState(false);
+  const [downloadingImage, setDownloadingImage] = useState(false);
 
   // Trigger smooth skeleton loading effect when modal opens or member switches
   useEffect(() => {
@@ -159,6 +162,26 @@ export const DigitalKtaModal: React.FC<DigitalKtaModalProps> = ({
     }
 
     window.open(`https://wa.me/${intlPhone}?text=${message}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleDownloadImage = async (side: KtaCardSide = 'front') => {
+    if (!member) return;
+    try {
+      setDownloadingImage(true);
+      await downloadKtaCardAsImage({
+        member,
+        side,
+        theme: 'emerald',
+        settings: settings || { communityName },
+        payments,
+        qrPayload,
+      });
+    } catch (err) {
+      console.error('Error downloading KTA card PNG:', err);
+      alert('Gagal mengunduh gambar KTA. Silakan coba kembali.');
+    } finally {
+      setDownloadingImage(false);
+    }
   };
 
   return (
@@ -849,6 +872,17 @@ export const DigitalKtaModal: React.FC<DigitalKtaModalProps> = ({
             >
               <Share2 className="w-3.5 h-3.5" />
               <span>Kirim WhatsApp</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleDownloadImage(isFlipped ? 'back' : 'front')}
+              disabled={downloadingImage}
+              className="px-3.5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-all shadow-md shadow-emerald-950/40 inline-flex items-center gap-1.5 hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50"
+              title="Unduh KTA dalam format gambar PNG presisi beresolusi tinggi dengan QR Code resmi"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>{downloadingImage ? 'Menyiapkan...' : isFlipped ? 'Unduh PNG (Belakang)' : 'Unduh PNG (Depan)'}</span>
             </button>
 
             {ktaInfo.isIssued ? (

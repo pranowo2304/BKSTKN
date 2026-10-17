@@ -1,65 +1,91 @@
-import { Member, SystemSettings } from '../types';
+import QRCode from 'qrcode';
+import { Member, SystemSettings, Payment } from '../types';
 import { calculateMemberExpiry } from './expiryUtils';
 import { getMemberKtaIssuanceInfo, generateKtaQrPayload } from './ktaUtils';
 
 export type KtaCardTheme = 'emerald' | 'navy' | 'slate' | 'maroon';
 export type KtaCardSide = 'front' | 'back' | 'both';
 
-interface GenerateKtaImageOptions {
+export interface GenerateKtaImageOptions {
   member: Member;
   side: KtaCardSide;
   theme?: KtaCardTheme;
   settings: SystemSettings;
-  payments?: any[];
+  payments?: Payment[];
   qrDataUrl?: string;
+  qrPayload?: string;
 }
 
-// Colors for themes
+// Color schemes aligned with preview
 const THEME_PALETTES = {
   emerald: {
-    bgStart: '#064e3b',
-    bgMid: '#065f46',
-    bgEnd: '#022c22',
+    frontGradStart: '#064e3b',
+    frontGradMid: '#047857',
+    frontGradEnd: '#0f172a',
+    backGradStart: '#091e17',
+    backGradMid: '#064e3b',
+    backGradEnd: '#022c22',
     accent: '#10b981',
-    accentLight: '#6ee7b7',
+    accentMid: '#34d399',
+    accentLight: '#a7f3d0',
+    accentTeal: '#5eead4',
     gold: '#fbbf24',
-    border: '#047857',
-    chip: '#d97706',
+    border: 'rgba(52, 211, 153, 0.4)',
+    backBorder: 'rgba(45, 212, 191, 0.45)',
+    qrDark: '#064e3b',
   },
   navy: {
-    bgStart: '#0f172a',
-    bgMid: '#1e3a8a',
-    bgEnd: '#0284c7',
+    frontGradStart: '#0f172a',
+    frontGradMid: '#1e3a8a',
+    frontGradEnd: '#0369a1',
+    backGradStart: '#090d16',
+    backGradMid: '#0f172a',
+    backGradEnd: '#1e293b',
     accent: '#38bdf8',
+    accentMid: '#60a5fa',
     accentLight: '#bae6fd',
+    accentTeal: '#7dd3fc',
     gold: '#fbbf24',
-    border: '#1d4ed8',
-    chip: '#d97706',
+    border: 'rgba(96, 165, 250, 0.45)',
+    backBorder: 'rgba(56, 189, 248, 0.45)',
+    qrDark: '#0f172a',
   },
   slate: {
-    bgStart: '#090d16',
-    bgMid: '#1e293b',
-    bgEnd: '#0f172a',
+    frontGradStart: '#090d16',
+    frontGradMid: '#1e293b',
+    frontGradEnd: '#0f172a',
+    backGradStart: '#030712',
+    backGradMid: '#0f172a',
+    backGradEnd: '#1e293b',
     accent: '#fbbf24',
+    accentMid: '#f59e0b',
     accentLight: '#fef08a',
-    gold: '#f59e0b',
-    border: '#334155',
-    chip: '#b45309',
+    accentTeal: '#fde047',
+    gold: '#fbbf24',
+    border: 'rgba(245, 158, 11, 0.45)',
+    backBorder: 'rgba(251, 191, 36, 0.45)',
+    qrDark: '#090d16',
   },
   maroon: {
-    bgStart: '#4c0519',
-    bgMid: '#881337',
-    bgEnd: '#9f1239',
+    frontGradStart: '#4c0519',
+    frontGradMid: '#881337',
+    frontGradEnd: '#9f1239',
+    backGradStart: '#27030e',
+    backGradMid: '#4c0519',
+    backGradEnd: '#1a040b',
     accent: '#fb7185',
+    accentMid: '#f43f5e',
     accentLight: '#fecdd3',
+    accentTeal: '#fda4af',
     gold: '#fbbf24',
-    border: '#be123c',
-    chip: '#d97706',
+    border: 'rgba(251, 113, 133, 0.45)',
+    backBorder: 'rgba(244, 63, 94, 0.45)',
+    qrDark: '#4c0519',
   },
 };
 
 /**
- * Helper to draw a rounded rectangle on a canvas context
+ * Draw rounded rectangle helper
  */
 function drawRoundedRect(
   ctx: CanvasRenderingContext2D,
@@ -83,7 +109,117 @@ function drawRoundedRect(
 }
 
 /**
- * Draw the front side of the KTA Card on canvas
+ * Draw subtle dot pattern matching the preview's bg-[radial-gradient(#fff_1px,transparent_1px)]
+ */
+function drawDotPattern(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  color: string = 'rgba(255, 255, 255, 0.08)'
+) {
+  ctx.fillStyle = color;
+  const spacing = 16;
+  const dotRadius = 1.2;
+  for (let x = 16; x < width; x += spacing) {
+    for (let y = 16; y < height; y += spacing) {
+      ctx.beginPath();
+      ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+/**
+ * Draw shield checkmark icon matching ShieldCheck in preview
+ */
+function drawShieldCheckIcon(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  color: string = '#fbbf24'
+) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  const scale = size / 24;
+  ctx.scale(scale, scale);
+
+  // Shield contour
+  ctx.beginPath();
+  ctx.moveTo(12, 2.5);
+  ctx.lineTo(20, 5.5);
+  ctx.lineTo(20, 11);
+  ctx.bezierCurveTo(20, 16.5, 16.5, 20.8, 12, 22);
+  ctx.bezierCurveTo(7.5, 20.8, 4, 16.5, 4, 11);
+  ctx.lineTo(4, 5.5);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(251, 191, 36, 0.2)';
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Checkmark inside shield
+  ctx.beginPath();
+  ctx.moveTo(8.5, 12);
+  ctx.lineTo(11, 14.5);
+  ctx.lineTo(15.5, 9.5);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.4;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+/**
+ * Draw UserCheck icon matching preview on back card
+ */
+function drawUserCheckIcon(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  color: string = '#5eead4'
+) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  const scale = size / 24;
+  ctx.scale(scale, scale);
+
+  // User head
+  ctx.beginPath();
+  ctx.arc(9, 7, 4, 0, Math.PI * 2);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // User torso
+  ctx.beginPath();
+  ctx.moveTo(3, 20);
+  ctx.bezierCurveTo(3, 16, 6, 14, 9, 14);
+  ctx.bezierCurveTo(12, 14, 15, 16, 15, 20);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Checkmark
+  ctx.beginPath();
+  ctx.moveTo(16, 12);
+  ctx.lineTo(18.5, 14.5);
+  ctx.lineTo(22.5, 9.5);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.4;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+/**
+ * Draw Front Side of KTA (Matching MemberPortal preview 100%)
  */
 function drawKtaFront(
   ctx: CanvasRenderingContext2D,
@@ -95,7 +231,8 @@ function drawKtaFront(
   theme: KtaCardTheme,
   settings: SystemSettings,
   expiryDateFormatted: string,
-  qrImage?: HTMLImageElement | null
+  qrImage: HTMLImageElement | null,
+  logoImage: HTMLImageElement | null = null
 ) {
   const palette = THEME_PALETTES[theme] || THEME_PALETTES.emerald;
   const radius = 32;
@@ -103,276 +240,277 @@ function drawKtaFront(
   ctx.save();
   ctx.translate(offsetX, offsetY);
 
-  // 1. Card Clipping & Base Shadow
+  // 1. Clip card boundary
   drawRoundedRect(ctx, 0, 0, width, height, radius);
   ctx.clip();
 
-  // 2. Background Gradient
+  // 2. Background Gradient (linear 135deg)
   const bgGrad = ctx.createLinearGradient(0, 0, width, height);
-  bgGrad.addColorStop(0, palette.bgStart);
-  bgGrad.addColorStop(0.5, palette.bgMid);
-  bgGrad.addColorStop(1, palette.bgEnd);
+  bgGrad.addColorStop(0, palette.frontGradStart);
+  bgGrad.addColorStop(0.5, palette.frontGradMid);
+  bgGrad.addColorStop(1, palette.frontGradEnd);
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, width, height);
 
-  // 3. Subtle Geometric Anti-Counterfeit Background Patterns
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
-  ctx.lineWidth = 1;
-  for (let i = -width; i < width * 2; i += 32) {
-    ctx.beginPath();
-    ctx.moveTo(i, 0);
-    ctx.lineTo(i + height, height);
-    ctx.stroke();
-  }
+  // 3. Dot Pattern
+  drawDotPattern(ctx, width, height, 'rgba(255, 255, 255, 0.08)');
 
-  // Soft Radial Glow
-  const glow = ctx.createRadialGradient(width * 0.85, height * 0.15, 10, width * 0.85, height * 0.15, 300);
-  glow.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
-  glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
-  ctx.fillStyle = glow;
+  // 4. Subtle Radial Ambient Lighting
+  const ambient = ctx.createRadialGradient(width * 0.8, height * 0.2, 20, width * 0.8, height * 0.2, 450);
+  ambient.addColorStop(0, 'rgba(16, 185, 129, 0.18)');
+  ambient.addColorStop(1, 'rgba(16, 185, 129, 0)');
+  ctx.fillStyle = ambient;
   ctx.fillRect(0, 0, width, height);
 
-  // 4. Header Top Stripe
-  ctx.fillStyle = palette.accent;
-  ctx.fillRect(0, 0, width, 8);
+  // 5. Header Bar
+  const padX = 44;
+  const headerY = 38;
 
-  // 5. Header Content
-  // Paguyuban Emblem Circle
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-  drawRoundedRect(ctx, 36, 26, 68, 68, 16);
+  // 5a. Organization Logo / Emblem (Left)
+  const emblemSize = 56;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
+  drawRoundedRect(ctx, padX, headerY, emblemSize, emblemSize, 16);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Emblem Symbol
-  ctx.fillStyle = palette.gold;
-  ctx.font = '900 32px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('★', 70, 60);
+  if (logoImage) {
+    ctx.save();
+    drawRoundedRect(ctx, padX + 2, headerY + 2, emblemSize - 4, emblemSize - 4, 14);
+    ctx.clip();
+    // Fill white background for logo clarity
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(padX + 2, headerY + 2, emblemSize - 4, emblemSize - 4);
 
-  // Organization Title & Labels
+    const pad = 4;
+    const drawW = emblemSize - 4 - pad * 2;
+    const drawH = emblemSize - 4 - pad * 2;
+    const imgAspect = (logoImage.naturalWidth || logoImage.width) / (logoImage.naturalHeight || logoImage.height) || 1;
+    let destW = drawW;
+    let destH = drawH;
+    let destX = padX + 2 + pad;
+    let destY = headerY + 2 + pad;
+    if (imgAspect > 1) {
+      destH = drawW / imgAspect;
+      destY += (drawH - destH) / 2;
+    } else {
+      destW = drawH * imgAspect;
+      destX += (drawW - destW) / 2;
+    }
+    ctx.drawImage(logoImage, destX, destY, destW, destH);
+    ctx.restore();
+  } else {
+    drawShieldCheckIcon(ctx, padX + emblemSize / 2, headerY + emblemSize / 2, 28, palette.gold);
+  }
+
+  // 5b. Header Titles: Label + FULL Organization Name in Gold
+  const textLeft = padX + emblemSize + 18;
+  const pillW = 126;
+  const pillH = 36;
+  const pillX = width - padX - pillW;
+  const pillY = headerY + 10;
+  const maxOrgWidth = pillX - textLeft - 16; // Maximum horizontal space available for organization name
+
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
 
+  // Label: KARTU TANDA ANGGOTA RESMI
   ctx.fillStyle = palette.accentLight;
   ctx.font = '800 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.letterSpacing = '2px';
-  ctx.fillText('KARTU TANDA ANGGOTA DIGITAL RESMI', 120, 30);
+  ctx.letterSpacing = '1.8px';
+  const headerSubtitle = member.status === 'Aktif' || member.isKtaIssued
+    ? 'KARTU TANDA ANGGOTA RESMI'
+    : 'DRAFT KTA WARGA';
+  ctx.fillText(headerSubtitle, textLeft, headerY + 4);
 
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '900 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.letterSpacing = '0.5px';
+  // Full Organization Name - Dynamic Font Sizing & Multi-line Support so it fits completely without truncation
   const orgName = (settings.communityName || 'PAGUYUBAN DANA KEMATIAN').toUpperCase();
-  // Truncate if too long
-  const truncatedOrgName = orgName.length > 36 ? orgName.substring(0, 34) + '...' : orgName;
-  ctx.fillText(truncatedOrgName, 120, 50);
 
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
-  ctx.font = '500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.letterSpacing = '0px';
-  ctx.fillText(`${member.cluster || 'Cluster Warga'} • ${settings.communityAddress || 'Sekretariat Paguyuban'}`, 120, 80);
+  let orgFontSize = 24;
+  ctx.font = `900 ${orgFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+  let measured = ctx.measureText(orgName).width;
 
-  // Header Right: Chip & Official Status Badge
-  // Digital Chip
-  ctx.fillStyle = '#fbbf24';
-  drawRoundedRect(ctx, width - 110, 28, 74, 48, 8);
+  // Auto-scale font size down to ensure the full name fits
+  while (measured > maxOrgWidth && orgFontSize > 13) {
+    orgFontSize -= 0.5;
+    ctx.font = `900 ${orgFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    measured = ctx.measureText(orgName).width;
+  }
+
+  // If text is still wider than space at 13px, cleanly break into 2 lines
+  let orgLines: string[] = [];
+  if (measured > maxOrgWidth) {
+    const words = orgName.split(' ');
+    const mid = Math.ceil(words.length / 2);
+    const line1 = words.slice(0, mid).join(' ');
+    const line2 = words.slice(mid).join(' ');
+    orgLines = [line1, line2];
+    orgFontSize = 14;
+    ctx.font = `900 ${orgFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    measured = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width);
+  } else {
+    orgLines = [orgName];
+  }
+
+  // Radiant Metallic Gold Color Styling for Organization Name
+  const goldGrad = ctx.createLinearGradient(textLeft, headerY + 20, textLeft + Math.min(measured, maxOrgWidth), headerY + 54);
+  goldGrad.addColorStop(0, '#fef08a');   // Soft bright gold
+  goldGrad.addColorStop(0.25, '#fde047'); // Vibrant bright gold
+  goldGrad.addColorStop(0.65, '#fbbf24'); // Pure amber gold
+  goldGrad.addColorStop(1, '#d97706');   // Warm metallic gold
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 1.5;
+  ctx.fillStyle = goldGrad;
+  ctx.font = `900 ${orgFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+  ctx.letterSpacing = '0.5px';
+
+  if (orgLines.length === 1) {
+    ctx.fillText(orgLines[0], textLeft, headerY + 23);
+  } else {
+    const lineSpacing = orgFontSize + 3;
+    ctx.fillText(orgLines[0], textLeft, headerY + 20);
+    ctx.fillText(orgLines[1], textLeft, headerY + 20 + lineSpacing);
+  }
+  ctx.restore();
+
+  // 5c. Right: Status Badge Pill ("● RESMI" or Status)
+  const isOfficial = member.status === 'Aktif' || member.isKtaIssued;
+  const statusLabel = isOfficial ? 'RESMI' : (member.status || 'DRAFT');
+
+  ctx.fillStyle = isOfficial ? 'rgba(52, 211, 153, 0.22)' : 'rgba(251, 191, 36, 0.22)';
+  drawRoundedRect(ctx, pillX, pillY, pillW, pillH, 10);
   ctx.fill();
-  ctx.strokeStyle = '#d97706';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = isOfficial ? 'rgba(52, 211, 153, 0.5)' : 'rgba(251, 191, 36, 0.5)';
+  ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Chip inner metallic pattern
-  ctx.strokeStyle = 'rgba(180, 83, 9, 0.5)';
-  ctx.lineWidth = 1;
+  // Status Dot
+  ctx.fillStyle = isOfficial ? '#34d399' : '#fbbf24';
   ctx.beginPath();
-  ctx.moveTo(width - 110 + 24, 28);
-  ctx.lineTo(width - 110 + 24, 28 + 48);
-  ctx.moveTo(width - 110 + 50, 28);
-  ctx.lineTo(width - 110 + 50, 28 + 48);
-  ctx.moveTo(width - 110, 28 + 24);
-  ctx.lineTo(width - 110 + 74, 28 + 24);
-  ctx.stroke();
-
-  // "KTA RESMI • AKTIF" Status Pill
-  ctx.fillStyle = 'rgba(16, 185, 129, 0.25)';
-  drawRoundedRect(ctx, width - 158, 84, 122, 24, 12);
+  ctx.arc(pillX + 22, pillY + pillH / 2, 4.5, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = palette.accent;
-  ctx.lineWidth = 1;
-  ctx.stroke();
 
-  ctx.fillStyle = palette.accentLight;
-  ctx.font = '800 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.textAlign = 'center';
+  // Status Text
+  ctx.fillStyle = isOfficial ? palette.accentLight : '#fef08a';
+  ctx.font = '900 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText('● KTA RESMI • AKTIF', width - 97, 96);
+  ctx.letterSpacing = '1px';
+  ctx.fillText(statusLabel.toUpperCase(), pillX + 36, pillY + pillH / 2);
 
-  // Divider Line
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-  ctx.lineWidth = 1;
+  // 5d. Header Divider Line (auto adjusted if 2 lines)
+  const dividerY = orgLines.length > 1 ? headerY + emblemSize + 26 : headerY + emblemSize + 20;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.moveTo(36, 118);
-  ctx.lineTo(width - 36, 118);
+  ctx.moveTo(padX, dividerY);
+  ctx.lineTo(width - padX, dividerY);
   ctx.stroke();
 
-  // 6. Member Identity Section (Center)
-  // Avatar / Photo Box
-  const photoSize = 136;
-  const photoX = 36;
-  const photoY = 138;
-
-  // Outer frame
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-  drawRoundedRect(ctx, photoX, photoY, photoSize, photoSize, 20);
-  ctx.fill();
-  ctx.strokeStyle = palette.accent;
-  ctx.lineWidth = 2.5;
-  ctx.stroke();
-
-  // Photo Inner Gradient
-  const photoGrad = ctx.createLinearGradient(photoX, photoY, photoX + photoSize, photoY + photoSize);
-  photoGrad.addColorStop(0, '#064e3b');
-  photoGrad.addColorStop(1, '#0f172a');
-  ctx.fillStyle = photoGrad;
-  drawRoundedRect(ctx, photoX + 4, photoY + 4, photoSize - 8, photoSize - 8, 16);
-  ctx.fill();
-
-  // Initials in Avatar
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '900 48px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const initials = member.name.substring(0, 2).toUpperCase();
-  ctx.fillText(initials, photoX + photoSize / 2, photoY + photoSize / 2);
-
-  // Middle Data Fields
-  const textX = photoX + photoSize + 28;
+  // 6. Middle Area (Left: Member NPA & Data, Right: QR Code)
+  // 6a. Left Information
+  const infoX = padX;
+  const infoY = dividerY + 36;
 
   // NPA Tag
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(167, 243, 208, 0.85)';
+  ctx.font = '700 13px "Courier New", Courier, monospace';
+  ctx.letterSpacing = '1.5px';
+  ctx.fillText('NOMOR POKOK ANGGOTA (NPA):', infoX, infoY);
 
-  ctx.fillStyle = palette.accentLight;
-  ctx.font = '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.letterSpacing = '1px';
-  ctx.fillText('NOMOR POKOK ANGGOTA (NPA)', textX, 138);
-
+  // NPA Big Monospace Value
   ctx.fillStyle = '#ffffff';
-  ctx.font = '900 28px "Courier New", Courier, monospace';
-  ctx.letterSpacing = '2px';
-  ctx.fillText(member.memberNumber || 'PDK-2026-000', textX, 156);
+  ctx.font = '900 46px "Courier New", Courier, monospace';
+  ctx.letterSpacing = '3px';
+  ctx.fillText(member.memberNumber || 'PDK-2026-000', infoX, infoY + 28);
 
-  // Full Name
-  ctx.font = '900 28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  // Member Full Name
+  ctx.font = '900 34px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
   ctx.letterSpacing = '0px';
-  const memberName = member.name.length > 26 ? member.name.substring(0, 24) + '...' : member.name;
-  ctx.fillText(memberName, textX, 194);
+  const displayName = member.name.length > 28 ? member.name.substring(0, 26) + '...' : member.name;
+  ctx.fillText(displayName, infoX, infoY + 98);
 
-  // Info Pills Grid: NIK, Cluster, Status, Masa Berlaku
-  const infoBoxY = 236;
-  const infoBoxW = 460;
-  const infoBoxH = 90;
+  // Cluster & NIK Line
+  ctx.fillStyle = '#d1fae5';
+  ctx.font = '700 17px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.letterSpacing = '0.5px';
+  ctx.fillText(`Cluster: ${member.cluster || '-'}   •   NIK: ${member.nik || '-'}`, infoX, infoY + 150);
 
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-  drawRoundedRect(ctx, textX, infoBoxY, infoBoxW, infoBoxH, 14);
+  // 6b. Right Information: High-Contrast QR Code Card
+  const qrCardW = 206;
+  const qrCardH = 206;
+  const qrCardX = width - padX - qrCardW;
+  const qrCardY = dividerY + 26;
+
+  // White Card Container
+  ctx.fillStyle = '#ffffff';
+  drawRoundedRect(ctx, qrCardX, qrCardY, qrCardW, qrCardH, 22);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = palette.accentMid;
+  ctx.lineWidth = 3.5;
   ctx.stroke();
 
-  // Grid items inside Info Box
-  // Row 1: NIK & Cluster
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-  ctx.font = '600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.fillText('NIK / KTP:', textX + 16, infoBoxY + 12);
-  ctx.fillText('CLUSTER / RT:', textX + 240, infoBoxY + 12);
-
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '700 13px "Courier New", monospace';
-  ctx.fillText(member.nik || '-', textX + 16, infoBoxY + 28);
-
-  ctx.fillStyle = palette.accentLight;
-  ctx.font = '700 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.fillText(member.cluster || 'Cluster Warga', textX + 240, infoBoxY + 28);
-
-  // Row 2: Masa Berlaku & Tanggungan
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-  ctx.font = '600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.fillText('MASA PERLINDUNGAN:', textX + 16, infoBoxY + 52);
-  ctx.fillText('TANGGUNGAN JIWA:', textX + 240, infoBoxY + 52);
-
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '700 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.fillText(`Berlaku s/d ${expiryDateFormatted || '31 Des 2026'}`, textX + 16, infoBoxY + 68);
-
-  ctx.fillStyle = palette.gold;
-  ctx.font = '700 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.fillText(`${(member.dependentsCount || 0) + 1} Jiwa Terlindungi`, textX + 240, infoBoxY + 68);
-
-  // Right Side: QR Code Area
-  const qrBoxSize = 168;
-  const qrBoxX = width - qrBoxSize - 36;
-  const qrBoxY = 138;
-
-  // White background for QR code
-  ctx.fillStyle = '#ffffff';
-  drawRoundedRect(ctx, qrBoxX, qrBoxY, qrBoxSize, qrBoxSize + 32, 16);
-  ctx.fill();
-  ctx.strokeStyle = palette.accent;
-  ctx.lineWidth = 3;
-  ctx.stroke();
-
-  // Draw QR Image if provided
+  // Draw QR Image inside
   if (qrImage) {
+    const qrPad = 14;
+    const qrDrawSize = qrCardW - qrPad * 2;
     try {
-      ctx.drawImage(qrImage, qrBoxX + 14, qrBoxY + 14, qrBoxSize - 28, qrBoxSize - 28);
+      ctx.drawImage(qrImage, qrCardX + qrPad, qrCardY + qrPad, qrDrawSize, qrDrawSize);
     } catch (e) {
-      console.warn('Could not draw QR image on front card:', e);
+      console.warn('Could not draw QR code on canvas:', e);
     }
-  } else {
-    // Fallback QR placeholder text
-    ctx.fillStyle = '#064e3b';
-    ctx.font = '900 18px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('QR KTA', qrBoxX + qrBoxSize / 2, qrBoxY + qrBoxSize / 2);
   }
 
-  // Label under QR Code
-  ctx.fillStyle = '#064e3b';
-  ctx.font = '800 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  // Underneath QR Card: "SCAN VERIFIKASI"
+  ctx.fillStyle = '#6ee7b7';
+  ctx.font = '900 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('SCAN VERIFIKASI', qrBoxX + qrBoxSize / 2, qrBoxY + qrBoxSize + 16);
+  ctx.textBaseline = 'top';
+  ctx.letterSpacing = '1px';
+  ctx.fillText('SCAN VERIFIKASI', qrCardX + qrCardW / 2, qrCardY + qrCardH + 14);
 
-  // 7. Footer Bottom Strip
-  const footerY = height - 52;
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-  ctx.fillRect(0, footerY, width, 52);
-
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-  ctx.lineWidth = 1;
+  // 7. Bottom Bar (Expiry Date & Protected Dependents)
+  const bottomDividerY = height - 90;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.moveTo(0, footerY);
-  ctx.lineTo(width, footerY);
+  ctx.moveTo(padX, bottomDividerY);
+  ctx.lineTo(width - padX, bottomDividerY);
   ctx.stroke();
 
-  // Footer Left: Verification text
+  // 7a. Left: Masa Perlindungan
   ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-  ctx.font = '600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.fillText('PENGESAHAN: BENDAHARA PAGUYUBAN • STATUS SAH DIVERIFIKASI', 36, footerY + 26);
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(110, 231, 183, 0.8)';
+  ctx.font = '800 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.letterSpacing = '1px';
+  ctx.fillText('MASA PERLINDUNGAN:', padX, bottomDividerY + 18);
 
-  // Footer Right: Digital Hash / Serial
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 20px "Courier New", Courier, monospace';
+  ctx.letterSpacing = '0.5px';
+  ctx.fillText(expiryDateFormatted || '31 Des 2026', padX, bottomDividerY + 40);
+
+  // 7b. Right: Tanggungan Jiwa
   ctx.textAlign = 'right';
-  ctx.fillStyle = palette.accentLight;
-  ctx.font = '700 11px "Courier New", monospace';
-  ctx.fillText(`DIGITAL-ID: ${member.memberNumber} • VALID`, width - 36, footerY + 26);
+  ctx.fillStyle = 'rgba(110, 231, 183, 0.8)';
+  ctx.font = '800 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.letterSpacing = '1px';
+  ctx.fillText('TANGGUNGAN:', width - padX, bottomDividerY + 18);
 
-  // Outer Border for Card
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.letterSpacing = '0px';
+  ctx.fillText(`${(member.dependentsCount || 0) + 1} Jiwa Terlindungi`, width - padX, bottomDividerY + 40);
+
+  // Outer Stroke Border of KTA Card
   ctx.strokeStyle = palette.border;
   ctx.lineWidth = 3;
   drawRoundedRect(ctx, 1.5, 1.5, width - 3, height - 3, radius);
@@ -382,7 +520,7 @@ function drawKtaFront(
 }
 
 /**
- * Draw the back side of the KTA Card on canvas
+ * Draw Back Side of KTA (Matching MemberPortal preview 100%)
  */
 function drawKtaBack(
   ctx: CanvasRenderingContext2D,
@@ -393,7 +531,8 @@ function drawKtaBack(
   member: Member,
   theme: KtaCardTheme,
   settings: SystemSettings,
-  qrImage?: HTMLImageElement | null
+  qrImage: HTMLImageElement | null,
+  logoImage: HTMLImageElement | null = null
 ) {
   const palette = THEME_PALETTES[theme] || THEME_PALETTES.emerald;
   const radius = 32;
@@ -401,165 +540,246 @@ function drawKtaBack(
   ctx.save();
   ctx.translate(offsetX, offsetY);
 
-  // 1. Card Clipping & Base
+  // 1. Clip card boundary
   drawRoundedRect(ctx, 0, 0, width, height, radius);
   ctx.clip();
 
-  // 2. Background Gradient (Darker tone for backside)
+  // 2. Background Gradient (Darker rich tone)
   const bgGrad = ctx.createLinearGradient(0, 0, width, height);
-  bgGrad.addColorStop(0, '#090d16');
-  bgGrad.addColorStop(0.5, palette.bgStart);
-  bgGrad.addColorStop(1, '#021814');
+  bgGrad.addColorStop(0, palette.backGradStart);
+  bgGrad.addColorStop(0.5, palette.backGradMid);
+  bgGrad.addColorStop(1, palette.backGradEnd);
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, width, height);
 
-  // Subtle Pattern
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
-  ctx.lineWidth = 1;
-  for (let i = -width; i < width * 2; i += 40) {
-    ctx.beginPath();
-    ctx.moveTo(i, 0);
-    ctx.lineTo(i + height, height);
+  // 3. Dot Pattern (Teal)
+  drawDotPattern(ctx, width, height, 'rgba(52, 211, 153, 0.08)');
+
+  const padX = 44;
+  const headerY = 36;
+
+  // 4. Header: Logo / UserCheck Icon + Title & NPA Pill
+  if (logoImage) {
+    ctx.save();
+    const logoBadgeSize = 36;
+    drawRoundedRect(ctx, padX, headerY - 4, logoBadgeSize, logoBadgeSize, 10);
+    ctx.clip();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(padX, headerY - 4, logoBadgeSize, logoBadgeSize);
+    ctx.drawImage(logoImage, padX + 2, headerY - 2, logoBadgeSize - 4, logoBadgeSize - 4);
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 1;
+    drawRoundedRect(ctx, padX, headerY - 4, 36, 36, 10);
     ctx.stroke();
+  } else {
+    drawUserCheckIcon(ctx, padX + 16, headerY + 14, 28, palette.accentTeal);
   }
 
-  // Top Accent Stripe
-  ctx.fillStyle = palette.accent;
-  ctx.fillRect(0, 0, width, 8);
-
-  // 3. Back Header
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '800 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
   ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = palette.accentTeal;
+  ctx.font = '900 17px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
   ctx.letterSpacing = '1px';
-  ctx.fillText('KETENTUAN & SYARAT PENGGUNAAN KTA RESMI', 36, 28);
+  ctx.fillText('DETAIL PROFIL & INFORMASI ANGGOTA', padX + (logoImage ? 46 : 44), headerY + 14);
 
-  ctx.fillStyle = palette.accentLight;
-  ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.letterSpacing = '0.5px';
-  ctx.fillText(`NPA: ${member.memberNumber} • ${settings.communityName || 'Paguyuban Dana Kematian'}`, 36, 52);
+  // Right Header Badges: NPA + Status
+  const npaText = member.memberNumber || 'PDK-2026-000';
+  ctx.textAlign = 'right';
+  ctx.font = '800 13px "Courier New", monospace';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(npaText, width - padX, headerY + 14);
 
-  // Divider
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-  ctx.lineWidth = 1;
+  // Divider Line
+  const dividerY = headerY + 38;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.moveTo(36, 78);
-  ctx.lineTo(width - 36, 78);
+  ctx.moveTo(padX, dividerY);
+  ctx.lineTo(width - padX, dividerY);
   ctx.stroke();
 
-  // 4. Content Grid: Left (Terms list), Right (Large QR & Stamp)
-  const contentY = 96;
+  // 5. Middle Body (Left 60%: Profile & Dependents; Right 40%: QR & Protection Benefits)
+  const bodyY = dividerY + 22;
+  const leftColW = 570;
 
-  // Terms (Left 600px)
-  const terms = [
-    '1. Kartu Tanda Anggota (KTA) ini merupakan bukti sah keanggotaan Paguyuban Dana Kematian Warga.',
-    '2. Pemegang KTA berhak atas fasilitas ambulans jenazah, pemulasaran fardhu kifayah, dan santunan duka cita.',
-    '3. Hak santunan berlaku bagi kepala keluarga dan seluruh tanggungan yang telah terdaftar resmi.',
-    '4. Wajib ditunjukkan saat pelaporan warga duka cita kepada pengurus RT atau Bendahara Paguyuban.',
-    '5. Keabsahan kartu dapat diverifikasi seketika dengan memindai QR Code resmi menggunakan kamera HP.',
-    '6. Iuran wajib dibayarkan tepat waktu setiap periode tahunan demi menjaga status keaktifan hak santunan.',
-  ];
-
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
-  ctx.font = '500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  // 5a. Member Full Name
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-
-  let currentTermY = contentY;
-  terms.forEach((term) => {
-    ctx.fillText(term, 36, currentTermY);
-    currentTermY += 26;
-  });
-
-  // Right Side: QR Code + Digital Verification Seal Box
-  const qrBackSize = 150;
-  const qrBackX = width - qrBackSize - 50;
-  const qrBackY = contentY;
+  ctx.fillStyle = 'rgba(94, 234, 212, 0.85)';
+  ctx.font = '800 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.letterSpacing = '1px';
+  ctx.fillText('NAMA LENGKAP ANGGOTA:', padX, bodyY);
 
   ctx.fillStyle = '#ffffff';
-  drawRoundedRect(ctx, qrBackX, qrBackY, qrBackSize, qrBackSize, 16);
+  ctx.font = '900 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  const cleanName = member.name.length > 30 ? member.name.substring(0, 28) + '...' : member.name;
+  ctx.fillText(cleanName, padX, bodyY + 18);
+
+  // 5b. Box 1: NIK, No. KK & Cluster
+  const box1Y = bodyY + 56;
+  const box1H = 92;
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+  drawRoundedRect(ctx, padX, box1Y, leftColW, box1H, 14);
   ctx.fill();
-  ctx.strokeStyle = palette.accent;
-  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  // Box 1 Content
+  ctx.font = '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.fillStyle = 'rgba(94, 234, 212, 0.8)';
+  ctx.fillText('NIK WARGA:', padX + 16, box1Y + 12);
+  ctx.fillText('NO. KARTU KELUARGA:', padX + 280, box1Y + 12);
+
+  ctx.font = '800 15px "Courier New", monospace';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(member.nik || '-', padX + 16, box1Y + 28);
+  ctx.fillText(member.familyCardNumber || 'Terdaftar', padX + 280, box1Y + 28);
+
+  // Cluster & RT Row
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+  ctx.beginPath();
+  ctx.moveTo(padX + 16, box1Y + 54);
+  ctx.lineTo(padX + leftColW - 16, box1Y + 54);
+  ctx.stroke();
+
+  ctx.font = '700 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.fillStyle = 'rgba(94, 234, 212, 0.8)';
+  ctx.fillText('CLUSTER / RT:', padX + 16, box1Y + 64);
+  ctx.fillStyle = palette.accentMid;
+  ctx.font = '800 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.fillText(member.cluster || 'Cluster Paguyuban Warga', padX + 130, box1Y + 62);
+
+  // 5c. Box 2: Covered Family Dependents
+  const box2Y = box1Y + box1H + 16;
+  const box2H = 140;
+  ctx.fillStyle = 'rgba(6, 78, 59, 0.45)';
+  drawRoundedRect(ctx, padX, box2Y, leftColW, box2H, 14);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(16, 185, 129, 0.3)';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  // Box 2 Header
+  ctx.fillStyle = palette.gold;
+  ctx.font = '900 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.fillText(`👨‍👩‍👧‍👦 Tanggungan Jiwa Terlindungi: ${(member.dependentsCount || 0) + 1} Jiwa`, padX + 16, box2Y + 14);
+
+  // Dependents List
+  if (member.dependentsList && member.dependentsList.length > 0) {
+    let depY = box2Y + 42;
+    const maxVisible = 3;
+    member.dependentsList.slice(0, maxVisible).forEach((dep, idx) => {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+      drawRoundedRect(ctx, padX + 16, depY, leftColW - 32, 24, 6);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText(`• ${dep.name} (${dep.relationship})`, padX + 26, depY + 5);
+
+      depY += 28;
+    });
+
+    if (member.dependentsList.length > maxVisible) {
+      ctx.fillStyle = palette.accentMid;
+      ctx.font = '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText(`+ ${member.dependentsList.length - maxVisible} tanggungan keluarga lainnya terdaftar di sistem`, padX + 16, depY + 2);
+    }
+  } else {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.font = '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(`Kepala Keluarga Terdaftar • No. HP: ${member.phone || '-'}`, padX + 16, box2Y + 50);
+    ctx.font = '500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.fillText('Data keluarga otomatis disinkronkan saat pengajuan berkas KK.', padX + 16, box2Y + 76);
+  }
+
+  // 5d. Right Column: QR Code + Protection Rights Box
+  const rightColX = padX + leftColW + 36;
+  const rightColW = width - rightColX - padX;
+
+  // QR Code Box (Matching preview: size 160x160 with teal border)
+  const qrBackSize = 160;
+  const qrBackX = rightColX + (rightColW - qrBackSize) / 2;
+  const qrBackY = bodyY;
+
+  ctx.fillStyle = '#ffffff';
+  drawRoundedRect(ctx, qrBackX, qrBackY, qrBackSize, qrBackSize, 20);
+  ctx.fill();
+  ctx.strokeStyle = palette.accentTeal;
+  ctx.lineWidth = 3;
   ctx.stroke();
 
   if (qrImage) {
+    const qrPad = 12;
     try {
-      ctx.drawImage(qrImage, qrBackX + 12, qrBackY + 12, qrBackSize - 24, qrBackSize - 24);
+      ctx.drawImage(qrImage, qrBackX + qrPad, qrBackY + qrPad, qrBackSize - qrPad * 2, qrBackSize - qrPad * 2);
     } catch (e) {
       console.warn('Could not draw QR image on back card:', e);
     }
   }
 
-  // Verification Seal / Stempel Digital Box
-  const stampY = qrBackY + qrBackSize + 16;
-  const stampW = qrBackSize;
-  const stampH = 72;
-
-  ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
-  drawRoundedRect(ctx, qrBackX, stampY, stampW, stampH, 12);
+  // Hak Perlindungan Card
+  const rightsY = qrBackY + qrBackSize + 20;
+  const rightsH = 120;
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+  drawRoundedRect(ctx, rightColX, rightsY, rightColW, rightsH, 14);
   ctx.fill();
-  ctx.strokeStyle = palette.accent;
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.lineWidth = 1.2;
   ctx.stroke();
-
-  ctx.fillStyle = palette.accentLight;
-  ctx.font = '800 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  ctx.fillText('TERVERIFIKASI SAH', qrBackX + stampW / 2, stampY + 10);
-
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.fillText('Bendahara Paguyuban', qrBackX + stampW / 2, stampY + 28);
 
   ctx.fillStyle = palette.gold;
-  ctx.font = '700 9px "Courier New", monospace';
-  ctx.fillText('SISTEM RESMI DIGITAL', qrBackX + stampW / 2, stampY + 48);
+  ctx.font = '800 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.fillText('🛡️ Hak Perlindungan Resmi:', rightColX + 14, rightsY + 14);
 
-  // 5. Contact & Secretariat Box at Bottom Left
-  const contactY = 270;
-  const contactW = 580;
-  const contactH = 68;
+  ctx.fillStyle = '#d1fae5';
+  ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.fillText('• Ambulans Jenazah 24 Jam', rightColX + 14, rightsY + 38);
+  ctx.fillText('• Santunan Duka Cita Cepat', rightColX + 14, rightsY + 62);
+  ctx.fillText('• Perlengkapan Fardhu Kifayah', rightColX + 14, rightsY + 86);
 
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-  drawRoundedRect(ctx, 36, contactY, contactW, contactH, 12);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  ctx.textAlign = 'left';
-  ctx.fillStyle = palette.accentLight;
-  ctx.font = '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.fillText('LAYANAN BANTUAN & PENGURUS:', 52, contactY + 12);
-
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-  ctx.font = '500 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.fillText(`Sekretariat: ${settings.communityAddress || 'Kantor Paguyuban Warga'}`, 52, contactY + 30);
-  ctx.fillText(`Kontak Pengurus: ${settings.treasurerPhone || '0812-3456-7890'} • Pelayanan 24 Jam Ambulans Jenazah`, 52, contactY + 48);
-
-  // 6. Footer Bottom
-  const footerY = height - 48;
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-  ctx.fillRect(0, footerY, width, 48);
-
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-  ctx.lineWidth = 1;
+  // 6. Bottom Footer
+  const footerDividerY = height - 76;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.moveTo(0, footerY);
-  ctx.lineTo(width, footerY);
+  ctx.moveTo(padX, footerDividerY);
+  ctx.lineTo(width - padX, footerDividerY);
   ctx.stroke();
 
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-  ctx.font = '500 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.fillText('Hak Cipta Dilindungi Undang-Undang • Sistem Informasi Manajemen Dana Kematian Warga', width / 2, footerY + 24);
+  // Footer Col 1: Pengesahan
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(94, 234, 212, 0.8)';
+  ctx.font = '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.fillText('PENGESAHAN:', padX, footerDividerY + 14);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '800 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.fillText(member.isKtaIssued ? 'Bendahara Paguyuban' : 'Verifikasi Pengurus', padX, footerDividerY + 32);
 
-  // Outer Border for Card
-  ctx.strokeStyle = palette.border;
+  // Footer Col 2: Darurat Jenazah (Center)
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(94, 234, 212, 0.8)';
+  ctx.font = '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.fillText('DARURAT JENAZAH 24 JAM:', width / 2, footerDividerY + 14);
+  ctx.fillStyle = palette.gold;
+  ctx.font = '800 15px "Courier New", Courier, monospace';
+  ctx.fillText(settings.treasurerPhone || '0812-3456-7890', width / 2, footerDividerY + 32);
+
+  // Footer Col 3: Status KTA (Right)
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(94, 234, 212, 0.8)';
+  ctx.font = '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.fillText('STATUS KTA:', width - padX, footerDividerY + 14);
+  ctx.fillStyle = palette.accentMid;
+  ctx.font = '800 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.fillText(member.status === 'Aktif' || member.isKtaIssued ? 'Aktif & Sah' : member.status, width - padX, footerDividerY + 32);
+
+  // Outer Stroke Border
+  ctx.strokeStyle = palette.backBorder;
   ctx.lineWidth = 3;
   drawRoundedRect(ctx, 1.5, 1.5, width - 3, height - 3, radius);
   ctx.stroke();
@@ -568,7 +788,7 @@ function drawKtaBack(
 }
 
 /**
- * Load an image from a Data URL into an HTMLImageElement
+ * Helper to safely load an image from a Data URL into an HTMLImageElement
  */
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -581,7 +801,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 /**
- * Generates a high-definition Canvas for the KTA Card
+ * Generates a high-definition Canvas for the KTA Card matching the live preview
  */
 export async function generateKtaCardCanvas({
   member,
@@ -590,18 +810,52 @@ export async function generateKtaCardCanvas({
   settings,
   payments = [],
   qrDataUrl,
+  qrPayload,
 }: GenerateKtaImageOptions): Promise<HTMLCanvasElement> {
   const expiry = calculateMemberExpiry(member, payments, new Date(), settings);
-  const cardWidth = 1050;
-  const cardHeight = 660;
+  const ktaInfo = getMemberKtaIssuanceInfo(member, payments);
 
-  // Pre-load QR Code image if data URL is provided
+  // Standard CR80 card ratio 85.6mm x 53.98mm = 1.58577:1 (1050px x 662px is 1.586:1)
+  const cardWidth = 1050;
+  const cardHeight = 662;
+
+  // 1. GUARANTEE QR CODE GENERATION
   let qrImg: HTMLImageElement | null = null;
-  if (qrDataUrl) {
+  try {
+    let finalQrDataUrl = qrDataUrl;
+    if (!finalQrDataUrl) {
+      const payload = qrPayload || generateKtaQrPayload(
+        member,
+        ktaInfo,
+        settings,
+        expiry.expiryDateFormatted,
+        'url'
+      );
+      finalQrDataUrl = await QRCode.toDataURL(payload, {
+        width: 512,
+        margin: 1,
+        color: {
+          dark: '#022c22', // deep emerald dark matching preview
+          light: '#ffffff',
+        },
+        errorCorrectionLevel: 'M',
+      });
+    }
+
+    if (finalQrDataUrl) {
+      qrImg = await loadImage(finalQrDataUrl);
+    }
+  } catch (e) {
+    console.error('Failed to generate/load QR code image for KTA:', e);
+  }
+
+  // 2. LOAD ORGANIZATION LOGO IF AVAILABLE
+  let logoImg: HTMLImageElement | null = null;
+  if (settings.logoUrl) {
     try {
-      qrImg = await loadImage(qrDataUrl);
-    } catch (e) {
-      console.warn('Failed to pre-load QR image for canvas:', e);
+      logoImg = await loadImage(settings.logoUrl);
+    } catch (err) {
+      console.warn('Could not load organization logo image for KTA canvas:', err);
     }
   }
 
@@ -611,35 +865,52 @@ export async function generateKtaCardCanvas({
     canvas.width = cardWidth;
     canvas.height = cardHeight;
     const ctx = canvas.getContext('2d')!;
-    drawKtaFront(ctx, 0, 0, cardWidth, cardHeight, member, theme, settings, expiry.expiryDateFormatted, qrImg);
+    drawKtaFront(ctx, 0, 0, cardWidth, cardHeight, member, theme, settings, expiry.expiryDateFormatted, qrImg, logoImg);
   } else if (side === 'back') {
     canvas.width = cardWidth;
     canvas.height = cardHeight;
     const ctx = canvas.getContext('2d')!;
-    drawKtaBack(ctx, 0, 0, cardWidth, cardHeight, member, theme, settings, qrImg);
+    drawKtaBack(ctx, 0, 0, cardWidth, cardHeight, member, theme, settings, qrImg, logoImg);
   } else {
-    // Both sides on one single image (vertical layout with divider)
-    const gap = 48;
+    // Both sides: Stacked vertically with clean premium container
+    const gap = 50;
+    const bannerH = 96;
+    const footerPad = 50;
     canvas.width = cardWidth;
-    canvas.height = cardHeight * 2 + gap + 80;
+    canvas.height = bannerH + cardHeight * 2 + gap + footerPad;
     const ctx = canvas.getContext('2d')!;
 
     // Background Canvas
-    ctx.fillStyle = '#0f172a';
+    ctx.fillStyle = '#0b1329';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Title banner on top
+    // Title banner
     ctx.fillStyle = '#ffffff';
-    ctx.font = '900 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = '900 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(`KARTU TANDA ANGGOTA DIGITAL (DEPAN & BELAKANG) - ${member.name.toUpperCase()}`, canvas.width / 2, 24);
+    ctx.fillText(
+      `KARTU TANDA ANGGOTA DIGITAL RESMI - ${member.name.toUpperCase()}`,
+      canvas.width / 2,
+      20
+    );
 
-    // Draw Front
-    drawKtaFront(ctx, 0, 68, cardWidth, cardHeight, member, theme, settings, expiry.expiryDateFormatted, qrImg);
+    // Organization Name in Gold
+    const fullOrgName = (settings.communityName || 'PAGUYUBAN DANA KEMATIAN').toUpperCase();
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = '900 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.letterSpacing = '1px';
+    ctx.fillText(
+      `${fullOrgName} • NPA: ${member.memberNumber || '-'}`,
+      canvas.width / 2,
+      56
+    );
 
-    // Draw Back
-    drawKtaBack(ctx, 0, 68 + cardHeight + gap, cardWidth, cardHeight, member, theme, settings, qrImg);
+    // Front Card
+    drawKtaFront(ctx, 0, bannerH, cardWidth, cardHeight, member, theme, settings, expiry.expiryDateFormatted, qrImg, logoImg);
+
+    // Back Card
+    drawKtaBack(ctx, 0, bannerH + cardHeight + gap, cardWidth, cardHeight, member, theme, settings, qrImg, logoImg);
   }
 
   return canvas;
@@ -654,7 +925,7 @@ export async function downloadKtaCardAsImage(options: GenerateKtaImageOptions): 
 
   const cleanName = (options.member.name || 'Warga').replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
   const cleanNpa = (options.member.memberNumber || 'KTA').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const sideLabel = options.side === 'front' ? 'Depan' : options.side === 'back' ? 'Belakang' : 'Lengkap';
+  const sideLabel = options.side === 'front' ? 'Depan' : options.side === 'back' ? 'Belakang' : 'Lengkap_2_Sisi';
   const filename = `KTA_${cleanNpa}_${cleanName}_${sideLabel}.png`;
 
   const link = document.createElement('a');

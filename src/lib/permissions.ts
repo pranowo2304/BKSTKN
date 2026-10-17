@@ -361,7 +361,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissionsMap = {
     view_audit_logs: false,
     approve_payments: false,
     reject_payments: false,
-    record_payments: true,
+    record_payments: false,
     issue_receipts: false,
     process_claims: false,
     view_claims: true,

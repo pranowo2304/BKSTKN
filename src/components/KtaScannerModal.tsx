@@ -51,6 +51,16 @@ export const KtaScannerModal: React.FC<KtaScannerModalProps> = ({
     const trimmed = text.trim();
     if (!trimmed) return;
 
+    // Check if Receipt Verification URL or number
+    if (trimmed.includes('verify=receipt') || trimmed.includes('receiptNumber=')) {
+      const match = trimmed.match(/(?:receiptNumber|receipt|no)=([^&]+)/i);
+      const receiptNo = match ? decodeURIComponent(match[1]) : '';
+      if (receiptNo) {
+        window.location.search = `?verify=receipt&receiptNumber=${encodeURIComponent(receiptNo)}`;
+        return;
+      }
+    }
+
     // Check if JSON payload from QR Code
     if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
       try {

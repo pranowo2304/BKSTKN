@@ -73,7 +73,7 @@ interface MemberPortalProps {
   setCurrentTab?: (tab: string) => void;
 }
 
-type MemberPortalSection = 'semua' | 'kartu-anggota' | 'bayar-iuran' | 'nilai-manfaat' | 'riwayat-pembayaran' | 'riwayat-pendaftaran';
+type MemberPortalSection = 'semua' | 'kartu-anggota' | 'nilai-manfaat' | 'riwayat-pembayaran' | 'riwayat-pendaftaran';
 
 export const MemberPortal: React.FC<MemberPortalProps> = ({
   activeUser,
@@ -214,9 +214,11 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
         theme: 'emerald',
         settings,
         payments,
+        qrPayload,
       });
-      setMyKtaDownloadToast(`KTA (${side === 'front' ? 'Sisi Depan' : side === 'back' ? 'Sisi Belakang' : 'Lengkap'}) berhasil diunduh sebagai gambar.`);
-      setTimeout(() => setMyKtaDownloadToast(null), 4000);
+      const sideName = side === 'front' ? 'Sisi Depan' : side === 'back' ? 'Sisi Belakang' : 'Depan & Belakang';
+      setMyKtaDownloadToast(`KTA (${sideName}) berhasil diunduh sebagai file PNG (${filename}) dengan QR Code valid.`);
+      setTimeout(() => setMyKtaDownloadToast(null), 4500);
     } catch (err) {
       console.error('Error downloading KTA card image:', err);
       alert('Gagal mengunduh gambar KTA. Silakan coba kembali.');
@@ -289,19 +291,17 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
             },
           },
           {
-            id: 'bayar-iuran',
-            label: 'Bayar Iuran',
-            subLabel: `${formatIDR(settings.annualFeeAmount || 300000)}/Tahun`,
-            badge: 'Online',
-            gradient: 'from-blue-600 to-indigo-500',
-            icon: CreditCard,
+            id: 'nilai-manfaat',
+            label: 'Santunan Duka',
+            subLabel: `s/d ${formatIDR(maxBenefitAmount)}`,
+            badge: `${effectiveBenefits.length} Paket`,
+            gradient: 'from-rose-600 to-pink-500',
+            icon: HeartHandshake,
             onClick: () => {
-              if (onNavigateToPayment && member) {
-                onNavigateToPayment(member);
-              } else if (setCurrentTab) {
-                setCurrentTab('payment');
+              if (setCurrentTab) {
+                setCurrentTab('realization');
               } else {
-                handleSectionChange('bayar-iuran');
+                handleSectionChange('nilai-manfaat');
               }
             },
           },
@@ -317,21 +317,6 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
                 setCurrentTab('history');
               } else {
                 handleSectionChange('riwayat-pembayaran');
-              }
-            },
-          },
-          {
-            id: 'nilai-manfaat',
-            label: 'Santunan Duka',
-            subLabel: `s/d ${formatIDR(maxBenefitAmount)}`,
-            badge: `${effectiveBenefits.length} Paket`,
-            gradient: 'from-rose-600 to-pink-500',
-            icon: HeartHandshake,
-            onClick: () => {
-              if (setCurrentTab) {
-                setCurrentTab('realization');
-              } else {
-                handleSectionChange('nilai-manfaat');
               }
             },
           },
@@ -373,18 +358,18 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
             onClick: () => handleSectionChange('kartu-anggota'),
           },
           {
-            id: 'pill-bayar',
-            label: `Bayar Iuran (${formatIDR(settings.annualFeeAmount || 300000)}/Thn)`,
-            isActive: activeSection === 'bayar-iuran',
-            icon: CreditCard,
-            onClick: () => handleSectionChange('bayar-iuran'),
-          },
-          {
             id: 'pill-manfaat',
             label: 'Nilai Manfaat',
             isActive: activeSection === 'nilai-manfaat',
             icon: HeartHandshake,
             onClick: () => handleSectionChange('nilai-manfaat'),
+          },
+          {
+            id: 'pill-riwayat',
+            label: 'Riwayat & Kwitansi',
+            isActive: activeSection === 'riwayat-pembayaran',
+            icon: Receipt,
+            onClick: () => handleSectionChange('riwayat-pembayaran'),
           },
           {
             id: 'pill-hubungi',
@@ -412,17 +397,12 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
             },
           },
           {
-            id: 'dock-bayar',
-            label: 'Bayar Iuran',
-            icon: CreditCard,
+            id: 'dock-manfaat',
+            label: 'Manfaat',
+            icon: HeartHandshake,
+            isActive: activeSection === 'nilai-manfaat',
             isCenterFloating: true,
-            onClick: () => {
-              if (onNavigateToPayment && member) {
-                onNavigateToPayment(member);
-              } else {
-                handleSectionChange('bayar-iuran');
-              }
-            },
+            onClick: () => handleSectionChange('nilai-manfaat'),
           },
           {
             id: 'dock-riwayat',
@@ -873,16 +853,23 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
             </div>
 
             {/* Action Buttons */}
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   type="button"
-                  onClick={() => handleDownloadMyKta('front')}
+                  onClick={() => handleDownloadMyKta(isCardFlipped ? 'back' : 'front')}
                   disabled={downloadingMyKta}
                   className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-black text-xs rounded-xl transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  title="Unduh sisi KTA yang sedang aktif dalam format gambar PNG presisi"
                 >
                   <Download className="w-4 h-4" />
-                  <span>{downloadingMyKta ? 'Menyiapkan...' : 'Unduh Gambar KTA (.png)'}</span>
+                  <span>
+                    {downloadingMyKta
+                      ? 'Menyiapkan Gambar...'
+                      : isCardFlipped
+                      ? 'Unduh KTA Sisi Belakang (.png)'
+                      : 'Unduh KTA Sisi Depan (.png)'}
+                  </span>
                 </button>
 
                 <button
@@ -896,26 +883,51 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
                 </button>
               </div>
 
+              {/* Quick Side Selection for PNG Download */}
+              <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-1 text-[11px]">
+                <span className="text-slate-500 font-semibold pl-1 flex items-center gap-1">
+                  <Download className="w-3 h-3 text-emerald-600" /> Pilihan PNG:
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadMyKta('front')}
+                    disabled={downloadingMyKta}
+                    className="px-2 py-1 rounded-lg bg-white hover:bg-emerald-50 hover:text-emerald-700 border border-slate-200 font-bold text-slate-700 transition-colors cursor-pointer text-[10px]"
+                    title="Unduh PNG KTA Sisi Depan saja (QR Code + NPA + Nama)"
+                  >
+                    Sisi Depan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadMyKta('back')}
+                    disabled={downloadingMyKta}
+                    className="px-2 py-1 rounded-lg bg-white hover:bg-emerald-50 hover:text-emerald-700 border border-slate-200 font-bold text-slate-700 transition-colors cursor-pointer text-[10px]"
+                    title="Unduh PNG KTA Sisi Belakang saja (Detail Profil + Tanggungan)"
+                  >
+                    Sisi Belakang
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadMyKta('both')}
+                    disabled={downloadingMyKta}
+                    className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold transition-colors cursor-pointer text-[10px]"
+                    title="Unduh PNG Lengkap (Depan & Belakang digabung vertikal)"
+                  >
+                    Depan & Belakang
+                  </button>
+                </div>
+              </div>
+
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setIsContactAdminOpen(true)}
-                  className="flex-1 py-2 px-3 bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-300 hover:border-emerald-300 font-bold text-xs rounded-xl transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="w-full py-2 px-3 bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-300 hover:border-emerald-300 font-bold text-xs rounded-xl transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Hubungi Pengurus</span>
+                  <span>Hubungi Pengurus Paguyuban</span>
                 </button>
-
-                {onNavigateToPayment && (
-                  <button
-                    type="button"
-                    onClick={() => onNavigateToPayment(member)}
-                    className="flex-1 py-2 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs rounded-xl transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <CreditCard className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>Bayar Iuran</span>
-                  </button>
-                )}
               </div>
 
               {/* QR Code Sharing Widget Berdasarkan NPA */}
@@ -951,16 +963,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
             {/* Special status notice if not Aktif */}
             {member.status === 'Menunggu Pembayaran' && (
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between gap-2 text-blue-900 text-xs">
-                <span className="font-semibold">Verifikasi berkas disetujui. Segera setor iuran kas untuk KTA resmi.</span>
-                {onNavigateToPayment && (
-                  <button
-                    type="button"
-                    onClick={() => onNavigateToPayment(member)}
-                    className="px-2.5 py-1 bg-blue-600 text-white rounded-lg font-bold shrink-0 hover:bg-blue-500 cursor-pointer"
-                  >
-                    Bayar
-                  </button>
-                )}
+                <span className="font-semibold">Verifikasi berkas disetujui RT. Pembayaran dan aktivasi iuran kas dicatat oleh Bendahara Paguyuban.</span>
               </div>
             )}
           </div>
@@ -1005,19 +1008,6 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
 
         <button
           type="button"
-          onClick={() => handleSectionChange('bayar-iuran')}
-          className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
-            activeSection === 'bayar-iuran'
-              ? 'bg-emerald-700 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-          }`}
-        >
-          <CreditCard className="w-4 h-4" />
-          <span>2. Bayar Iuran ({formatIDR(settings.annualFeeAmount || 300000)})</span>
-        </button>
-
-        <button
-          type="button"
           onClick={() => handleSectionChange('nilai-manfaat')}
           className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
             activeSection === 'nilai-manfaat'
@@ -1026,7 +1016,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
           }`}
         >
           <HeartHandshake className="w-4 h-4 text-amber-300" />
-          <span>3. Nilai Manfaat Anggota</span>
+          <span>2. Nilai Manfaat Anggota</span>
           <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-mono font-bold">
             s/d {formatIDR(maxBenefitAmount)}
           </span>
@@ -1042,7 +1032,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
           }`}
         >
           <Receipt className="w-4 h-4" />
-          <span>4. Riwayat Pembayaran</span>
+          <span>3. Riwayat Pembayaran</span>
           <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-mono">
             {memberPayments.length}
           </span>
@@ -1058,7 +1048,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
           }`}
         >
           <FileText className="w-4 h-4" />
-          <span>5. Berkas & Tanggungan</span>
+          <span>4. Berkas & Tanggungan</span>
           <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-mono">
             {member.statusHistory?.length || 1}
           </span>
@@ -1095,136 +1085,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
 
 
 
-      {/* ================= 2. TOMBOL & STATUS BAYAR IURAN (TEPAT DI BAWAH KARTU ANGGOTA) ================= */}
-      {(activeSection === 'semua' || activeSection === 'bayar-iuran') && (
-        <div className="bg-gradient-to-br from-emerald-900 via-teal-900 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-lg relative overflow-hidden border border-emerald-500/30">
-          {/* Decorative glow */}
-          <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 relative z-10">
-            <div className="space-y-2 max-w-2xl">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-400/20 text-emerald-300 border border-emerald-400/30 inline-flex items-center gap-1.5">
-                  <CreditCard className="w-3.5 h-3.5" />
-                  <span>Layanan Pembayaran Iuran</span>
-                </span>
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                    member.status === 'Aktif'
-                      ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30'
-                      : member.status === 'Menunggu Pembayaran'
-                      ? 'bg-amber-500/20 text-amber-200 border border-amber-400/30'
-                      : (member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending')
-                      ? 'bg-rose-500/20 text-rose-200 border border-rose-400/30'
-                      : 'bg-slate-500/20 text-slate-200 border border-slate-400/30'
-                  }`}
-                >
-                  {member.status === 'Aktif'
-                    ? `Perlindungan Aktif s/d ${expiry?.expiryDateFormatted || '-'}`
-                    : member.status === 'Menunggu Pembayaran'
-                    ? 'Verifikasi RT Berhasil — Siap Bayar Iuran'
-                    : (member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending')
-                    ? 'Menunggu Verifikasi RT — Belum Dapat Bayar'
-                    : member.status}
-                </span>
-              </div>
-
-              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                {member.status === 'Aktif'
-                  ? 'Bayar / Perpanjang Iuran Kas Paguyuban'
-                  : member.status === 'Menunggu Pembayaran'
-                  ? 'Verifikasi RT Selesai — Bayar Iuran Sekarang'
-                  : (member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending')
-                  ? 'Pendaftaran Baru Menunggu Verifikasi RT'
-                  : 'Layanan Pembayaran Iuran'}
-              </h2>
-
-              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                {member.status === 'Aktif'
-                  ? 'Setorkan iuran kas tahunan untuk memperpanjang masa aktif perlindungan santunan keluarga Anda. Pembayaran akan otomatis diverifikasi bendahara dan menerbitkan kwitansi resmi.'
-                  : member.status === 'Menunggu Pembayaran'
-                  ? 'Pendaftaran Anda telah disetujui RT. Lakukan pembayaran iuran tahunan sekarang agar diteruskan ke Ketua Paguyuban untuk penerbitan Sertifikat Resmi & KTA.'
-                  : (member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending')
-                  ? 'Sesuai regulasi: Pendaftar baru bisa melakukan pembayaran setelah verifikasi dari RT. Berkas Anda sedang dalam proses verifikasi oleh Ketua RT setempat.'
-                  : 'Iuran tahunan paguyuban dana kematian untuk menjamin perlindungan pemakaman, ambulans jenazah, dan santunan tunai duka cita.'}
-              </p>
-
-              <div className="flex flex-wrap items-center gap-2.5 pt-2 text-xs">
-                {/* Besaran Iuran Resmi dari Pengaturan Kas oleh Admin */}
-                <div className="flex items-center gap-2 bg-emerald-500/25 border border-emerald-400/40 px-3.5 py-1.5 rounded-xl shadow-xs">
-                  <Coins className="w-4 h-4 text-emerald-300" />
-                  <span className="text-emerald-100 font-medium">
-                    Iuran Resmi:{' '}
-                    <strong className="text-white font-black text-sm">
-                      {formatIDR(settings.annualFeeAmount || 300000)}
-                    </strong>{' '}
-                    / Tahun
-                  </span>
-                  <span className="text-[10px] text-emerald-200/80 font-mono">
-                    (~{formatIDR(settings.monthlyFeeAmount || Math.round((settings.annualFeeAmount || 300000) / 12))}/bln)
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleSectionChange('nilai-manfaat')}
-                  className="flex items-center gap-1.5 bg-amber-400/20 hover:bg-amber-400/30 px-3 py-1.5 rounded-xl border border-amber-400/30 text-amber-200 font-bold cursor-pointer transition-colors"
-                >
-                  <HeartHandshake className="w-3.5 h-3.5 text-amber-300" />
-                  <span>Nilai Manfaat: <strong className="text-white">s/d {formatIDR(maxBenefitAmount)}</strong></span>
-                </button>
-
-                <span className="flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-xl backdrop-blur-xs text-emerald-200/90 font-medium">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Metode: Transfer Bank, QRIS Instan & Tunai</span>
-                </span>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row lg:flex-col items-stretch sm:items-center lg:items-end gap-3 w-full lg:w-auto shrink-0">
-              {onNavigateToPayment && (
-                member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending' ? (
-                  <button
-                    type="button"
-                    disabled
-                    className="px-6 py-4 bg-slate-800/90 text-amber-300 font-bold text-xs sm:text-sm rounded-2xl border border-amber-500/30 cursor-not-allowed flex items-center justify-center gap-2 shadow-inner"
-                    title="Pendaftar baru bisa melakukan pembayaran setelah verifikasi dari RT"
-                  >
-                    <Lock className="w-4 h-4 text-amber-400" />
-                    <span>Belum Dapat Bayar (Menunggu Verifikasi RT)</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onNavigateToPayment(member)}
-                    className="px-7 py-4 bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-slate-950 font-black text-sm sm:text-base rounded-2xl shadow-xl shadow-emerald-950/40 transition-all flex items-center justify-center gap-3 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-                    title="Klik untuk membuka form bayar iuran kas paguyuban"
-                  >
-                    <CreditCard className="w-5 h-5" />
-                    <span>
-                      {member.status === 'Aktif'
-                        ? 'Bayar / Perpanjang Iuran'
-                        : 'Bayar Iuran Sekarang'}
-                    </span>
-                    <ArrowRight className="w-5 h-5" />
-                  </button>
-                )
-              )}
-
-              <button
-                type="button"
-                onClick={() => setIsContactAdminOpen(true)}
-                className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl transition-all border border-white/10 flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <MessageSquare className="w-3.5 h-3.5 text-emerald-300" />
-                <span>Konfirmasi via WhatsApp Bendahara</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ================= 2b. NILAI MANFAAT MENJADI ANGGOTA ================= */}
+      {/* ================= 2. NILAI MANFAAT MENJADI ANGGOTA ================= */}
       {(activeSection === 'semua' || activeSection === 'nilai-manfaat') && (
         <div id="section-nilai-manfaat" className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm space-y-6">
           <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -1248,16 +1109,10 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              {onNavigateToPayment && (
-                <button
-                  type="button"
-                  onClick={() => onNavigateToPayment(member)}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer"
-                >
-                  <CreditCard className="w-3.5 h-3.5" />
-                  <span>Bayar Iuran ({formatIDR(settings.annualFeeAmount || 300000)}/Thn)</span>
-                </button>
-              )}
+              <span className="px-3.5 py-1.5 bg-emerald-50 text-emerald-800 font-bold text-xs rounded-xl flex items-center gap-1.5 border border-emerald-200 shadow-2xs">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                <span>Terlindungi Kas Paguyuban</span>
+              </span>
             </div>
           </div>
 
@@ -1512,16 +1367,6 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
               </p>
             </div>
 
-            {onNavigateToPayment && (
-              <button
-                type="button"
-                onClick={() => onNavigateToPayment(member)}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-sm inline-flex items-center gap-2 cursor-pointer"
-              >
-                <CreditCard className="w-4 h-4" />
-                <span>Bayar Iuran Baru</span>
-              </button>
-            )}
           </div>
 
           {/* Statistik Pembayaran Ringkas */}
@@ -1590,19 +1435,9 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
               <h4 className="text-sm font-bold text-slate-700">Belum Ada Riwayat Pembayaran</h4>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
                 {member.status === 'Menunggu Verifikasi RT'
-                  ? 'Setelah pendaftaran Anda disetujui oleh Ketua RT, Anda dapat melakukan pembayaran iuran tahunan di sini.'
-                  : 'Silakan lakukan penyetoran iuran kas tahunan untuk mengaktifkan perlindungan dana kematian warga.'}
+                  ? 'Setelah pendaftaran disetujui RT, catatan pembayaran iuran akan dicatat dan divalidasi oleh Bendahara Paguyuban.'
+                  : 'Catatan penyetoran iuran kas paguyuban dan kwitansi resmi diterbitkan oleh Bendahara Paguyuban.'}
               </p>
-              {onNavigateToPayment && member.status !== 'Menunggu Verifikasi RT' && (
-                <button
-                  type="button"
-                  onClick={() => onNavigateToPayment(member)}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs inline-flex items-center gap-2 cursor-pointer"
-                >
-                  <CreditCard className="w-4 h-4" />
-                  <span>Bayar Iuran Pertama Sekarang</span>
-                </button>
-              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -1779,7 +1614,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
               payments={payments}
               isCollapsible={false}
               defaultExpanded={true}
-              onNavigateToPayment={onNavigateToPayment ? () => onNavigateToPayment(member) : undefined}
+              onNavigateToPayment={undefined}
             />
           </div>
         </div>
@@ -1795,7 +1630,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
           member={member}
           payments={payments}
           settings={settings}
-          onSelectMemberForPayment={onNavigateToPayment}
+          onSelectMemberForPayment={undefined}
           onOpenPrintCardModal={() => {
             setIsKtaModalOpen(false);
             setIsPrintKtaModalOpen(true);

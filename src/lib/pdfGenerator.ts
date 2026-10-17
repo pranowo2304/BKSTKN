@@ -326,7 +326,7 @@ export function generateReceiptPdf({
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(6.8);
   doc.setTextColor(4, 120, 87);
-  doc.text('QR OTENTIKASI RESMI', qrTextX, currentY + 4.8);
+  doc.text('QR VERIFIKASI RESMI', qrTextX, currentY + 4.8);
 
   doc.setFont('courier', 'bold');
   doc.setFontSize(7.2);
@@ -343,12 +343,12 @@ export function generateReceiptPdf({
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(6.5);
   doc.setTextColor(4, 120, 87);
-  doc.text('✓ Lunas Terverifikasi', qrTextX, currentY + 18.5);
+  doc.text('✓ Pindai Cek Keaslian', qrTextX, currentY + 18.5);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(5.8);
   doc.setTextColor(120, 120, 120);
-  doc.text('Pindai untuk cek arsip', qrTextX, currentY + 22.8);
+  doc.text('Verifikasi publik online', qrTextX, currentY + 22.8);
 
   // ZONE 2: Center Stempel Sah (Center at startX + 94 = 106mm, radius 13.5mm, strictly bounded chords)
   const sealCenterX = startX + 94;

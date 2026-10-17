@@ -1585,7 +1585,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                     {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-1">Kata sandi masuk ke Halaman Anggota (KTA, riwayat, pembayaran).</p>
+                <p className="text-[11px] text-slate-500 mt-1">Kata sandi masuk ke Halaman Anggota (KTA Digital, nilai manfaat, dan riwayat).</p>
               </div>
             </div>
 

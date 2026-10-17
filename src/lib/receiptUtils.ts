@@ -214,39 +214,68 @@ export const generateReceiptWhatsAppUrl = (
 };
 
 /**
- * Builds a direct verification URL for the receipt that can be scanned by authorities
+ * Builds a direct public verification URL for the receipt that can be scanned by any smartphone camera
  * and directly verified in the browser.
  */
 export const buildReceiptValidationUrl = (receiptNumber: string): string => {
-  const origin = typeof window !== 'undefined' && window.location ? window.location.origin : '';
-  const pathname = typeof window !== 'undefined' && window.location ? window.location.pathname : '';
-  const safeReceipt = encodeURIComponent(receiptNumber || '');
+  let origin = '';
+  let pathname = '';
+  if (typeof window !== 'undefined' && window.location) {
+    origin = window.location.origin || '';
+    pathname = window.location.pathname || '';
+  }
+  if (!origin || origin === 'null') {
+    origin = 'https://ais-dev-uyptcmfioftmxln6i3q2xc-667773144535.asia-east1.run.app';
+  }
+  const safeReceipt = encodeURIComponent((receiptNumber || '').trim());
   return `${origin}${pathname}?verify=receipt&receiptNumber=${safeReceipt}`;
 };
 
 /**
- * Generates the structured QR code verification payload for a receipt.
- * Includes both direct web validation URL (for camera scanning) and JSON verification metadata.
+ * Generates the QR code payload for a receipt.
+ * Returning the direct HTTP/HTTPS web verification URL allows standard smartphone cameras
+ * (iOS Camera, Google Lens, Samsung Camera, WhatsApp Camera) to instantly display a clickable
+ * verification link to the public authenticity verification page.
  */
 export const generateReceiptQrPayload = (
   payment: Payment,
-  member?: Member | null,
-  settings?: SystemSettings
+  _member?: Member | null,
+  _settings?: SystemSettings
 ): string => {
-  const validationUrl = buildReceiptValidationUrl(payment.receiptNumber);
-  const effectivePeriod = getEffectivePaymentPeriod(payment, settings);
+  return buildReceiptValidationUrl(payment.receiptNumber);
+};
 
-  return JSON.stringify({
-    app: 'KWITANSI-PAGUYUBAN',
-    verifyUrl: validationUrl,
-    npa: payment.memberNumber,
-    nama: payment.memberName,
-    kwitansi: payment.receiptNumber,
-    periode: effectivePeriod,
-    nominal: payment.amount,
-    status: 'LUNAS',
-    cluster: member?.cluster || '—',
-    tgl: payment.verifiedAt || payment.createdAt,
-    v: 1,
-  });
+/**
+ * Parses receipt number from any scanned raw string, URL, or JSON payload.
+ */
+export const parseReceiptFromScannedPayload = (rawPayload: string): string => {
+  const text = (rawPayload || '').trim();
+  if (!text) return '';
+
+  // 1. If it's a URL with ?verify=receipt&receiptNumber=...
+  if (text.includes('receiptNumber=') || text.includes('receipt=') || text.includes('no=')) {
+    try {
+      const url = new URL(text.startsWith('http') ? text : `http://dummy.com/${text}`);
+      const val = url.searchParams.get('receiptNumber') || url.searchParams.get('receipt') || url.searchParams.get('no');
+      if (val) return decodeURIComponent(val).trim();
+    } catch {
+      const match = text.match(/(?:receiptNumber|receipt|no)=([^&]+)/i);
+      if (match && match[1]) return decodeURIComponent(match[1]).trim();
+    }
+  }
+
+  // 2. If it's JSON
+  if (text.startsWith('{') && text.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed.receiptNumber || parsed.kwitansi || parsed.receipt) {
+        return (parsed.receiptNumber || parsed.kwitansi || parsed.receipt).trim();
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 3. Raw receipt number format (e.g. KW-20261015-001)
+  return text;
 };

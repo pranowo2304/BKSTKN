@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import { DigitalSignatureModal } from './DigitalSignatureModal';
 import { SignatureData } from './DigitalSignaturePad';
+import { ReceiptAuthenticityVerificationModal } from './ReceiptAuthenticityVerificationModal';
 
 interface ReceiptModalProps {
   isOpen?: boolean;
@@ -50,6 +51,8 @@ interface ReceiptModalProps {
   onClose: () => void;
   onUpdatePayment?: (payment: Payment) => void;
   onSaveDefaultSignature?: (signatureUrl: string, signerName: string, signerTitle: string) => void;
+  payments?: Payment[];
+  onOpenPublicVerification?: (receiptNumber: string) => void;
 }
 
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({
@@ -61,10 +64,13 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   onClose,
   onUpdatePayment,
   onSaveDefaultSignature,
+  payments = [],
+  onOpenPublicVerification,
 }) => {
   const [currentPayment, setCurrentPayment] = useState<Payment | null>(payment);
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
   const [signatureSuccessNotice, setSignatureSuccessNotice] = useState<string | null>(null);
+  const [isPublicVerificationOpen, setIsPublicVerificationOpen] = useState(false);
 
   useEffect(() => {
     setCurrentPayment(payment);
@@ -581,7 +587,22 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onOpenPublicVerification) {
+                    onOpenPublicVerification(activePayment.receiptNumber);
+                  } else {
+                    setIsPublicVerificationOpen(true);
+                  }
+                }}
+                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold text-xs rounded-xl transition-all inline-flex items-center gap-1.5 border border-indigo-200 shadow-2xs cursor-pointer hover:scale-105 active:scale-95"
+                title="Buka pratinjau verifikasi keaslian kwitansi publik yang diakses lewat scan QR"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Uji Verifikasi QR</span>
+              </button>
               <button
                 type="button"
                 onClick={handleDownloadPdf}
@@ -747,7 +768,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                     <div className="flex items-center gap-1">
                       <QrCode className="w-3 h-3 text-emerald-700 shrink-0" />
                       <span className="font-bold uppercase tracking-wider text-emerald-800 text-[9px] truncate">
-                        QR Validasi Resmi
+                        QR Validasi Publik
                       </span>
                     </div>
                     <p className="font-mono font-bold text-slate-900 text-xs truncate">
@@ -758,8 +779,23 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                     </p>
                     <p className="text-emerald-700 font-bold text-[9px] flex items-center gap-1 truncate">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block shrink-0"></span>
-                      <span>Lunas & Terverifikasi</span>
+                      <span>Pindai Cek Keaslian</span>
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onOpenPublicVerification) {
+                          onOpenPublicVerification(activePayment.receiptNumber);
+                        } else {
+                          setIsPublicVerificationOpen(true);
+                        }
+                      }}
+                      className="print:hidden text-[9px] font-black text-indigo-700 hover:text-indigo-900 hover:underline flex items-center gap-1 mt-1 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded border border-indigo-200 transition-colors w-fit cursor-pointer"
+                      title="Klik untuk membuka pengujian verifikasi keaslian kwitansi publik yang terbuka saat QR dipindai"
+                    >
+                      <ExternalLink className="w-2.5 h-2.5 text-indigo-600" />
+                      <span>Uji Verifikasi Publik</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1041,6 +1077,18 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         defaultSignerTitle={activePayment.adminSignerTitle || settings.defaultAdminSignerTitle || 'Bendahara Paguyuban'}
         documentTitle={`Kwitansi Pembayaran ${activePayment.receiptNumber || ''} (${activePayment.memberName})`}
       />
+
+      {/* Public Receipt Authenticity Verification Modal Preview */}
+      {isPublicVerificationOpen && (
+        <ReceiptAuthenticityVerificationModal
+          isOpen={isPublicVerificationOpen}
+          receiptNumberQuery={activePayment.receiptNumber}
+          payments={payments && payments.length > 0 ? payments : [activePayment]}
+          members={members}
+          settings={settings}
+          onClose={() => setIsPublicVerificationOpen(false)}
+        />
+      )}
     </div>
   );
 };

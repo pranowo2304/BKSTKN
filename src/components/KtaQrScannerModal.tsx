@@ -152,6 +152,17 @@ export const KtaQrScannerModal: React.FC<KtaQrScannerModalProps> = ({
     playBeep();
     triggerVibrate();
 
+    // Check if Receipt Verification URL or number
+    if (decodedText.includes('verify=receipt') || decodedText.includes('receiptNumber=')) {
+      const match = decodedText.match(/(?:receiptNumber|receipt|no)=([^&]+)/i);
+      const receiptNo = match ? decodeURIComponent(match[1]) : '';
+      if (receiptNo) {
+        stopScanner();
+        window.location.search = `?verify=receipt&receiptNumber=${encodeURIComponent(receiptNo)}`;
+        return;
+      }
+    }
+
     const member = findMemberFromPayload(decodedText);
     if (member) {
       setMatchedMember(member);

@@ -83,6 +83,7 @@ import { UserLoginModal } from './components/UserLoginModal';
 import { LogoutConfirmationModal } from './components/LogoutConfirmationModal';
 import { MemberPortal } from './components/MemberPortal';
 import { KtaAuthenticityVerificationModal } from './components/KtaAuthenticityVerificationModal';
+import { ReceiptAuthenticityVerificationModal } from './components/ReceiptAuthenticityVerificationModal';
 import { DigitalKtaModal } from './components/DigitalKtaModal';
 import { MembershipCertificateModal } from './components/MembershipCertificateModal';
 import { AppIcon } from './components/AppIcon';
@@ -118,6 +119,8 @@ export default function App() {
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState<boolean>(false);
   const [verifiedKtaData, setVerifiedKtaData] = useState<{ npa: string; sig?: string } | null>(null);
   const [isKtaVerificationModalOpen, setIsKtaVerificationModalOpen] = useState<boolean>(false);
+  const [verifiedReceiptNumber, setVerifiedReceiptNumber] = useState<string | null>(null);
+  const [isReceiptVerificationModalOpen, setIsReceiptVerificationModalOpen] = useState<boolean>(false);
   const [selectedFullKtaMember, setSelectedFullKtaMember] = useState<Member | null>(null);
   const [selectedCertificateMember, setSelectedCertificateMember] = useState<Member | null>(null);
   const [isPublicRegisterOpen, setIsPublicRegisterOpen] = useState<boolean>(false);
@@ -161,7 +164,7 @@ export default function App() {
       setCurrentTab('member-portal');
     }
 
-    // 1b. Check if opened via QR Code scan verification link (?verify=kta&npa=...)
+    // 1b. Check if opened via QR Code scan verification link (?verify=kta&npa=... or ?verify=receipt&receiptNumber=...)
     if (typeof window !== 'undefined' && window.location) {
       try {
         const params = new URLSearchParams(window.location.search);
@@ -172,6 +175,12 @@ export default function App() {
         if (verifyType === 'kta' && npaParam) {
           setVerifiedKtaData({ npa: decodeURIComponent(npaParam), sig: sigParam });
           setIsKtaVerificationModalOpen(true);
+        }
+
+        const receiptParam = params.get('receiptNumber') || params.get('receipt') || params.get('no') || params.get('kwitansi');
+        if ((verifyType === 'receipt' || params.has('receiptNumber')) && receiptParam) {
+          setVerifiedReceiptNumber(decodeURIComponent(receiptParam));
+          setIsReceiptVerificationModalOpen(true);
         }
       } catch (err) {
         console.warn('Error reading verification search params:', err);
@@ -1965,11 +1974,16 @@ export default function App() {
         <ReceiptModal
           payment={selectedReceiptPayment}
           members={members}
+          payments={payments}
           settings={settings}
           activeUser={activeUser}
           onClose={() => setSelectedReceiptPayment(null)}
           onUpdatePayment={handleUpdatePayment}
           onSaveDefaultSignature={handleSaveDefaultSignature}
+          onOpenPublicVerification={(receiptNo) => {
+            setVerifiedReceiptNumber(receiptNo);
+            setIsReceiptVerificationModalOpen(true);
+          }}
         />
       )}
 
@@ -2030,6 +2044,33 @@ export default function App() {
           settings={settings}
           onOpenFullKtaModal={(mem) => {
             setSelectedFullKtaMember(mem);
+          }}
+        />
+      )}
+
+      {/* Public Receipt Authenticity Verification Modal (Accessed via mobile QR scan or link) */}
+      {isReceiptVerificationModalOpen && (
+        <ReceiptAuthenticityVerificationModal
+          isOpen={isReceiptVerificationModalOpen}
+          receiptNumberQuery={verifiedReceiptNumber || ''}
+          payments={payments}
+          members={members}
+          settings={settings}
+          onClose={() => {
+            setIsReceiptVerificationModalOpen(false);
+            setVerifiedReceiptNumber(null);
+            if (typeof window !== 'undefined' && window.history) {
+              const url = new URL(window.location.href);
+              url.searchParams.delete('verify');
+              url.searchParams.delete('receiptNumber');
+              url.searchParams.delete('receipt');
+              url.searchParams.delete('no');
+              url.searchParams.delete('kwitansi');
+              window.history.replaceState({}, document.title, url.pathname + (url.search || ''));
+            }
+          }}
+          onOpenFullReceipt={(payment) => {
+            setSelectedReceiptPayment(payment);
           }}
         />
       )}
