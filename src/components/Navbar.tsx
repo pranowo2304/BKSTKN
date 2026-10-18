@@ -39,6 +39,7 @@ import {
   Lock,
   AlertTriangle,
   AlertCircle,
+  Smartphone,
 } from 'lucide-react';
 import { DataManagementModal } from './DataManagementModal';
 import { AppIcon } from './AppIcon';
@@ -278,6 +279,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               <p className="text-sm font-extrabold text-emerald-400 font-mono leading-none">{formatIDR(totalBalance)}</p>
             </div>
           </div>
+
+          {/* Tombol Pasang Aplikasi Mobile (PWA) */}
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent('open-pwa-install'))}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-950/70 hover:bg-emerald-900/90 text-emerald-300 hover:text-emerald-200 border border-emerald-500/40 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+            title="Pasang ikon aplikasi di Layar Utama HP / Komputer (PWA)"
+          >
+            <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden sm:inline">Pasang Aplikasi</span>
+          </button>
 
           {/* Active User Profile & Role Switcher Popover OR Guest Login */}
           {activeUser ? (

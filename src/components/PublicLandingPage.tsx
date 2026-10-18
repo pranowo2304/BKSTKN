@@ -63,6 +63,7 @@ import {
   EyeOff,
   Bell,
   Copy,
+  Smartphone,
   Info,
   Camera,
   Mail,
@@ -687,10 +688,16 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
               </div>
             </div>
 
-            <div className="self-start sm:self-auto shrink-0">
-              <span className="inline-block text-[11px] font-semibold text-white bg-white/15 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/25 shadow-xs">
-                Sentuh ikon untuk membuka layanan
-              </span>
+            <div className="self-start sm:self-auto shrink-0 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('open-pwa-install'))}
+                className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs rounded-full shadow-lg shadow-amber-500/30 transition-all cursor-pointer hover:scale-105 active:scale-95 border border-amber-300"
+                title="Pasang Ikon Aplikasi di Layar Depan HP (Android & iOS)"
+              >
+                <Smartphone className="w-3.5 h-3.5 text-slate-950" />
+                <span>Pasang Ikon di HP</span>
+              </button>
             </div>
           </div>
         </div>
@@ -881,6 +888,42 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
             <span className="text-[10px] text-slate-400 mt-0.5 leading-tight hidden sm:block whitespace-nowrap">
               Pengurus Kas
             </span>
+          </button>
+        </div>
+      </section>
+
+      {/* ========================================================================= */}
+      {/* PWA MOBILE APP PROMO & INSTALL BANNER */}
+      {/* ========================================================================= */}
+      <section className="bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-950 rounded-3xl border border-emerald-500/30 p-4 sm:p-5 shadow-lg relative overflow-hidden text-white">
+        <div className="absolute -right-8 -bottom-8 w-40 h-40 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-900/80 border border-emerald-400/40 p-1 flex items-center justify-center shrink-0 shadow-md">
+              <AppIcon size={40} className="rounded-xl" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-full text-[10px] font-black uppercase tracking-wider border border-emerald-400/30">
+                  Aplikasi Mobile (PWA)
+                </span>
+                <span className="text-[11px] text-slate-400 hidden sm:inline">Akses Cepat 1 Sentuhan</span>
+              </div>
+              <h3 className="text-sm sm:text-base font-black text-white leading-snug">
+                Pasang Ikon Aplikasi di Layar Utama HP
+              </h3>
+              <p className="text-xs text-slate-300">
+                Akses langsung dari layar depan smartphone Android & iPhone tanpa perlu membuka browser berulang kali.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent('open-pwa-install'))}
+            className="w-full sm:w-auto px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
+          >
+            <Smartphone className="w-4 h-4 text-slate-950" />
+            <span>Pasang Ikon Sekarang</span>
           </button>
         </div>
       </section>

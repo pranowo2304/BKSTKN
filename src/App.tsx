@@ -86,6 +86,7 @@ import { KtaAuthenticityVerificationModal } from './components/KtaAuthenticityVe
 import { ReceiptAuthenticityVerificationModal } from './components/ReceiptAuthenticityVerificationModal';
 import { DigitalKtaModal } from './components/DigitalKtaModal';
 import { MembershipCertificateModal } from './components/MembershipCertificateModal';
+import { PWAInstallModal } from './components/PWAInstallModal';
 import { AppIcon } from './components/AppIcon';
 import { HeartHandshake, Loader2, Cloud, Database } from 'lucide-react';
 import { useRolePermissions, getPermittedTabsForRole } from './lib/permissions';
@@ -124,6 +125,13 @@ export default function App() {
   const [selectedFullKtaMember, setSelectedFullKtaMember] = useState<Member | null>(null);
   const [selectedCertificateMember, setSelectedCertificateMember] = useState<Member | null>(null);
   const [isPublicRegisterOpen, setIsPublicRegisterOpen] = useState<boolean>(false);
+  const [isPWAInstallModalOpen, setIsPWAInstallModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleOpenPWA = () => setIsPWAInstallModalOpen(true);
+    window.addEventListener('open-pwa-install', handleOpenPWA);
+    return () => window.removeEventListener('open-pwa-install', handleOpenPWA);
+  }, []);
 
   const handleOpenRegistrationFromDock = () => {
     if (currentTab !== 'public') {
@@ -2109,6 +2117,12 @@ export default function App() {
           }}
         />
       )}
+
+      {/* PWA Mobile App Installation Modal */}
+      <PWAInstallModal
+        isOpen={isPWAInstallModalOpen}
+        onClose={() => setIsPWAInstallModalOpen(false)}
+      />
     </div>
   );
 }

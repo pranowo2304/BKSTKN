@@ -1,22 +1,39 @@
 {
+  "id": "./",
   "name": "Aplikasi Dana Kematian",
-  "short_name": "Dana Kematian",
-  "description": "Sistem Pengelolaan Dana Kematian: Pendaftaran, Pembayaran Iuran, Verifikasi Admin, Kwitansi Otomatis, dan Realisasi Manfaat.",
-  "start_url": "/",
+  "short_name": "DanaKematian",
+  "description": "Sistem Informasi & Pengelolaan Program Santunan Dana Kematian Warga Paguyuban",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#022c22",
   "theme_color": "#064e3b",
+  "categories": ["utilities", "finance", "social"],
   "icons": [
     {
-      "src": "/app-icon.svg",
-      "sizes": "192x192 512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "src": "pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "/favicon.svg",
-      "sizes": "64x64",
-      "type": "image/svg+xml"
+      "src": "pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "app-icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ]
 }
