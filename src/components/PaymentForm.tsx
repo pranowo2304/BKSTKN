@@ -91,8 +91,12 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
       type: 'bank' | 'qris' | 'cash';
     }[] = [];
 
-    if (settings?.bankAccounts && settings.bankAccounts.length > 0) {
-      settings.bankAccounts.forEach((acc, idx) => {
+    const validBanks = (settings?.bankAccounts || []).filter(
+      (b) => b && ((b.accountNumber && b.accountNumber.trim().length > 0) || (b.bankName && b.bankName.trim().length > 0))
+    );
+
+    if (validBanks.length > 0) {
+      validBanks.forEach((acc, idx) => {
         const rawName = acc.bankName?.trim() || '';
         const cleanName = rawName || `Bank ${idx + 1}`;
         const methodId = cleanName.toLowerCase().startsWith('transfer')
@@ -627,7 +631,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                     Metode Pembayaran (Sesuai Rekening Sistem)
                   </label>
                   <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                    {settings.bankAccounts?.length || 0} Rekening Terdaftar
+                    {(settings.bankAccounts || []).filter(b => b && (b.bankName?.trim() || b.accountNumber?.trim())).length} Rekening Terdaftar
                   </span>
                 </div>
 
@@ -791,7 +795,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
               </p>
 
               <div className="space-y-3">
-                {settings.bankAccounts.map((bank, idx) => {
+                {(settings.bankAccounts || []).filter(b => b && (b.bankName?.trim() || b.accountNumber?.trim())).map((bank, idx) => {
                   const cleanName = bank.bankName?.trim() || '';
                   const methodId = cleanName.toLowerCase().startsWith('transfer') ? cleanName : `Transfer ${cleanName}`;
                   const isSelected = paymentMethod === methodId;

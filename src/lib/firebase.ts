@@ -581,7 +581,13 @@ export async function syncClaimToCloud(claim: BenefitClaim): Promise<void> {
 export async function syncSettingsToCloud(settings: SystemSettings): Promise<void> {
   const ref = doc(db, COLLECTIONS.SETTINGS, 'main_config');
   try {
-    await setDoc(ref, settings, { merge: true });
+    const cleanedSettings: SystemSettings = {
+      ...settings,
+      bankAccounts: (settings.bankAccounts || []).filter(
+        (b) => b && ((b.bankName && b.bankName.trim()) || (b.accountNumber && b.accountNumber.trim()))
+      ),
+    };
+    await setDoc(ref, cleanedSettings, { merge: true });
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.SETTINGS}/main_config`);

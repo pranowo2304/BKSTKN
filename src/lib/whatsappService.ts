@@ -122,8 +122,11 @@ export function buildRtVerificationMessage(params: {
 
   if (isApproved) {
     const annualAmount = settings.annualFeeAmount || 300000;
-    const bankList = settings.bankAccounts && settings.bankAccounts.length > 0
-      ? settings.bankAccounts.map((b) => `• *${b.bankName}*: ${b.accountNumber} (a.n. ${b.accountHolder})`).join('\n')
+    const validBanks = (settings.bankAccounts || []).filter(
+      (b) => b && ((b.accountNumber && b.accountNumber.trim()) || (b.bankName && b.bankName.trim()))
+    );
+    const bankList = validBanks.length > 0
+      ? validBanks.map((b) => `• *${b.bankName}*: ${b.accountNumber} (a.n. ${b.accountHolder})`).join('\n')
       : '• Hubungi Bendahara untuk nomor rekening kas resmi.';
 
     return `*${settings.communityName.toUpperCase()}*

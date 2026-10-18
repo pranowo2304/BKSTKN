@@ -188,7 +188,16 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSaveSettings(formData);
+    // Filter out completely blank bank entries before saving
+    const cleanedBanks = formData.bankAccounts.filter(
+      (b) => (b.bankName && b.bankName.trim()) || (b.accountNumber && b.accountNumber.trim())
+    );
+    const cleanedSettings: SystemSettings = {
+      ...formData,
+      bankAccounts: cleanedBanks.length > 0 ? cleanedBanks : formData.bankAccounts,
+    };
+    onSaveSettings(cleanedSettings);
+    setFormData(cleanedSettings);
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 4000);
   };

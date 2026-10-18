@@ -403,13 +403,19 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
   const [payType, setPayType] = useState<PaymentType>('Iuran Tahunan');
   const [payAmount, setPayAmount] = useState<number>(settings.annualFeeAmount || 300000);
 
+  const validBankAccounts = useMemo(() => {
+    return (settings.bankAccounts || []).filter(
+      (b) => b && ((b.accountNumber && b.accountNumber.trim().length > 0) || (b.bankName && b.bankName.trim().length > 0))
+    );
+  }, [settings.bankAccounts]);
+
   const defaultPublicPayMethod = useMemo(() => {
-    if (settings.bankAccounts && settings.bankAccounts.length > 0) {
-      const cleanName = settings.bankAccounts[0].bankName?.trim() || 'Bank';
+    if (validBankAccounts.length > 0) {
+      const cleanName = validBankAccounts[0].bankName?.trim() || 'Bank';
       return cleanName.toLowerCase().startsWith('transfer') ? cleanName : `Transfer ${cleanName}`;
     }
     return 'Transfer Bank';
-  }, [settings.bankAccounts]);
+  }, [validBankAccounts]);
 
   const [payMethod, setPayMethod] = useState<PaymentMethod>(defaultPublicPayMethod);
   const [payProofImage, setPayProofImage] = useState<string | null>(null);
@@ -1027,8 +1033,8 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                 <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
               </span>
               <span className="text-[10px] text-emerald-300 font-mono bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/20">
-                {settings.bankAccounts?.[0]
-                  ? `${settings.bankAccounts[0].bankName} - ${settings.bankAccounts[0].accountNumber}`
+                {validBankAccounts[0]
+                  ? `${validBankAccounts[0].bankName} - ${validBankAccounts[0].accountNumber}`
                   : 'Rekening Kas Bersama'}
               </span>
             </div>
@@ -1835,15 +1841,15 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
               <div>
                 <h4 className="text-sm font-bold text-white">Rekening Resmi Pembayaran Iuran</h4>
                 <p className="text-xs text-slate-400">
-                  Daftar rekening resmi terdaftar di pengaturan sistem ({settings.bankAccounts?.length || 0} Bank):
+                  Daftar rekening resmi terdaftar di pengaturan sistem ({validBankAccounts.length} Bank):
                 </p>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2 border-t border-slate-800 text-xs">
-            {settings.bankAccounts && settings.bankAccounts.length > 0 ? (
-              settings.bankAccounts.map((bank, idx) => (
+            {validBankAccounts.length > 0 ? (
+              validBankAccounts.map((bank, idx) => (
                 <div key={`pub-bank-card-${idx}-${bank.accountNumber || idx}`} className="bg-slate-950/70 p-3.5 rounded-xl border border-slate-800 flex flex-col justify-between gap-2">
                   <div>
                     <div className="flex justify-between items-center text-emerald-400 font-bold mb-1">
@@ -1851,7 +1857,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                       <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded uppercase">Resmi</span>
                     </div>
                     <p className="text-base font-black text-emerald-400 font-mono tracking-wider">{bank.accountNumber}</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">a.n. {bank.accountHolder}</p>
+                    {bank.accountHolder && <p className="text-[11px] text-slate-400 mt-0.5">a.n. {bank.accountHolder}</p>}
                   </div>
                   <button
                     type="button"
@@ -2068,7 +2074,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
             },
             {
               q: 'Berapa besaran iuran dan dibayarkan ke mana?',
-              a: `Iuran tahunan sebesar ${formatIDR(settings.annualFeeAmount || 300000)} per tahun per Kepala Keluarga. Pembayaran dapat ditransfer ke salah satu rekening resmi paguyuban yang terdaftar di pengaturan sistem: ${settings.bankAccounts?.map(b => `${b.bankName} ${b.accountNumber} (a.n ${b.accountHolder})`).join(' atau ')}.`,
+              a: `Iuran tahunan sebesar ${formatIDR(settings.annualFeeAmount || 300000)} per tahun per Kepala Keluarga. Pembayaran dapat ditransfer ke salah satu rekening resmi paguyuban yang terdaftar di pengaturan sistem: ${validBankAccounts.map(b => `${b.bankName} ${b.accountNumber} (a.n ${b.accountHolder})`).join(' atau ')}.`,
             },
             {
               q: 'Apakah KTA Digital berlaku resmi?',
@@ -2141,11 +2147,11 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                   </div>
 
                   {(() => {
-                    const matchedBank = settings.bankAccounts?.find((b) => {
+                    const matchedBank = validBankAccounts.find((b) => {
                       const cleanName = b.bankName?.trim() || '';
                       const id = cleanName.toLowerCase().startsWith('transfer') ? cleanName : `Transfer ${cleanName}`;
                       return id === payMethod;
-                    }) || settings.bankAccounts?.[0];
+                    }) || validBankAccounts[0];
 
                     if (!matchedBank) {
                       return <p className="text-slate-600 text-[11px]">Hubungi bendahara untuk informasi rekening resmi.</p>;
@@ -2156,7 +2162,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                         <div className="text-slate-800 text-[11px]">
                           <span className="font-bold">{matchedBank.bankName}:</span>{' '}
                           <strong className="font-mono text-emerald-900 font-black text-xs">{matchedBank.accountNumber}</strong>{' '}
-                          <span className="text-slate-600">a.n {matchedBank.accountHolder}</span>
+                          {matchedBank.accountHolder && <span className="text-slate-600">a.n {matchedBank.accountHolder}</span>}
                         </div>
                         <button
                           type="button"
@@ -2213,8 +2219,8 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                     onChange={(e) => setPayMethod(e.target.value as PaymentMethod)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-medium"
                   >
-                    {settings.bankAccounts && settings.bankAccounts.length > 0 ? (
-                      settings.bankAccounts.map((bank, idx) => {
+                    {validBankAccounts.length > 0 ? (
+                      validBankAccounts.map((bank, idx) => {
                         const cleanName = bank.bankName?.trim() || '';
                         const methodId = cleanName.toLowerCase().startsWith('transfer') ? cleanName : `Transfer ${cleanName}`;
                         return (

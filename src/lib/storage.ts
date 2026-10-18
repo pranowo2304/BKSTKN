@@ -542,9 +542,16 @@ export const getStoredSettings = (): SystemSettings => {
     if (!parsed.logoUrl) {
       parsed.logoUrl = '/app-icon.svg';
     }
+    const cleanedBanks = Array.isArray(parsed.bankAccounts)
+      ? parsed.bankAccounts.filter(
+          (b: any) => b && ((b.bankName && b.bankName.trim()) || (b.accountNumber && b.accountNumber.trim()))
+        )
+      : initialSettings.bankAccounts;
+
     return {
       ...initialSettings,
       ...parsed,
+      bankAccounts: cleanedBanks.length > 0 ? cleanedBanks : initialSettings.bankAccounts,
       membershipPeriod: {
         ...initialSettings.membershipPeriod,
         ...(parsed.membershipPeriod || {}),
@@ -557,7 +564,13 @@ export const getStoredSettings = (): SystemSettings => {
 };
 
 export const saveSettings = (settings: SystemSettings) => {
-  localStorage.setItem(KEYS.SETTINGS, JSON.stringify(settings));
+  const cleanedSettings: SystemSettings = {
+    ...settings,
+    bankAccounts: (settings.bankAccounts || []).filter(
+      (b) => b && ((b.bankName && b.bankName.trim()) || (b.accountNumber && b.accountNumber.trim()))
+    ),
+  };
+  localStorage.setItem(KEYS.SETTINGS, JSON.stringify(cleanedSettings));
 };
 
 export const getBaseBalance = (): number => {

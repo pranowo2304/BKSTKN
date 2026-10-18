@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   X,
   Shield,
-  CheckCircle2,
   Building2,
 } from 'lucide-react';
 
@@ -104,16 +103,6 @@ export const LogoutConfirmationModal: React.FC<LogoutConfirmationModalProps> = (
             </div>
           </div>
 
-          {/* Warning Message Body */}
-          <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-3 text-xs text-amber-900 space-y-1">
-            <p className="font-bold flex items-center gap-1.5 text-amber-950">
-              <CheckCircle2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span>Perhatian Pengurus & Admin:</span>
-            </p>
-            <p className="text-slate-700 leading-relaxed">
-              Pastikan seluruh penginputan formulir, validasi setoran kas, atau pencatatan klaim santunan yang sedang Anda proses telah disimpan sebelum mengakhiri sesi.
-            </p>
-          </div>
 
           {/* Action Buttons */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">

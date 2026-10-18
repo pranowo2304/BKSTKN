@@ -82,39 +82,28 @@ export const UserLoginForm: React.FC<UserLoginFormProps> = ({
     setErrorMessage(null);
     setIsLoading(true);
 
-    const query = identifier.trim().toLowerCase();
-    const cleanPhone = query.replace(/[^0-9]/g, '');
+    const emailQuery = identifier.trim().toLowerCase();
 
     setTimeout(() => {
-      // 1. Search in users list by email, phone, memberNumber, id, name
+      // 1. Search in users list by email
       let foundUser = users.find((u) => {
         if (!u) return false;
-        const matchEmail = u.email && u.email.toLowerCase() === query;
-        const matchPhone = u.phone && u.phone.replace(/[^0-9]/g, '') === cleanPhone && cleanPhone.length >= 8;
-        const matchMemberNo = u.memberNumber && u.memberNumber.toLowerCase() === query;
-        const matchName = u.name && u.name.toLowerCase() === query;
-        return matchEmail || matchPhone || matchMemberNo || matchName;
+        return u.email && u.email.toLowerCase() === emailQuery;
       });
 
-      // 2. If not found in users, check in members list by email, NIK, memberNumber, or phone
+      // 2. If not found in users, check in members list by email
       if (!foundUser && members.length > 0) {
         const foundMember = members.find((m) => {
           if (!m) return false;
-          const matchEmail = m.email && m.email.toLowerCase() === query;
-          const matchNik = m.nik && m.nik.toLowerCase() === query;
-          const matchNo = m.memberNumber && m.memberNumber.toLowerCase() === query;
-          const matchPhone = m.phone && m.phone.replace(/[^0-9]/g, '') === cleanPhone && cleanPhone.length >= 8;
-          return matchEmail || matchNik || matchNo || matchPhone;
+          return m.email && m.email.toLowerCase() === emailQuery;
         });
 
         if (foundMember) {
-          // Check if a user with this memberId, email, or memberNumber already exists
+          // Check if a user with this memberId or email already exists
           foundUser = users.find(
             (u) =>
               (u.memberId && u.memberId === foundMember.id) ||
-              (foundMember.email && u.email && u.email.toLowerCase() === foundMember.email.toLowerCase()) ||
-              (u.memberNumber && u.memberNumber === foundMember.memberNumber) ||
-              (u.authority === 'Anggota' && u.name?.toLowerCase() === foundMember.name.toLowerCase())
+              (foundMember.email && u.email && u.email.toLowerCase() === foundMember.email.toLowerCase())
           );
 
           // If still not created in users array, create user on the fly
@@ -127,7 +116,7 @@ export const UserLoginForm: React.FC<UserLoginFormProps> = ({
       if (!foundUser) {
         setIsLoading(false);
         setErrorMessage(
-          'Akun tidak ditemukan. Pastikan Email, NIK, No. HP, atau No. Anggota yang Anda masukkan sudah benar.'
+          'Akun tidak ditemukan. Pastikan alamat email yang Anda masukkan sudah terdaftar.'
         );
         return;
       }
@@ -809,7 +798,7 @@ export const UserLoginForm: React.FC<UserLoginFormProps> = ({
                   Masuk ke Akun Portal & Pengurus
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-600 mt-1">
-                  Gunakan Email, NIK, No. WhatsApp, atau No. Anggota Anda untuk mengakses layanan sesuai otoritas peran.
+                  Gunakan alamat email terdaftar dan kata sandi Anda untuk mengakses layanan sesuai otoritas peran.
                 </p>
               </div>
 
@@ -826,7 +815,7 @@ export const UserLoginForm: React.FC<UserLoginFormProps> = ({
           ) : (
             <div className="pb-1">
               <p className="text-xs text-slate-600">
-                Silakan masukkan alamat email atau nama pengguna dan kata sandi Anda untuk masuk ke sistem:
+                Silakan masukkan alamat email dan kata sandi Anda untuk masuk ke sistem:
               </p>
             </div>
           )}
@@ -879,9 +868,8 @@ export const UserLoginForm: React.FC<UserLoginFormProps> = ({
           {/* MAIN LOGIN FORM */}
           <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div className="scroll-mt-6">
-              <label htmlFor="login-identifier" className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
-                <span>Email / NIK / No. WhatsApp / No. Anggota</span>
-                <span className="text-[11px] text-indigo-600 font-normal">Contoh: admin@danakematian.org</span>
+              <label htmlFor="login-identifier" className="block text-xs font-bold text-slate-700 mb-1.5">
+                <span>Alamat Email</span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -889,10 +877,10 @@ export const UserLoginForm: React.FC<UserLoginFormProps> = ({
                 </div>
                 <input
                   id="login-identifier"
-                  type="text"
+                  type="email"
                   required
-                  autoComplete="username"
-                  placeholder="Ketik email, NIK (16 digit), no HP, atau no anggota..."
+                  autoComplete="email"
+                  placeholder="Masukkan alamat email Anda..."
                   value={identifier}
                   onChange={(e) => {
                     setIdentifier(e.target.value);
@@ -904,9 +892,8 @@ export const UserLoginForm: React.FC<UserLoginFormProps> = ({
             </div>
 
             <div className="scroll-mt-6">
-              <label htmlFor="login-password" className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+              <label htmlFor="login-password" className="block text-xs font-bold text-slate-700 mb-1.5">
                 <span>Kata Sandi (Password)</span>
-                <span className="text-[11px] text-slate-500 font-normal">Default demo: <strong className="font-mono text-slate-700">password123</strong></span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">

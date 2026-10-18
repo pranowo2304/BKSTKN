@@ -17,7 +17,6 @@ import {
   Eye,
   Printer,
   ChevronDown,
-  Sparkles,
   Award,
   Check,
   X,
@@ -1166,17 +1165,6 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
                 );
               })()}
 
-              {/* Approval Notice */}
-              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
-                <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-bold">Konsekuensi Pengesahan Ketua Paguyuban:</p>
-                  <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
-                    Sesuai ketentuan, <strong>sertifikat keanggotaan resmi dan KTA baru dapat terbit setelah disetujui Ketua Paguyuban</strong>. Setelah pengesahan ini, status anggota otomatis berubah menjadi{' '}
-                    <strong>"Aktif"</strong>, <strong>KTA Digital & Sertifikat Sah langsung diterbitkan</strong>, dan notifikasi WhatsApp resmi akan otomatis dikirimkan ke nomor ponsel anggota.
-                  </p>
-                </div>
-              </div>
 
               {/* Notes Field */}
               <div className="space-y-1">
