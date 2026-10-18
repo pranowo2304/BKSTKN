@@ -17,7 +17,6 @@ import {
   Phone,
   HeartHandshake,
   CheckCircle2,
-  Sparkles,
   Layers,
   Palette,
   FileText,
@@ -177,57 +176,53 @@ export const PrintMemberCardModal: React.FC<PrintMemberCardModalProps> = ({
   const backTheme = getThemeBackStyles();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto print:p-0 print:bg-white print:static">
-      <div className="bg-slate-900 rounded-3xl border border-slate-700/80 shadow-2xl max-w-4xl w-full my-auto overflow-hidden flex flex-col max-h-[95vh] animate-in zoom-in-95 duration-200 print:shadow-none print:border-none print:max-w-none print:w-full print:bg-white print:max-h-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-1 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto print:p-0 print:bg-white print:static">
+      <div className="bg-slate-900 rounded-3xl border border-slate-700/80 shadow-2xl max-w-5xl w-full my-auto overflow-hidden flex flex-col max-h-[96vh] animate-in zoom-in-95 duration-200 print:shadow-none print:border-none print:max-w-none print:w-full print:bg-white print:max-h-none">
         
-        {/* MODAL HEADER (Hidden in Print) */}
-        <div className="bg-slate-950 text-white p-4 sm:p-5 px-6 border-b border-slate-800 flex justify-between items-center print:hidden">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold">
-              <Printer className="w-5 h-5" />
+        {/* MODAL HEADER (Compact & Clean) */}
+        <div className="bg-slate-950 text-white px-4 sm:px-6 py-2.5 sm:py-3 border-b border-slate-800 flex justify-between items-center print:hidden shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold shrink-0">
+              <Printer className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-black text-lg text-white">
-                  Cetak Kartu Tanda Anggota (KTA)
-                </h3>
-                <span className={`px-2 py-0.5 font-mono text-[10px] font-bold rounded-full border ${
-                  ktaInfo.isIssued
-                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                    : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                }`}>
-                  {ktaInfo.statusBadge}
-                </span>
-              </div>
-              <p className="text-xs text-slate-400">
-                Tata letak kartu presisi siap cetak (Standar ID Card / CR80 85.6mm × 54mm) dengan QR Code verifikasi
-              </p>
+            <div className="flex items-center gap-2">
+              <h3 className="font-black text-sm sm:text-base text-white">
+                Pratinjau KTA
+              </h3>
+              <span className={`px-2 py-0.5 font-mono text-[9px] font-bold rounded-full border ${
+                ktaInfo.isIssued
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                  : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+              }`}>
+                {ktaInfo.statusBadge}
+              </span>
             </div>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-colors"
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            title="Tutup (Esc)"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* CUSTOMIZATION TOOLBAR (Hidden in Print) */}
-        <div className="bg-slate-900 border-b border-slate-800 px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 text-xs print:hidden">
-          {/* Layout Selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-slate-400 font-bold uppercase tracking-wider text-[11px] flex items-center gap-1">
-              <Layers className="w-3.5 h-3.5 text-emerald-400" /> Sisi Kartu:
+        {/* CUSTOMIZATION TOOLBAR (Compact Single Row / Clean Flow) */}
+        <div className="bg-slate-900 border-b border-slate-800 px-3 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-2 text-xs print:hidden shrink-0">
+          {/* Sisi Kartu */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] hidden sm:inline flex items-center gap-1">
+              <Layers className="w-3 h-3 text-emerald-400" /> Sisi:
             </span>
-            <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+            <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
               <button
                 type="button"
                 onClick={() => setPrintLayout('both')}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                className={`px-2.5 py-1 rounded-md font-bold transition-all ${
                   printLayout === 'both'
-                    ? 'bg-emerald-600 text-white shadow-sm'
+                    ? 'bg-emerald-600 text-white shadow-xs'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -236,126 +231,106 @@ export const PrintMemberCardModal: React.FC<PrintMemberCardModalProps> = ({
               <button
                 type="button"
                 onClick={() => setPrintLayout('front')}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                className={`px-2.5 py-1 rounded-md font-bold transition-all ${
                   printLayout === 'front'
-                    ? 'bg-emerald-600 text-white shadow-sm'
+                    ? 'bg-emerald-600 text-white shadow-xs'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                Depan Saja
+                Depan
               </button>
               <button
                 type="button"
                 onClick={() => setPrintLayout('back')}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                className={`px-2.5 py-1 rounded-md font-bold transition-all ${
                   printLayout === 'back'
-                    ? 'bg-emerald-600 text-white shadow-sm'
+                    ? 'bg-emerald-600 text-white shadow-xs'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                Belakang Saja
+                Belakang
               </button>
             </div>
           </div>
 
-          {/* Color Theme Selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-slate-400 font-bold uppercase tracking-wider text-[11px] flex items-center gap-1">
-              <Palette className="w-3.5 h-3.5 text-emerald-400" /> Tema Tinta:
+          {/* Tema Tinta (Compact Color Chips) */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] hidden sm:inline flex items-center gap-1">
+              <Palette className="w-3 h-3 text-emerald-400" /> Tema:
             </span>
-            <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+            <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
               <button
                 type="button"
                 onClick={() => setColorTheme('emerald')}
-                className={`px-2.5 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+                className={`px-2 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
                   colorTheme === 'emerald'
-                    ? 'bg-emerald-700 text-white shadow-sm'
+                    ? 'bg-emerald-800/80 text-emerald-200 border border-emerald-500/40'
                     : 'text-slate-400 hover:text-white'
                 }`}
-                title="Warna Resmi Paguyuban (Hijau Elegan)"
+                title="Warna Hijau Resmi"
               >
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-                <span>Hijau Resmi</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                <span>Hijau</span>
               </button>
               <button
                 type="button"
                 onClick={() => setColorTheme('navy')}
-                className={`px-2.5 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+                className={`px-2 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
                   colorTheme === 'navy'
-                    ? 'bg-blue-700 text-white shadow-sm'
+                    ? 'bg-blue-900/80 text-blue-200 border border-blue-500/40'
                     : 'text-slate-400 hover:text-white'
                 }`}
-                title="Warna Biru Navy Modern"
+                title="Warna Biru Navy"
               >
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-400" />
+                <span className="w-2 h-2 rounded-full bg-blue-400" />
                 <span>Navy</span>
               </button>
               <button
                 type="button"
                 onClick={() => setColorTheme('monochrome')}
-                className={`px-2.5 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+                className={`px-2 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
                   colorTheme === 'monochrome'
-                    ? 'bg-slate-700 text-white shadow-sm'
+                    ? 'bg-slate-800 text-slate-200 border border-slate-600'
                     : 'text-slate-400 hover:text-white'
                 }`}
                 title="Format Hemat Tinta Hitam Putih"
               >
-                <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
-                <span>Monokrom (Eco)</span>
+                <span className="w-2 h-2 rounded-full bg-slate-300" />
+                <span>Eco</span>
               </button>
             </div>
           </div>
 
-          {/* Options Switches */}
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1.5 text-slate-300 font-medium cursor-pointer">
+          {/* Options Switches (Compact Toggles) */}
+          <div className="flex items-center gap-2.5 text-[11px]">
+            <label className="flex items-center gap-1 text-slate-300 font-medium cursor-pointer">
               <input
                 type="checkbox"
                 checked={includeCutGuides}
                 onChange={(e) => setIncludeCutGuides(e.target.checked)}
-                className="w-3.5 h-3.5 rounded bg-slate-800 border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                className="w-3 h-3 rounded bg-slate-800 border-slate-700 text-emerald-600 focus:ring-emerald-500"
               />
-              <span>Garis Potong (Cut Guide)</span>
+              <span>Garis Potong</span>
             </label>
-            <label className="flex items-center gap-1.5 text-slate-300 font-medium cursor-pointer">
+            <label className="flex items-center gap-1 text-slate-300 font-medium cursor-pointer">
               <input
                 type="checkbox"
                 checked={includeDependents}
                 onChange={(e) => setIncludeDependents(e.target.checked)}
-                className="w-3.5 h-3.5 rounded bg-slate-800 border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                className="w-3 h-3 rounded bg-slate-800 border-slate-700 text-emerald-600 focus:ring-emerald-500"
               />
-              <span>Tampilkan Tanggungan</span>
+              <span>Tanggungan</span>
             </label>
           </div>
         </div>
 
         {/* MODAL MAIN PREVIEW CONTAINER (PRINTABLE AREA) */}
-        <div className="p-5 sm:p-8 overflow-y-auto flex-1 bg-slate-950 print:p-0 print:bg-white print:overflow-visible">
+        <div className="p-2 sm:p-5 overflow-y-auto flex-1 bg-slate-950 print:p-0 print:bg-white print:overflow-visible flex flex-col items-center">
           
-          {/* Informational Guidance Notice (Hidden in Print) */}
-          <div className="max-w-3xl mx-auto mb-6 bg-slate-900/90 border border-slate-800 p-3.5 rounded-2xl flex items-start justify-between gap-3 print:hidden">
-            <div className="flex items-start gap-2.5 text-xs text-slate-300">
-              <Sparkles className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold text-white text-[13px]">
-                  Petunjuk Pencetakan Kartu Fisik:
-                </p>
-                <p className="text-slate-400 text-[11px] mt-0.5 leading-relaxed">
-                  Pilih ukuran kertas <strong>A4</strong> atau kertas foto tebal / PVC Card. Atur <strong>Scale: 100%</strong> dan aktifkan <strong>"Background Graphics"</strong> pada jendela cetak browser agar warna dan QR Code tampil tajam.
-                </p>
-              </div>
-            </div>
-            {!ktaInfo.isIssued && (
-              <span className="px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold rounded-lg shrink-0">
-                ⚠️ Status Draft
-              </span>
-            )}
-          </div>
-
           {/* PRINTABLE SHEET CONTAINER (Target of window.print) */}
-          <div id="member-card-printable" className="max-w-3xl mx-auto space-y-6 print:m-0 print:p-0 print:max-w-none">
+          <div id="member-card-printable" className="w-full max-w-4xl mx-auto space-y-4 print:m-0 print:p-0 print:max-w-none">
             
-            <div className={`grid ${printLayout === 'both' ? 'grid-cols-1 md:grid-cols-2 print:grid-cols-2' : 'grid-cols-1'} gap-6 items-start justify-center`}>
+            <div className={`grid ${printLayout === 'both' ? 'grid-cols-1 md:grid-cols-2 print:grid-cols-2' : 'grid-cols-1'} gap-3 sm:gap-5 items-start justify-center`}>
               
               {/* ==================== SISI DEPAN (FRONT CARD) ==================== */}
               {(printLayout === 'both' || printLayout === 'front') && (
@@ -366,10 +341,10 @@ export const PrintMemberCardModal: React.FC<PrintMemberCardModalProps> = ({
                   
                   {/* Card Container with precise CR80 / ID-1 Aspect Ratio */}
                   <div
-                    className={`relative w-full max-w-[420px] aspect-[1.586/1] rounded-2xl p-4 sm:p-5 flex flex-col justify-between overflow-hidden shadow-2xl select-none transition-all duration-200 ${frontTheme.cardBg} ${
+                    className={`relative w-full max-w-[480px] sm:max-w-[500px] aspect-[1.586/1] rounded-2xl p-4 sm:p-5 flex flex-col justify-between overflow-hidden shadow-2xl select-none transition-all duration-200 ${frontTheme.cardBg} ${
                       includeCutGuides ? 'border-dashed' : 'border-solid'
                     } print:shadow-none print:border-slate-800`}
-                    style={{ minHeight: '250px' }}
+                    style={{ minHeight: '260px' }}
                   >
                     {/* Background Security Watermark */}
                     <div className="absolute inset-0 bg-[radial-gradient(#10b981_1px,transparent_1px)] [background-size:16px_16px] opacity-10 pointer-events-none" />
@@ -524,10 +499,10 @@ export const PrintMemberCardModal: React.FC<PrintMemberCardModalProps> = ({
 
                   {/* Card Container */}
                   <div
-                    className={`relative w-full max-w-[420px] aspect-[1.586/1] rounded-2xl p-4 sm:p-5 flex flex-col justify-between overflow-hidden shadow-2xl select-none transition-all duration-200 ${backTheme.cardBg} ${
+                    className={`relative w-full max-w-[480px] sm:max-w-[500px] aspect-[1.586/1] rounded-2xl p-4 sm:p-5 flex flex-col justify-between overflow-hidden shadow-2xl select-none transition-all duration-200 ${backTheme.cardBg} ${
                       includeCutGuides ? 'border-dashed' : 'border-solid'
                     } print:shadow-none print:border-slate-800`}
-                    style={{ minHeight: '250px' }}
+                    style={{ minHeight: '260px' }}
                   >
                     {/* Header: Title & NPA */}
                     <div className="border-b border-white/10 pb-1 flex justify-between items-center">
@@ -616,28 +591,28 @@ export const PrintMemberCardModal: React.FC<PrintMemberCardModalProps> = ({
           </div>
         </div>
 
-        {/* MODAL FOOTER ACTIONS (Hidden in Print) */}
-        <div className="bg-slate-950 border-t border-slate-800 px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-3 print:hidden">
-          <div className="text-xs text-slate-400 flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>KTA Sah Digital • Format ID-1 Siap Cetak & Laminating</span>
+        {/* MODAL FOOTER ACTIONS (Compact & Clean) */}
+        <div className="bg-slate-950 border-t border-slate-800 px-4 sm:px-6 py-2.5 sm:py-3 flex flex-wrap justify-between items-center gap-2 print:hidden shrink-0">
+          <div className="hidden sm:flex text-xs text-slate-400 items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span>Format ID-1 Standar Cetak & Laminating</span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+          <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
             <button
               type="button"
               onClick={handleCopyCardData}
-              className="px-3.5 py-2 text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white rounded-xl border border-slate-700 transition-colors inline-flex items-center gap-1.5"
+              className="px-3 py-1.5 text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white rounded-xl border border-slate-700 transition-colors inline-flex items-center gap-1 cursor-pointer"
               title="Salin rincian data kartu ke clipboard"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Share2 className="w-3.5 h-3.5" />}
-              <span>{copied ? 'Tersalin!' : 'Salin Data'}</span>
+              <span>{copied ? 'Tersalin' : 'Salin Data'}</span>
             </button>
 
             <button
               type="button"
               onClick={handleShareWhatsApp}
-              className="px-3.5 py-2 text-xs font-bold text-slate-950 bg-emerald-500 hover:bg-emerald-400 rounded-xl transition-all shadow-md shadow-emerald-950/40 inline-flex items-center gap-1.5 hover:scale-105 active:scale-95"
+              className="px-3 py-1.5 text-xs font-bold text-slate-950 bg-emerald-500 hover:bg-emerald-400 rounded-xl transition-all shadow-xs inline-flex items-center gap-1 cursor-pointer"
               title="Kirim rincian KTA ke WhatsApp anggota"
             >
               <Share2 className="w-3.5 h-3.5" />
@@ -647,17 +622,17 @@ export const PrintMemberCardModal: React.FC<PrintMemberCardModalProps> = ({
             <button
               type="button"
               onClick={handlePrint}
-              className="px-5 py-2 text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl transition-all shadow-lg shadow-emerald-950/50 inline-flex items-center gap-2 hover:scale-105 active:scale-95"
+              className="px-4 py-1.5 text-xs font-black text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl transition-all shadow-md inline-flex items-center gap-1.5 cursor-pointer ml-auto sm:ml-0"
               title="Buka dialog cetak browser (Ctrl+P / Cmd+P)"
             >
-              <Printer className="w-4 h-4 text-slate-950" />
-              <span>Cetak Kartu Sekarang</span>
+              <Printer className="w-3.5 h-3.5 text-slate-950" />
+              <span>Cetak KTA</span>
             </button>
 
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-bold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors"
+              className="px-3.5 py-1.5 text-xs font-bold text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
             >
               Tutup
             </button>
