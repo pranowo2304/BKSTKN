@@ -367,27 +367,6 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300 pb-28 sm:pb-32">
-      {/* ========================================================================= */}
-      {/* WARNING / NOTICE BANNER IF USER CANNOT VERIFY RT                          */}
-      {/* ========================================================================= */}
-      {!canVerifyRt && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 shadow-sm text-amber-950">
-          <div className="w-9 h-9 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center shrink-0 text-amber-700">
-            <Lock className="w-5 h-5" />
-          </div>
-          <div className="space-y-1">
-            <h4 className="text-sm font-black text-amber-900 flex flex-wrap items-center gap-2">
-              <span>Mode Monitoring & Supervisi Berkas RT</span>
-              <span className="px-2 py-0.5 bg-amber-200 text-amber-900 border border-amber-300 rounded-full text-[10px] font-black uppercase">
-                Otoritas Terbatas: {activeUser?.authority || 'Pengawas'}
-              </span>
-            </h4>
-            <p className="text-xs text-amber-800 leading-relaxed">
-              Berdasarkan konfigurasi <strong>Hak Otoritas Granular</strong> sistem, akun <strong>{activeUser?.name}</strong> ({activeUser?.authority}) tidak memiliki hak untuk menyetujui atau menolak pendaftaran warga di tahap RT. Halaman ini berfungsi dalam mode pemantauan data kependudukan. Verifikasi berkas warga tetap menjadi wewenang Ketua RT masing-masing wilayah.
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* ========================================================================= */}
       {/* MOBILE APP STYLE OPERATIONAL MENU & DASHBOARD                             */}
