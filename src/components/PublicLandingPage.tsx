@@ -678,26 +678,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                 <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
                   {greeting}, Warga!
                 </h1>
-
-                <div className="flex items-center gap-1.5 text-xs text-white pt-0.5">
-                  <ShieldCheck className="w-4 h-4 text-amber-300 shrink-0" />
-                  <p className="line-clamp-2 sm:line-clamp-1 font-medium text-white">
-                    Seluruh Menu Layanan Terpadu Paguyuban Rukun Santosa
-                  </p>
-                </div>
               </div>
-            </div>
-
-            <div className="self-start sm:self-auto shrink-0 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => window.dispatchEvent(new CustomEvent('open-pwa-install'))}
-                className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs rounded-full shadow-lg shadow-amber-500/30 transition-all cursor-pointer hover:scale-105 active:scale-95 border border-amber-300"
-                title="Pasang Ikon Aplikasi di Layar Depan HP (Android & iOS)"
-              >
-                <Smartphone className="w-3.5 h-3.5 text-slate-950" />
-                <span>Pasang Ikon di HP</span>
-              </button>
             </div>
           </div>
         </div>
