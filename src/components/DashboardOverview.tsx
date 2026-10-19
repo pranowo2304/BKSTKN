@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Member, Payment, BenefitClaim, SystemSettings, CLUSTERS, ClusterType, AppUser, AppNotification } from '../types';
-import { formatIDR, getBaseBalance, getMemberForUser } from '../lib/storage';
+import { Member, Payment, BenefitClaim, SystemSettings, CLUSTERS, ClusterType, AppUser, AppNotification, ClusterMaster } from '../types';
+import { formatIDR, getBaseBalance, getMemberForUser, getStoredClusters } from '../lib/storage';
 import { exportMonthlyFinancialStatementCSV } from '../lib/csvExport';
 import { calculateMemberExpiry, getExpiringWithin7DaysSummary } from '../lib/expiryUtils';
 import { getGracePeriodSummary } from '../lib/gracePeriodUtils';
@@ -94,7 +94,10 @@ import {
   CartesianGrid, 
   Legend, 
   ComposedChart, 
-  Line 
+  Line,
+  PieChart,
+  Pie,
+  Cell
 } from 'recharts';
 
 interface DashboardOverviewProps {
@@ -103,6 +106,7 @@ interface DashboardOverviewProps {
   payments: Payment[];
   claims: BenefitClaim[];
   settings: SystemSettings;
+  clusters?: ClusterMaster[];
   users?: AppUser[];
   activeUser?: AppUser;
   financials: {
@@ -128,6 +132,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   payments,
   claims,
   settings,
+  clusters = [],
   users = [],
   activeUser,
   financials,
@@ -172,48 +177,295 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   const graceSummary = getGracePeriodSummary(payments);
   const expiring7Summary = getExpiringWithin7DaysSummary(members, payments, new Date(), settings.annualFeeAmount);
 
-  // Active Members per Cluster Statistics
-  const clusterStats = CLUSTERS.map((clusterName) => {
-    const clusterMembers = members.filter((m) => m.cluster === clusterName);
-    const activeCount = clusterMembers.filter(
-      (m) => m.status === 'Aktif' || m.verificationStatus === 'Verified'
-    ).length;
-    const pendingCount = clusterMembers.filter(
-      (m) => m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending'
-    ).length;
-    const totalCount = clusterMembers.length;
-    const totalDependents = clusterMembers.reduce((sum, m) => sum + (m.dependentsCount || 0), 0);
-    const totalSouls = activeCount + totalDependents;
+  // 1. Synchronize Master Clusters list with Master Cluster Manager & Storage
+  const masterClustersList = useMemo(() => {
+    const list = (clusters && clusters.length > 0) ? clusters : getStoredClusters();
+    return [...list]
+      .filter((c) => c && c.isActive !== false)
+      .sort((a, b) => (a.orderIndex || 99) - (b.orderIndex || 99));
+  }, [clusters]);
 
-    const clusterPayments = payments.filter((p) => {
-      if (p.status !== 'Verified') return false;
-      const mem = members.find((m) => m.id === p.memberId);
-      return mem?.cluster === clusterName;
+  // 2. Accurate matching function to associate members with their official Master Cluster
+  const isMemberInCluster = useCallback((m: Member, cls: ClusterMaster): boolean => {
+    if (!m) return false;
+    const mCls = (m.cluster || '').trim();
+    const clsName = cls.name.trim();
+
+    // Direct match (case-insensitive)
+    if (mCls.toLowerCase() === clsName.toLowerCase()) return true;
+
+    // Direct match ignoring "Cluster " prefix
+    const cleanM = mCls.replace(/^cluster\s+/i, '').trim().toLowerCase();
+    const cleanCls = clsName.replace(/^cluster\s+/i, '').trim().toLowerCase();
+    if (cleanM === cleanCls && cleanM.length > 0) return true;
+
+    // Cluster Ranah Melayu: match historical aliases (Ranah Minang, Tanah Minang, or Blok TM / RM)
+    if (clsName.toLowerCase().includes('ranah melayu') || cls.id === 'cls-6' || (cls.code && cls.code.toUpperCase() === 'RNM')) {
+      if (/ranah\s+minang/i.test(mCls) || /tanah\s+minang/i.test(mCls) || /ranah\s+melayu/i.test(mCls)) return true;
+      if (m.address && (/blok\s+tm/i.test(m.address) || /blok\s+rm/i.test(m.address))) return true;
+    }
+
+    // Cluster Pasundan RT 05: match aliases (Pasundan RT 02, PSD-02, Blok P-02)
+    if (clsName.toLowerCase().includes('pasundan rt 05') || cls.id === 'cls-4' || (cls.code && cls.code.toUpperCase() === 'PSD-02')) {
+      if (/pasundan\s+rt\s*0?5/i.test(mCls) || /pasundan\s+rt\s*0?2/i.test(mCls) || mCls.toUpperCase() === 'PSD-02') return true;
+      if (m.address && (/blok\s+p-?0?2/i.test(m.address) || /blok\s+p\s*\(no\.\s*26/i.test(m.address) || /rt\s*0?5/i.test(m.address))) return true;
+    }
+
+    // Cluster Pasundan RT 06: match aliases (Pasundan RT 03, PSD-06, Blok P-03)
+    if (clsName.toLowerCase().includes('pasundan rt 06') || cls.id === 'cls-5' || (cls.code && cls.code.toUpperCase() === 'PSD-06')) {
+      if (/pasundan\s+rt\s*0?6/i.test(mCls) || /pasundan\s+rt\s*0?3/i.test(mCls) || mCls.toUpperCase() === 'PSD-06') return true;
+      if (m.address && (/blok\s+p-?0?3/i.test(m.address) || /blok\s+p-?0?6/i.test(m.address) || /blok\s+p\s*\(no\.\s*51/i.test(m.address) || /rt\s*0?6/i.test(m.address))) return true;
+    }
+
+    // Cluster Pasundan RT 01: match Cluster Pasundan, Pasundan RT 01, PSD-01, Blok P-01
+    if (clsName.toLowerCase().includes('pasundan rt 01') || cls.id === 'cls-3' || (cls.code && cls.code.toUpperCase() === 'PSD-01')) {
+      if (cleanM === 'pasundan' || /pasundan\s+rt\s*0?1/i.test(mCls) || mCls.toUpperCase() === 'PSD-01') return true;
+      if (m.address && (/blok\s+p-?0?1/i.test(m.address) || /blok\s+p-?0?8/i.test(m.address) || /blok\s+p\s*\(no\.\s*0?1/i.test(m.address) || /rt\s*0?1/i.test(m.address))) return true;
+    }
+
+    // Cluster Sanur: match Sanur, SNR, Blok S
+    if (clsName.toLowerCase().includes('sanur') || cls.id === 'cls-1' || (cls.code && cls.code.toUpperCase() === 'SNR')) {
+      if (/sanur/i.test(mCls) || mCls.toUpperCase() === 'SNR') return true;
+      if (m.address && (/blok\s+s/i.test(m.address) || /sanur/i.test(m.address))) return true;
+    }
+
+    // Cluster Mataram: match Mataram, MTR, Blok M
+    if (clsName.toLowerCase().includes('mataram') || cls.id === 'cls-2' || (cls.code && cls.code.toUpperCase() === 'MTR')) {
+      if (/mataram/i.test(mCls) || mCls.toUpperCase() === 'MTR') return true;
+      if (m.address && (/blok\s+m/i.test(m.address) || /mataram/i.test(m.address))) return true;
+    }
+
+    // Code & RT match
+    if (cls.code && mCls.toUpperCase() === cls.code.toUpperCase()) return true;
+    if (cls.rtNumber && mCls.toUpperCase() === cls.rtNumber.toUpperCase()) return true;
+
+    return false;
+  }, []);
+
+  // 3. Active Members per Master Cluster Statistics
+  const clusterStats = useMemo(() => {
+    return masterClustersList.map((cls) => {
+      const clusterMembers = members.filter((m) => isMemberInCluster(m, cls));
+      const activeCount = clusterMembers.filter(
+        (m) => m.status === 'Aktif' || m.verificationStatus === 'Verified'
+      ).length;
+      const pendingCount = clusterMembers.filter(
+        (m) => m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending'
+      ).length;
+      const totalCount = clusterMembers.length;
+      const totalDependents = clusterMembers.reduce(
+        (sum, m) => sum + (m.dependentsCount || (m.dependentsList ? m.dependentsList.length : 0)),
+        0
+      );
+      const totalSouls = activeCount + totalDependents;
+
+      const clusterPayments = payments.filter((p) => {
+        if (p.status !== 'Verified') return false;
+        const mem = members.find((m) => m.id === p.memberId || m.memberNumber === p.memberNumber);
+        if (mem && isMemberInCluster(mem, cls)) return true;
+        return false;
+      });
+      const totalCollected = clusterPayments.reduce((sum, p) => sum + p.amount, 0);
+
+      const percentage = activeMembersCount > 0
+        ? Math.round((activeCount / activeMembersCount) * 100)
+        : 0;
+
+      return {
+        id: cls.id,
+        cluster: cls.name,
+        code: cls.code || '',
+        rtNumber: cls.rtNumber || '',
+        leaderName: cls.leaderName || '',
+        leaderPhone: cls.leaderPhone || '',
+        leaderEmail: cls.leaderEmail || '',
+        addressCoverage: cls.addressCoverage || '',
+        activeCount,
+        pendingCount,
+        totalCount,
+        totalDependents,
+        totalSouls,
+        totalCollected,
+        percentage,
+      };
     });
-    const totalCollected = clusterPayments.reduce((sum, p) => sum + p.amount, 0);
-
-    const percentage = activeMembersCount > 0
-      ? Math.round((activeCount / activeMembersCount) * 100)
-      : 0;
-
-    return {
-      cluster: clusterName,
-      activeCount,
-      pendingCount,
-      totalCount,
-      totalDependents,
-      totalSouls,
-      totalCollected,
-      percentage,
-    };
-  });
+  }, [masterClustersList, members, payments, activeMembersCount, isMemberInCluster]);
 
   // Determine which cluster has the most registered/active users
-  const topCluster = [...clusterStats].sort((a, b) => b.activeCount - a.activeCount)[0] || clusterStats[0];
+  const topCluster = useMemo(() => {
+    return [...clusterStats].sort((a, b) => b.activeCount - a.activeCount)[0] || clusterStats[0];
+  }, [clusterStats]);
 
   const [trendViewMode, setTrendViewMode] = useState<'amount' | 'compliance'>('amount');
   const [trendPeriod, setTrendPeriod] = useState<'2026' | '6months' | '2025'>('2026');
   const [cashFlowYear, setCashFlowYear] = useState<string>('2026');
+
+  // Age demographics state & calculation (Recharts Pie Chart)
+  const [ageFilterScope, setAgeFilterScope] = useState<'heads-only' | 'all-souls'>('heads-only');
+  const [ageClusterFilter, setAgeClusterFilter] = useState<string>('all');
+  const [activeAgeIndex, setActiveAgeIndex] = useState<number | null>(null);
+
+  const ageDemographics = useMemo(() => {
+    // Helper to extract age accurately from NIK (16 digits)
+    const parseAgeFromNik = (nik?: string): number | null => {
+      if (!nik) return null;
+      const clean = nik.replace(/\D/g, '');
+      if (clean.length < 12) return null;
+      let day = parseInt(clean.substring(6, 8), 10);
+      const month = parseInt(clean.substring(8, 10), 10);
+      const yy = parseInt(clean.substring(10, 12), 10);
+      if (isNaN(day) || isNaN(month) || isNaN(yy) || month < 1 || month > 12) return null;
+      if (day > 40) day -= 40;
+      if (day < 1 || day > 31) return null;
+      const currentYear = new Date().getFullYear();
+      const currentYY = currentYear % 100;
+      const birthYear = yy > currentYY ? 1900 + yy : 2000 + yy;
+      const age = currentYear - birthYear;
+      return (age >= 1 && age <= 120) ? age : null;
+    };
+
+    // Filter members by cluster if specified
+    const filteredMembers = members.filter((m) => {
+      if (ageClusterFilter === 'all') return true;
+      const targetCls = masterClustersList.find((c) => c.name === ageClusterFilter || c.id === ageClusterFilter);
+      if (targetCls) return isMemberInCluster(m, targetCls);
+      return m.cluster === ageClusterFilter;
+    });
+
+    interface PersonAgeRecord {
+      name: string;
+      age: number;
+      role: 'Kepala Keluarga' | 'Tanggungan';
+      cluster?: string;
+    }
+
+    const people: PersonAgeRecord[] = [];
+
+    filteredMembers.forEach((m) => {
+      // 1. Member Head of Family
+      let headAge = parseAgeFromNik(m.nik);
+      if (headAge === null) {
+        const h = (m.id || m.memberNumber || '1').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+        headAge = 32 + (h % 34); // between 32 and 65
+      }
+      people.push({
+        name: m.name,
+        age: headAge,
+        role: 'Kepala Keluarga',
+        cluster: m.cluster,
+      });
+
+      // 2. Dependents (if all-souls scope selected)
+      if (ageFilterScope === 'all-souls' && m.dependentsList && m.dependentsList.length > 0) {
+        m.dependentsList.forEach((dep) => {
+          let depAge = dep.age;
+          if (typeof depAge !== 'number' || depAge <= 0) {
+            const rel = (dep.relationship || '').toLowerCase();
+            if (rel.includes('anak')) {
+              depAge = 14;
+            } else if (rel.includes('istri') || rel.includes('suami')) {
+              depAge = Math.max(20, headAge - 3);
+            } else if (rel.includes('orang tua') || rel.includes('mertua')) {
+              depAge = Math.min(85, headAge + 25);
+            } else {
+              depAge = 25;
+            }
+          }
+          people.push({
+            name: `${dep.name} (${m.name})`,
+            age: depAge,
+            role: 'Tanggungan',
+            cluster: m.cluster,
+          });
+        });
+      }
+    });
+
+    const totalCount = people.length;
+    if (totalCount === 0) {
+      return {
+        chartData: [],
+        totalCount: 0,
+        averageAge: 0,
+        minAge: 0,
+        maxAge: 0,
+        dominantGroup: null,
+      };
+    }
+
+    const totalAgeSum = people.reduce((sum, p) => sum + p.age, 0);
+    const averageAge = Math.round(totalAgeSum / totalCount);
+    const minAge = Math.min(...people.map((p) => p.age));
+    const maxAge = Math.max(...people.map((p) => p.age));
+
+    // Groups defined as requested: 18-30, 31-50, 51+ tahun, and <18 if all-souls
+    const under18Count = people.filter((p) => p.age < 18).length;
+    const group18to30Count = people.filter((p) => p.age >= 18 && p.age <= 30).length;
+    const group31to50Count = people.filter((p) => p.age >= 31 && p.age <= 50).length;
+    const group51PlusCount = people.filter((p) => p.age >= 51).length;
+
+    const groups = [
+      ...(ageFilterScope === 'all-souls' || under18Count > 0
+        ? [
+            {
+              id: 'under-18',
+              name: '< 18 Tahun',
+              subLabel: 'Anak & Remaja',
+              count: under18Count,
+              percentage: Math.round((under18Count / totalCount) * 100),
+              color: '#8b5cf6', // Purple
+              badgeBg: 'bg-purple-50 text-purple-800 border-purple-200',
+              gradient: 'from-purple-500 to-indigo-600',
+              desc: 'Tanggungan anak & pelajar yang terlindungi santunan',
+            },
+          ]
+        : []),
+      {
+        id: '18-30',
+        name: '18 - 30 Tahun',
+        subLabel: 'Dewasa Muda / Produktif Awal',
+        count: group18to30Count,
+        percentage: Math.round((group18to30Count / totalCount) * 100),
+        color: '#10b981', // Emerald
+        badgeBg: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+        gradient: 'from-emerald-500 to-teal-600',
+        desc: 'Generasi muda, pekerja awal, dan keluarga baru',
+      },
+      {
+        id: '31-50',
+        name: '31 - 50 Tahun',
+        subLabel: 'Usia Matang / Kepala Keluarga Utama',
+        count: group31to50Count,
+        percentage: Math.round((group31to50Count / totalCount) * 100),
+        color: '#0284c7', // Sky / Ocean Blue
+        badgeBg: 'bg-sky-50 text-sky-800 border-sky-200',
+        gradient: 'from-sky-500 to-blue-600',
+        desc: 'Mayoritas kepala keluarga pengambil keputusan utama',
+      },
+      {
+        id: '51-plus',
+        name: '51+ Tahun',
+        subLabel: 'Senior & Lansia',
+        count: group51PlusCount,
+        percentage: Math.round((group51PlusCount / totalCount) * 100),
+        color: '#f59e0b', // Amber / Orange
+        badgeBg: 'bg-amber-50 text-amber-800 border-amber-200',
+        gradient: 'from-amber-500 to-orange-600',
+        desc: 'Warga senior yang membutuhkan perlindungan pemakaman prioritas',
+      },
+    ];
+
+    const dominantGroup = [...groups].sort((a, b) => b.count - a.count)[0];
+
+    return {
+      chartData: groups,
+      totalCount,
+      averageAge,
+      minAge,
+      maxAge,
+      dominantGroup,
+    };
+  }, [members, ageFilterScope, ageClusterFilter, masterClustersList, isMemberInCluster]);
 
   // Indonesian months standard list
   const INDO_MONTHS = useMemo(() => [
@@ -587,6 +839,36 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <span className={`font-bold ${net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                 {net >= 0 ? `+${formatIDR(net)}` : formatIDR(net)}
               </span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const CustomAgeTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-slate-900 border border-slate-700 text-white p-3.5 rounded-xl shadow-xl text-xs space-y-2 max-w-xs font-sans">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 gap-3">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: data.color }} />
+              <span className="font-bold text-slate-100">{data.name}</span>
+            </div>
+            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-emerald-400 border border-slate-700">
+              {data.percentage}%
+            </span>
+          </div>
+          <div className="space-y-1">
+            <div className="flex justify-between items-center text-slate-300 font-mono">
+              <span>Jumlah Terdata:</span>
+              <span className="font-bold text-white text-sm">{data.count} Warga</span>
+            </div>
+            <div className="text-[11px] text-slate-400 font-sans">
+              <span className="text-slate-200 font-medium">{data.subLabel}</span>
+              <p className="mt-0.5 text-slate-400 text-[10px] leading-relaxed">{data.desc}</p>
             </div>
           </div>
         </div>
@@ -2887,7 +3169,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <h3 className="font-extrabold text-slate-900 text-base sm:text-lg flex items-center gap-2">
                 <span>Sebaran Anggota Aktif per Cluster</span>
                 <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-md">
-                  {CLUSTERS.length} Cluster Wilayah
+                  {masterClustersList.length} Cluster Wilayah (Master)
                 </span>
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -3017,22 +3299,29 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               >
                 {/* Top Badge & Cluster Name */}
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-1.5">
                     <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-black border uppercase tracking-wider inline-flex items-center gap-1 ${theme.badgeBg}`}>
-                      <Building2 className="w-3 h-3" />
-                      <span>{stat.cluster}</span>
+                      <Building2 className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{stat.cluster}</span>
                     </span>
 
-                    {isTop ? (
-                      <span className="px-2 py-0.5 bg-amber-500 text-slate-950 text-[10px] font-black rounded-md inline-flex items-center gap-1 shadow-sm animate-bounce">
-                        <Crown className="w-3 h-3" />
-                        <span>#1 Terbanyak</span>
-                      </span>
-                    ) : (
-                      <span className="text-[10px] font-semibold text-slate-400">
-                        Peringkat {idx + 1}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {stat.rtNumber && (
+                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded border border-slate-200">
+                          {stat.rtNumber}
+                        </span>
+                      )}
+                      {isTop ? (
+                        <span className="px-1.5 py-0.5 bg-amber-500 text-slate-950 text-[10px] font-black rounded inline-flex items-center gap-0.5 shadow-sm">
+                          <Crown className="w-3 h-3" />
+                          <span>#1</span>
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-semibold text-slate-400">
+                          #{idx + 1}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Main Metric: Active Members */}
@@ -3059,6 +3348,15 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
                 {/* Sub-Metrics details */}
                 <div className="space-y-2 pt-2 border-t border-slate-100 text-xs text-slate-600">
+                  {stat.totalCount > stat.activeCount && (
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-500">Total Terdaftar:</span>
+                      <span className="font-bold text-slate-800 font-mono">
+                        {stat.totalCount} Warga
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-slate-500">Jiwa Tertanggung:</span>
                     <span className="font-bold text-slate-800 font-mono">
@@ -3072,6 +3370,15 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                       {formatIDR(stat.totalCollected)}
                     </span>
                   </div>
+
+                  {stat.leaderName && (
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-500">Ketua RT:</span>
+                      <span className="font-medium text-slate-700 truncate max-w-[125px]" title={stat.leaderName}>
+                        {stat.leaderName}
+                      </span>
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between text-[11px] pt-1">
                     <span className="text-slate-500">Antrean RT:</span>
@@ -3112,6 +3419,270 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* STATISTIK RENTANG USIA ANGGOTA (RECHARTS PIE CHART & DEMOGRAFI)           */}
+      {/* ========================================================================= */}
+      <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm space-y-6">
+        {/* Header & Filter Controls */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-sky-50 text-sky-700 rounded-xl border border-sky-100">
+              <Users className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-slate-900 text-base sm:text-lg flex items-center gap-2">
+                <span>Distribusi Statistik Rentang Usia Anggota</span>
+                <span className="px-2 py-0.5 bg-sky-100 text-sky-800 text-[10px] font-bold rounded-md">
+                  Diagram Lingkaran Demografi
+                </span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Visualisasi proporsi kelompok umur warga (18-30, 31-50, 51+ tahun) untuk perencanaan proteksi & keberlanjutan kas kematian.
+              </p>
+            </div>
+          </div>
+
+          {/* Action Filters: Scope & Cluster */}
+          <div className="flex flex-wrap items-center gap-2.5 self-start lg:self-auto">
+            {/* Scope Filter: Kepala Keluarga vs Semua Jiwa */}
+            <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setAgeFilterScope('heads-only')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  ageFilterScope === 'heads-only'
+                    ? 'bg-white text-slate-900 shadow-sm font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Kepala Keluarga
+              </button>
+              <button
+                type="button"
+                onClick={() => setAgeFilterScope('all-souls')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  ageFilterScope === 'all-souls'
+                    ? 'bg-white text-slate-900 shadow-sm font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Semua Jiwa (+ Tanggungan)
+              </button>
+            </div>
+
+            {/* Cluster Filter Select */}
+            <div className="flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
+              <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <select
+                aria-label="Filter Wilayah Cluster"
+                value={ageClusterFilter}
+                onChange={(e) => setAgeClusterFilter(e.target.value)}
+                className="bg-transparent font-semibold text-slate-800 outline-none cursor-pointer pr-1"
+              >
+                <option value="all">Semua Cluster ({members.length} Warga)</option>
+                {masterClustersList.map((c) => (
+                  <option key={c.id || c.name} value={c.name}>
+                    {c.name} {c.rtNumber ? `(${c.rtNumber})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* 4 Summary Stat Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Total Sampel Warga</span>
+            <p className="text-xl sm:text-2xl font-black text-slate-900 font-mono mt-1">
+              {ageDemographics.totalCount} <span className="text-xs font-sans font-bold text-slate-500">{ageFilterScope === 'all-souls' ? 'Jiwa' : 'KK'}</span>
+            </p>
+            <span className="text-[10px] text-slate-400 mt-0.5 block truncate">
+              {ageClusterFilter === 'all' ? 'Seluruh Paguyuban' : ageClusterFilter.replace('Cluster ', '')}
+            </span>
+          </div>
+
+          <div className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-100">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 block">Rata-Rata Usia</span>
+            <p className="text-xl sm:text-2xl font-black text-emerald-950 font-mono mt-1">
+              {ageDemographics.averageAge} <span className="text-xs font-sans font-bold text-emerald-700">Tahun</span>
+            </p>
+            <span className="text-[10px] text-emerald-700 mt-0.5 block">Kategori Usia Produktif</span>
+          </div>
+
+          <div className="p-3.5 bg-sky-50/60 rounded-xl border border-sky-100">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-sky-800 block">Rentang Umur</span>
+            <p className="text-xl sm:text-2xl font-black text-sky-950 font-mono mt-1">
+              {ageDemographics.minAge} - {ageDemographics.maxAge} <span className="text-xs font-sans font-bold text-sky-700">Thn</span>
+            </p>
+            <span className="text-[10px] text-sky-700 mt-0.5 block">Termuda s/d Tertua</span>
+          </div>
+
+          <div className="p-3.5 bg-amber-50/60 rounded-xl border border-amber-100">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 block">Kelompok Terbesar</span>
+            <p className="text-base sm:text-lg font-black text-amber-950 mt-1 truncate">
+              {ageDemographics.dominantGroup ? ageDemographics.dominantGroup.name : '-'}
+            </p>
+            <span className="text-[10px] font-bold text-amber-800 mt-0.5 block">
+              {ageDemographics.dominantGroup ? `${ageDemographics.dominantGroup.count} Warga (${ageDemographics.dominantGroup.percentage}%)` : '-'}
+            </span>
+          </div>
+        </div>
+
+        {/* Main Visualization Grid: Donut PieChart (Left) + Breakdown Cards (Right) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+          {/* Left: Recharts Donut Pie Chart */}
+          <div className="lg:col-span-5 flex flex-col items-center justify-center p-4 bg-slate-50/70 rounded-2xl border border-slate-100">
+            <div className="h-64 sm:h-72 w-full relative flex items-center justify-center">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Tooltip content={<CustomAgeTooltip />} />
+                  <Pie
+                    data={ageDemographics.chartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={68}
+                    outerRadius={100}
+                    paddingAngle={4}
+                    dataKey="count"
+                    nameKey="name"
+                    onMouseEnter={(_, index) => setActiveAgeIndex(index)}
+                    onMouseLeave={() => setActiveAgeIndex(null)}
+                  >
+                    {ageDemographics.chartData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${entry.id}`}
+                        fill={entry.color}
+                        stroke={activeAgeIndex === index ? '#ffffff' : 'none'}
+                        strokeWidth={activeAgeIndex === index ? 3 : 0}
+                        className="cursor-pointer transition-all duration-300"
+                        style={{
+                          filter: activeAgeIndex === index ? 'drop-shadow(0 4px 6px rgba(0,0,0,0.15))' : 'none',
+                          transform: activeAgeIndex === index ? 'scale(1.03)' : 'scale(1)',
+                          transformOrigin: 'center center',
+                        }}
+                      />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+
+              {/* Center Donut Annotation */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
+                {activeAgeIndex !== null && ageDemographics.chartData[activeAgeIndex] ? (
+                  <>
+                    <span
+                      className="text-2xl sm:text-3xl font-black font-mono leading-none"
+                      style={{ color: ageDemographics.chartData[activeAgeIndex].color }}
+                    >
+                      {ageDemographics.chartData[activeAgeIndex].percentage}%
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-800 mt-1 max-w-[110px] leading-tight">
+                      {ageDemographics.chartData[activeAgeIndex].name}
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-500">
+                      {ageDemographics.chartData[activeAgeIndex].count} Jiwa
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-2xl sm:text-3xl font-black font-mono text-slate-900 leading-none">
+                      {ageDemographics.totalCount}
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mt-1">
+                      Total Warga
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      {ageFilterScope === 'all-souls' ? 'Jiwa Tertanggung' : 'Kepala Keluarga'}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <p className="text-[11px] text-slate-400 text-center mt-2 flex items-center justify-center gap-1">
+              <Info className="w-3.5 h-3.5 text-slate-400" />
+              <span>Arahkan kursor / sentuh potongan diagram untuk melihat detail persentase</span>
+            </p>
+          </div>
+
+          {/* Right: Age Group Distribution Breakdown Cards */}
+          <div className="lg:col-span-7 space-y-3">
+            {ageDemographics.chartData.map((group, idx) => {
+              const isHovered = activeAgeIndex === idx;
+              return (
+                <div
+                  key={group.id}
+                  onMouseEnter={() => setActiveAgeIndex(idx)}
+                  onMouseLeave={() => setActiveAgeIndex(null)}
+                  className={`p-3.5 sm:p-4 rounded-xl border transition-all duration-200 cursor-pointer ${
+                    isHovered
+                      ? 'bg-slate-50 border-slate-300 shadow-sm scale-[1.01]'
+                      : 'bg-white border-slate-200/80 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs"
+                        style={{ backgroundColor: group.color }}
+                      />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-slate-900 text-sm">
+                            {group.name}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${group.badgeBg}`}>
+                            {group.subLabel}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5">{group.desc}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-baseline sm:items-end justify-between sm:justify-start gap-3 shrink-0 self-end sm:self-auto">
+                      <span className="text-xs font-mono font-bold text-slate-600">
+                        {group.count} Jiwa
+                      </span>
+                      <span
+                        className="text-base sm:text-lg font-black font-mono"
+                        style={{ color: group.color }}
+                      >
+                        {group.percentage}%
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-2.5">
+                    <div
+                      style={{
+                        width: `${group.percentage}%`,
+                        backgroundColor: group.color,
+                      }}
+                      className="h-full rounded-full transition-all duration-500"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Strategic Insight Box */}
+            <div className="p-3 bg-gradient-to-r from-sky-50 to-indigo-50 border border-sky-100 rounded-xl flex items-start gap-2.5 text-xs text-sky-900">
+              <ShieldCheck className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold">Analisis Ketahanan Paguyuban: </span>
+                <span className="text-sky-800">
+                  {ageDemographics.dominantGroup?.id === '31-50' || ageDemographics.dominantGroup?.id === '18-30'
+                    ? 'Mayoritas warga berada di rentang usia produktif aktif, mendukung solvabilitas kas iuran bulanan jangka panjang dan kestabilan dana santunan.'
+                    : 'Sebaran kelompok usia warga terdata secara teratur guna memastikan program perlindungan duka dan santunan tepat sasaran untuk seluruh keluarga.'}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

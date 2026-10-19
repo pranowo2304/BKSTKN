@@ -15,7 +15,7 @@ export type ClusterType =
   | 'Cluster Pasundan RT 01'
   | 'Cluster Pasundan RT 05'
   | 'Cluster Pasundan RT 06'
-  | 'Cluster Ranah Minang'
+  | 'Cluster Ranah Melayu'
   | string;
 
 export interface ClusterMaster {
@@ -95,12 +95,12 @@ export const DEFAULT_CLUSTERS: ClusterMaster[] = [
   },
   {
     id: 'cls-6',
-    name: 'Cluster Ranah Minang',
+    name: 'Cluster Ranah Melayu',
     code: 'RNM',
     rtNumber: 'RT 02',
     leaderName: 'Pak Rully',
     leaderPhone: '081267891234',
-    leaderEmail: 'rt.ranahminang@danakematian.org',
+    leaderEmail: 'rt.ranahmelayu@danakematian.org',
     addressCoverage: 'Blok TM & RM (No. 01 - 60)',
     isActive: true,
     orderIndex: 6,

@@ -1129,7 +1129,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
               Pelayanan Siaga Antar-Cluster & RT
             </h4>
             <p className="text-xs text-indigo-100/80 mt-1 line-clamp-2">
-              Koordinasi cepat RT 01, 02, 03 Cluster Sanur, Mataram, Pasundan, dan Ranah Minang.
+              Koordinasi cepat RT 01, 02, 03 Cluster Sanur, Mataram, Pasundan, dan Ranah Melayu.
             </p>
             <div className="mt-3 flex items-center gap-1 text-xs font-bold text-indigo-300">
               <span>Hubungi Pengurus RT</span>
@@ -2090,7 +2090,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
           {[
             {
               q: 'Siapa saja yang berhak mendaftar menjadi anggota?',
-              a: 'Seluruh warga yang berdomisili di lingkungan Cluster Sanur, Mataram, Pasundan (RT 01, RT 02, RT 03), Ranah Minang, dan wilayah cluster yang terdaftar di paguyuban, baik status rumah milik sendiri maupun sewa/kontrak.',
+              a: 'Seluruh warga yang berdomisili di lingkungan Cluster Sanur, Mataram, Pasundan (RT 01, RT 02, RT 03), Ranah Melayu, dan wilayah cluster yang terdaftar di paguyuban, baik status rumah milik sendiri maupun sewa/kontrak.',
             },
             {
               q: 'Bagaimana cara mengajukan santunan saat terjadi musibah duka?',

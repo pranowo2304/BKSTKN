@@ -1806,6 +1806,7 @@ export default function App() {
             payments={payments}
             claims={claims}
             settings={settings}
+            clusters={clusters}
             users={users}
             activeUser={activeUser}
             financials={financials}

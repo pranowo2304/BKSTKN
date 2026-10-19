@@ -79,7 +79,45 @@ export const getStoredClusters = (): ClusterMaster[] => {
     }
     const parsed = JSON.parse(data);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed;
+      let migrated = false;
+      const normalized = parsed.map((c) => {
+        if (c.name === 'Cluster Ranah Minang' || c.name === 'Cluster Tanah Minang') {
+          migrated = true;
+          return {
+            ...c,
+            name: 'Cluster Ranah Melayu',
+            code: c.code || 'RNM',
+            rtNumber: c.rtNumber || 'RT 02',
+            leaderName: c.leaderName || 'Pak Rully',
+            leaderEmail: c.leaderEmail ? c.leaderEmail.replace('ranahminang', 'ranahmelayu') : 'rt.ranahmelayu@danakematian.org',
+          };
+        }
+        if (c.name === 'Cluster Pasundan RT 02') {
+          migrated = true;
+          return {
+            ...c,
+            name: 'Cluster Pasundan RT 05',
+            rtNumber: 'RT 05',
+            code: 'PSD-02',
+            leaderName: c.leaderName || 'Pak Anin',
+          };
+        }
+        if (c.name === 'Cluster Pasundan RT 03') {
+          migrated = true;
+          return {
+            ...c,
+            name: 'Cluster Pasundan RT 06',
+            rtNumber: 'RT 06',
+            code: 'PSD-06',
+            leaderName: c.leaderName || 'Pak Arifin',
+          };
+        }
+        return c;
+      });
+      if (migrated) {
+        localStorage.setItem(KEYS.CLUSTERS, JSON.stringify(normalized));
+      }
+      return normalized;
     }
     return DEFAULT_CLUSTERS;
   } catch (e) {
@@ -125,8 +163,8 @@ export const getStoredUsers = (): AppUser[] => {
     users = users.map((u) => {
       if (!u) return u;
       let cluster = u.cluster;
-      if (cluster === 'Cluster Tanah Minang') {
-        cluster = 'Cluster Ranah Minang';
+      if (cluster === 'Cluster Tanah Minang' || cluster === 'Cluster Ranah Minang') {
+        cluster = 'Cluster Ranah Melayu';
       } else if (cluster === 'Cluster Pasundan') {
         cluster = 'Cluster Pasundan RT 01';
       } else if (cluster === 'Cluster Pasundan RT 02') {
@@ -350,8 +388,8 @@ export const getStoredActiveUser = (): AppUser | null => {
       return null;
     }
     const user: AppUser = JSON.parse(data);
-    if (user.cluster === 'Cluster Tanah Minang') {
-      user.cluster = 'Cluster Ranah Minang';
+    if (user.cluster === 'Cluster Tanah Minang' || user.cluster === 'Cluster Ranah Minang') {
+      user.cluster = 'Cluster Ranah Melayu';
       localStorage.setItem(KEYS.ACTIVE_USER, JSON.stringify(user));
     } else if (user.cluster === 'Cluster Pasundan') {
       user.cluster = 'Cluster Pasundan RT 01';
@@ -398,15 +436,21 @@ export const getStoredMembers = (): Member[] => {
     const migratedMembers = parsed.map((m: Member) => {
       if (!m) return m;
       let cluster = m.cluster;
-      if (cluster === 'Cluster Tanah Minang') {
-        cluster = 'Cluster Ranah Minang';
+      if (cluster === 'Cluster Tanah Minang' || cluster === 'Cluster Ranah Minang' || cluster === 'Ranah Minang' || cluster === 'Tanah Minang') {
+        cluster = 'Cluster Ranah Melayu';
+        migrated = true;
+      } else if (cluster === 'Cluster Pasundan RT 02') {
+        cluster = 'Cluster Pasundan RT 05';
+        migrated = true;
+      } else if (cluster === 'Cluster Pasundan RT 03') {
+        cluster = 'Cluster Pasundan RT 06';
         migrated = true;
       } else if (cluster === 'Cluster Pasundan') {
         const addr = (m.address || '').toLowerCase();
-        if (addr.includes('rt 02') || addr.includes('rt 2') || addr.includes('rt.02') || addr.includes('rt.2') || addr.includes('blok p-02')) {
-          cluster = 'Cluster Pasundan RT 02';
-        } else if (addr.includes('rt 03') || addr.includes('rt 3') || addr.includes('rt.03') || addr.includes('rt.3') || addr.includes('blok p-03')) {
-          cluster = 'Cluster Pasundan RT 03';
+        if (addr.includes('rt 05') || addr.includes('rt 5') || addr.includes('rt 02') || addr.includes('rt 2') || addr.includes('blok p-02') || addr.includes('blok p (no. 26')) {
+          cluster = 'Cluster Pasundan RT 05';
+        } else if (addr.includes('rt 06') || addr.includes('rt 6') || addr.includes('rt 03') || addr.includes('rt 3') || addr.includes('blok p-03') || addr.includes('blok p (no. 51')) {
+          cluster = 'Cluster Pasundan RT 06';
         } else {
           cluster = 'Cluster Pasundan RT 01';
         }

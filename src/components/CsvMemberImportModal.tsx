@@ -61,7 +61,7 @@ export const CsvMemberImportModal: React.FC<CsvMemberImportModalProps> = ({
       'Budi Santoso,3201123456780001,3201123456780099,081234567890,Cluster Sanur,"Blok S-12 No. 04",3,2026-08-01,Kepala Keluarga',
       'Siti Aminah,3201123456780002,3201123456780088,081398765432,Cluster Mataram,"Blok M-05 No. 18",2,2026-08-01,Warga RT 05',
       'Ahmad Fauzi,3201123456780003,3201123456780077,085611223344,Cluster Pasundan RT 01,"Blok P-08 No. 02",0,2026-08-01,',
-      'Dewi Lestari,3201123456780004,3201123456780066,087811223344,Cluster Ranah Minang,"Blok RM-19 No. 11",1,2026-08-01,',
+      'Dewi Lestari,3201123456780004,3201123456780066,087811223344,Cluster Ranah Melayu,"Blok RM-19 No. 11",1,2026-08-01,',
     ].join('\n');
 
     const csvContent = `${headers}\n${sampleRows}`;
@@ -170,7 +170,7 @@ export const CsvMemberImportModal: React.FC<CsvMemberImportModalProps> = ({
           else if (lowerAddr.includes('rt 03') || lowerAddr.includes('rt 3') || lowerAddr.includes('rt.03') || lowerAddr.includes('rt.3')) rawCluster = 'Cluster Pasundan RT 03';
           else rawCluster = 'Cluster Pasundan RT 01';
         }
-        else if (lowerAddr.includes('minang') || lowerAddr.includes('rm-') || lowerAddr.includes('tm-')) rawCluster = 'Cluster Ranah Minang';
+        else if (lowerAddr.includes('melayu') || lowerAddr.includes('minang') || lowerAddr.includes('rm-') || lowerAddr.includes('tm-')) rawCluster = 'Cluster Ranah Melayu';
         else rawCluster = 'Cluster Sanur';
       } else {
         if (lowerCluster === 'sanur' || lowerCluster === 'cluster sanur') rawCluster = 'Cluster Sanur';
@@ -180,7 +180,7 @@ export const CsvMemberImportModal: React.FC<CsvMemberImportModalProps> = ({
           else if (lowerCluster.includes('03') || lowerCluster.includes('rt 3') || lowerCluster.includes('rt.3') || lowerCluster.includes('rt 03') || lowerCluster.includes('rt.03')) rawCluster = 'Cluster Pasundan RT 03';
           else rawCluster = 'Cluster Pasundan RT 01';
         }
-        else if (lowerCluster.includes('minang') || lowerCluster.includes('ranah minang') || lowerCluster.includes('tanah minang')) rawCluster = 'Cluster Ranah Minang';
+        else if (lowerCluster.includes('melayu') || lowerCluster.includes('ranah melayu') || lowerCluster.includes('minang') || lowerCluster.includes('ranah minang') || lowerCluster.includes('tanah minang')) rawCluster = 'Cluster Ranah Melayu';
       }
 
       const errors: string[] = [];
