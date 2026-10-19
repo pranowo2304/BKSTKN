@@ -12,6 +12,7 @@ import { ContactAdminModal } from './ContactAdminModal';
 import { MemberKtaQrGeneratorModal } from './MemberKtaQrGeneratorModal';
 import { MembershipCertificateModal } from './MembershipCertificateModal';
 import { RoleMobileAppMenu } from './RoleMobileAppMenu';
+import { EditMemberBiodataModal } from './EditMemberBiodataModal';
 import { downloadKtaCardAsImage, KtaCardSide } from '../lib/ktaImageGenerator';
 import { QRCodeSVG } from 'qrcode.react';
 import {
@@ -23,6 +24,7 @@ import {
   Clock,
   Printer,
   Eye,
+  Edit3,
   RotateCw,
   Download,
   Share2,
@@ -165,11 +167,22 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
   const [isKkModalOpen, setIsKkModalOpen] = useState(false);
   const [selectedReceiptPayment, setSelectedReceiptPayment] = useState<Payment | null>(null);
   const [isContactAdminOpen, setIsContactAdminOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editSuccessToast, setEditSuccessToast] = useState<string | null>(null);
   const [isCardFlipped, setIsCardFlipped] = useState(false);
   const [copiedKta, setCopiedKta] = useState(false);
   const [downloadingMyKta, setDownloadingMyKta] = useState(false);
   const [myKtaDownloadToast, setMyKtaDownloadToast] = useState<string | null>(null);
   const [isCardLoading, setIsCardLoading] = useState(true);
+
+  const handleSaveEditedMember = (updatedMember: Member) => {
+    if (onUpdateMember) {
+      onUpdateMember(updatedMember);
+    }
+    setIsEditModalOpen(false);
+    setEditSuccessToast(`Data profil Anda (${updatedMember.name}) berhasil diperbarui dan disinkronkan ke sistem.`);
+    setTimeout(() => setEditSuccessToast(null), 5000);
+  };
 
   // Smooth skeleton loading transition on mount or when member changes
   useEffect(() => {
@@ -328,6 +341,15 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
             icon: Users,
             onClick: () => handleSectionChange('riwayat-pendaftaran'),
           },
+          {
+            id: 'edit-profil',
+            label: 'Edit Profil',
+            subLabel: 'Koreksi Data & KK',
+            badge: 'Edit',
+            gradient: 'from-amber-600 to-amber-700',
+            icon: Edit3,
+            onClick: () => setIsEditModalOpen(true),
+          },
         ]}
         pills={[
           {
@@ -336,6 +358,12 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
             isActive: activeSection === 'semua',
             icon: Home,
             onClick: () => handleSectionChange('semua'),
+          },
+          {
+            id: 'pill-edit-profil',
+            label: 'Edit Data Profil',
+            icon: Edit3,
+            onClick: () => setIsEditModalOpen(true),
           },
           {
             id: 'pill-kta',
@@ -426,6 +454,25 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
             <button
               type="button"
               onClick={() => setMyKtaDownloadToast(null)}
+              className="text-emerald-700 hover:text-emerald-900 p-1 rounded-lg hover:bg-emerald-100 cursor-pointer"
+            >
+              <XCircle className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* EDIT PROFILE SUCCESS TOAST NOTIFICATION */}
+        {editSuccessToast && (
+          <div className="mb-5 p-3.5 sm:p-4 bg-emerald-50 border border-emerald-300 rounded-2xl flex items-center justify-between gap-3 text-emerald-900 shadow-sm animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 bg-emerald-600 text-white rounded-lg">
+                <CheckCircle2 className="w-4 h-4" />
+              </div>
+              <p className="text-xs sm:text-sm font-bold">{editSuccessToast}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setEditSuccessToast(null)}
               className="text-emerald-700 hover:text-emerald-900 p-1 rounded-lg hover:bg-emerald-100 cursor-pointer"
             >
               <XCircle className="w-4 h-4" />
@@ -842,6 +889,17 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
                 <span>{member.cluster || 'Cluster Warga'}</span>
                 <span>•</span>
                 <span>{member.phone || '-'}</span>
+              </div>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(true)}
+                  className="w-full py-2 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs rounded-xl transition-all inline-flex items-center justify-center gap-2 cursor-pointer shadow-sm shadow-amber-500/20 active:scale-95 border border-amber-400"
+                  title="Ada data profil atau tanggungan yang salah? Klik untuk mengoreksi data"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-slate-950" />
+                  <span>Koreksi / Edit Data Profil</span>
+                </button>
               </div>
             </div>
 
@@ -1532,16 +1590,28 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
               </p>
             </div>
 
-            {member.familyCardPhotoUrl && (
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => setIsKkModalOpen(true)}
-                className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-xl border border-emerald-200 transition-all inline-flex items-center gap-1.5 cursor-pointer"
+                onClick={() => setIsEditModalOpen(true)}
+                className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-xs rounded-xl border border-amber-300 transition-all inline-flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                title="Koreksi nama, NIK, alamat, atau tanggungan keluarga"
               >
-                <Eye className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Lihat Berkas Kartu Keluarga (KK)</span>
+                <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                <span>Koreksi / Edit Data Profil</span>
               </button>
-            )}
+
+              {member.familyCardPhotoUrl && (
+                <button
+                  type="button"
+                  onClick={() => setIsKkModalOpen(true)}
+                  className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-xl border border-emerald-200 transition-all inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Lihat Berkas Kartu Keluarga (KK)</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Data Pendaftaran Ringkas */}
@@ -1576,13 +1646,23 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
           </div>
 
           {/* Daftar Anggota Keluarga Terdaftar */}
-          {member.dependentsList && member.dependentsList.length > 0 && (
-            <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+          <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
                 <Users className="w-4 h-4 text-emerald-600" />
                 <span>Daftar Tanggungan Keluarga Terdaftar</span>
               </h4>
+              <button
+                type="button"
+                onClick={() => setIsEditModalOpen(true)}
+                className="text-xs font-bold text-emerald-700 hover:text-emerald-900 inline-flex items-center gap-1 cursor-pointer hover:underline"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>+ Tambah / Kelola Tanggungan</span>
+              </button>
+            </div>
 
+            {member.dependentsList && member.dependentsList.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 {member.dependentsList.map((dep, idx) => (
                   <div
@@ -1603,8 +1683,22 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="p-4 bg-white rounded-xl border border-dashed border-slate-300 text-center space-y-2">
+                <p className="text-xs text-slate-500">
+                  Belum ada data tanggungan keluarga (istri, suami, anak, orang tua) yang terdaftar.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(true)}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Edit3 className="w-3 h-3" />
+                  <span>Daftarkan Anggota Keluarga Sekarang</span>
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* TIMELINE STATUS AUDIT INTERAKTIF */}
           <div className="pt-2">
@@ -1705,7 +1799,18 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
         />
       )}
 
-
+      {/* Edit Member Profile & Family Modal */}
+      {isEditModalOpen && member && (
+        <EditMemberBiodataModal
+          isOpen={isEditModalOpen}
+          member={member}
+          members={members}
+          settings={settings}
+          benefits={benefits}
+          onClose={() => setIsEditModalOpen(false)}
+          onSave={handleSaveEditedMember}
+        />
+      )}
     </div>
   );
 };

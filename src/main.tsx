@@ -16,9 +16,23 @@ if (typeof window !== 'undefined') {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch((err) => {
-        console.warn('PWA ServiceWorker registration notice:', err);
-      });
+      navigator.serviceWorker
+        .register('./sw.js')
+        .then((reg) => {
+          // Immediately check for updates
+          reg.update().catch(() => {});
+        })
+        .catch((err) => {
+          console.warn('PWA ServiceWorker registration notice:', err);
+        });
+    });
+
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
     });
   }
 }

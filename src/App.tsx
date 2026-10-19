@@ -622,6 +622,22 @@ export default function App() {
     saveMembers(updatedMembers);
     syncMemberToCloud(updatedMember).catch((e) => console.warn('Cloud sync updated member error:', e));
 
+    // Sinkronkan nama dan profil pengguna aktif jika anggota sedang login
+    if (
+      activeUser &&
+      (activeUser.memberId === updatedMember.id ||
+        (activeUser.email && updatedMember.email && activeUser.email.toLowerCase() === updatedMember.email.toLowerCase()))
+    ) {
+      const updatedUser: AppUser = {
+        ...activeUser,
+        name: updatedMember.name,
+        email: updatedMember.email || activeUser.email,
+        phone: updatedMember.phone || activeUser.phone,
+      };
+      setActiveUser(updatedUser);
+      saveStoredActiveUser(updatedUser);
+    }
+
     if (statusChanged && settings.autoNotifyOnMemberStatusChange !== false && updatedMember.phone) {
       const msg = buildGeneralStatusChangeMessage({
         member: updatedMember,
