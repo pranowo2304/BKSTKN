@@ -106,13 +106,13 @@ export default function App() {
   const [clusters, setClusters] = useState<ClusterMaster[]>([]);
   const [benefits, setBenefits] = useState<BenefitMaster[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [activeUser, setActiveUser] = useState<AppUser | null>(initialUsers[0]);
+  const [activeUser, setActiveUser] = useState<AppUser | null>(null);
   const [cloudStatus, setCloudStatus] = useState<'connected' | 'connecting' | 'offline' | 'error'>('connecting');
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [loadingMessage, setLoadingMessage] = useState<string>('Menghubungkan ke Cloud Firestore...');
 
-  const [currentTab, setCurrentTab] = useState<string>('dashboard');
-  const [isAdmin, setIsAdmin] = useState<boolean>(true);
+  const [currentTab, setCurrentTab] = useState<string>('public');
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [selectedReceiptPayment, setSelectedReceiptPayment] = useState<Payment | null>(null);
   const [selectedMemberForPayment, setSelectedMemberForPayment] = useState<Member | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
@@ -164,12 +164,30 @@ export default function App() {
     setClusters(initialCl);
     setBenefits(initialB);
     setNotifications(initialN);
-    setActiveUser(storedActive);
-    setIsAdmin(storedActive ? storedActive.authority !== 'Anggota' : false);
-    if (!storedActive) {
+    // Validate stored active user against Master Users list
+    let validActiveUser: AppUser | null = null;
+    if (storedActive) {
+      const match = initialU.find(
+        (u) =>
+          (u.id && u.id === storedActive.id) ||
+          (u.email && storedActive.email && u.email.toLowerCase() === storedActive.email.toLowerCase())
+      );
+      if (match) {
+        validActiveUser = match;
+      } else {
+        console.warn('Stored active user not found in Master Users list, resetting to logged out guest state');
+        clearStoredActiveUser();
+      }
+    }
+
+    setActiveUser(validActiveUser);
+    setIsAdmin(validActiveUser ? validActiveUser.authority !== 'Anggota' : false);
+    if (!validActiveUser) {
       setCurrentTab('public');
-    } else if (storedActive.authority === 'Anggota') {
+    } else if (validActiveUser.authority === 'Anggota') {
       setCurrentTab('member-portal');
+    } else {
+      setCurrentTab('dashboard');
     }
 
     // 1b. Check if opened via QR Code scan verification link (?verify=kta&npa=... or ?verify=receipt&receiptNumber=...)
@@ -242,6 +260,26 @@ export default function App() {
                 const synced = syncClustersToRtUsers(effectiveClusters, cloudUsers);
                 setUsers(synced);
                 saveUsers(synced);
+
+                // Strictly validate activeUser against live Master Users from cloud
+                setActiveUser((currentActive) => {
+                  if (!currentActive) return null;
+                  const found = synced.find(
+                    (u) =>
+                      (u.id && u.id === currentActive.id) ||
+                      (u.email && currentActive.email && u.email.toLowerCase() === currentActive.email.toLowerCase())
+                  );
+                  if (!found) {
+                    console.warn('Current active user not found in cloud Master Users, logging out:', currentActive.name);
+                    clearStoredActiveUser();
+                    setIsAdmin(false);
+                    setCurrentTab('public');
+                    return null;
+                  }
+                  saveStoredActiveUser(found);
+                  return found;
+                });
+
                 return currentClusters;
               });
             }

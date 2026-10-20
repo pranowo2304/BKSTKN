@@ -150,15 +150,6 @@ export const getStoredUsers = (): AppUser[] => {
       }
     }
 
-    // Ensure default role accounts like Ketua Paguyuban exist
-    const hasKetuaPaguyuban = users.some((u) => u && (u.authority === 'Ketua Paguyuban' || u.id === 'usr-ketua-paguyuban'));
-    if (!hasKetuaPaguyuban) {
-      const ketuaUser = initialUsers.find((u) => u.id === 'usr-ketua-paguyuban');
-      if (ketuaUser) {
-        users = [ketuaUser, ...users];
-      }
-    }
-
     // Auto migrate old cluster names in users
     users = users.map((u) => {
       if (!u) return u;
@@ -377,22 +368,22 @@ export const saveUsers = (users: AppUser[]) => {
 export const getStoredActiveUser = (): AppUser | null => {
   try {
     const data = localStorage.getItem(KEYS.ACTIVE_USER);
-    if (!data) {
-      // Default to initial admin if first run, or return default user
-      const users = getStoredUsers();
-      const defaultUser = users[0] || initialUsers[0];
-      localStorage.setItem(KEYS.ACTIVE_USER, JSON.stringify(defaultUser));
-      return defaultUser;
-    }
-    if (data === 'guest' || data === 'null') {
+    // On first device access or after logout, user is a guest (null)
+    if (!data || data === 'guest' || data === 'null') {
       return null;
     }
     const user: AppUser = JSON.parse(data);
+    if (!user || !user.id) {
+      return null;
+    }
     if (user.cluster === 'Cluster Tanah Minang' || user.cluster === 'Cluster Ranah Minang') {
       user.cluster = 'Cluster Ranah Melayu';
       localStorage.setItem(KEYS.ACTIVE_USER, JSON.stringify(user));
-    } else if (user.cluster === 'Cluster Pasundan') {
-      user.cluster = 'Cluster Pasundan RT 01';
+    } else if (user.cluster === 'Cluster Pasundan' || user.cluster === 'Cluster Pasundan RT 02') {
+      user.cluster = 'Cluster Pasundan RT 05';
+      localStorage.setItem(KEYS.ACTIVE_USER, JSON.stringify(user));
+    } else if (user.cluster === 'Cluster Pasundan RT 03') {
+      user.cluster = 'Cluster Pasundan RT 06';
       localStorage.setItem(KEYS.ACTIVE_USER, JSON.stringify(user));
     }
     return user;
@@ -405,12 +396,12 @@ export const saveStoredActiveUser = (user: AppUser | null) => {
   if (user) {
     localStorage.setItem(KEYS.ACTIVE_USER, JSON.stringify(user));
   } else {
-    localStorage.setItem(KEYS.ACTIVE_USER, 'guest');
+    localStorage.removeItem(KEYS.ACTIVE_USER);
   }
 };
 
 export const clearStoredActiveUser = () => {
-  localStorage.setItem(KEYS.ACTIVE_USER, 'guest');
+  localStorage.removeItem(KEYS.ACTIVE_USER);
 };
 
 export const getStoredMembers = (): Member[] => {
