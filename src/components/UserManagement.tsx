@@ -153,7 +153,7 @@ export const MODULE_PERMISSIONS: ModulePermissionDef[] = [
     id: 'payment',
     name: 'Pencatatan & Pembayaran Iuran',
     category: 'keuangan',
-    description: 'Input iuran pendaftaran/tahunan warga dan unggah bukti transfer',
+    description: 'Input iuran tahunan/kas warga dan unggah bukti transfer',
     access: {
       'Ketua Paguyuban': 'view',
       Admin: 'full',

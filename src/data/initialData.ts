@@ -9,7 +9,7 @@ export const initialSettings: SystemSettings = {
   logoUrl: '/app-icon.svg',
   annualFeeAmount: 300000, // Iuran 1 tahun sekali
   monthlyFeeAmount: 25000, // Estimasi proporsional per bulan
-  registrationFeeAmount: 50000,
+  registrationFeeAmount: 0,
   treasurerName: 'Bpk. H. Hendra Wijaya',
   treasurerPhone: '0812-3456-7890',
   bankAccounts: [
@@ -354,10 +354,10 @@ export const sampleDemoPayments: Payment[] = [
     memberId: 'mem-4',
     memberName: 'Bambang Prasetyo',
     memberNumber: 'ADK-2026-004',
-    paymentType: 'Iuran Pendaftaran',
+    paymentType: 'Iuran Tahunan',
     periodMonth: 'Tahun 2026',
     periodYear: '2026',
-    amount: 50000,
+    amount: 300000,
     paymentMethod: 'Transfer BRI',
     proofImageUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=500&q=80',
     proofFileName: 'bukti_bri_bambang.jpg',

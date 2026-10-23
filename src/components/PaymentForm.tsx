@@ -61,6 +61,19 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
     return members;
   }, [members, isKetuaRt, userRtCluster]);
 
+  const [memberSearch, setMemberSearch] = useState('');
+  const filteredSelectableMembers = useMemo(() => {
+    if (!memberSearch.trim()) return selectableMembers;
+    const q = memberSearch.toLowerCase();
+    return selectableMembers.filter(
+      (m) =>
+        (m.name && m.name.toLowerCase().includes(q)) ||
+        (m.nik && m.nik.includes(q)) ||
+        (m.memberNumber && m.memberNumber.toLowerCase().includes(q)) ||
+        (m.cluster && m.cluster.toLowerCase().includes(q))
+    );
+  }, [selectableMembers, memberSearch]);
+
   const [memberId, setMemberId] = useState(() => {
     if (selectedMemberForPayment) return selectedMemberForPayment.id;
     if (myLinkedMember) return myLinkedMember.id;
@@ -216,8 +229,6 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
       setAmount(settings.annualFeeAmount || 300000);
     } else if (paymentType === 'Iuran Bulanan') {
       setAmount(settings.monthlyFeeAmount || 25000);
-    } else if (paymentType === 'Iuran Pendaftaran') {
-      setAmount(settings.registrationFeeAmount || 50000);
     }
   }, [paymentType, settings]);
 
@@ -293,12 +304,15 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300">
+    <div className="w-full space-y-6 animate-in fade-in duration-300">
       {/* Title Card */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-800 rounded-full text-xs font-bold border border-emerald-200 mb-2">
+            <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Formulir Pembayaran Iuran Kas Paguyuban</span>
+          </div>
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <CreditCard className="w-6 h-6 text-emerald-600" />
             <span>Pembayaran Iuran & Upload Bukti Transfer</span>
           </h2>
           <p className="text-xs text-slate-500 mt-1">
@@ -309,10 +323,10 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
           <button
             type="button"
             onClick={onNavigateToDashboard}
-            className="self-start sm:self-center px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200"
+            className="self-start sm:self-center px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200 shadow-2xs"
           >
             <LayoutDashboard className="w-4 h-4 text-emerald-600" />
-            <span>Ke Dashboard</span>
+            <span>{activeUser ? (activeUser.authority === 'Anggota' ? 'Ke Portal Warga' : 'Ke Dashboard') : '← Kembali ke Beranda'}</span>
           </button>
         )}
       </div>
@@ -374,17 +388,26 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
           <div className="flex flex-wrap justify-center gap-3 pt-2">
             <button
               onClick={handleResetForm}
-              className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs sm:text-sm rounded-xl transition-colors"
+              className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs sm:text-sm rounded-xl transition-colors cursor-pointer"
             >
               + Buat Pembayaran Lain
             </button>
             {onNavigateToValidation && !isAnggota && (
               <button
                 onClick={onNavigateToValidation}
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs sm:text-sm rounded-xl transition-colors shadow-md shadow-indigo-900/20 inline-flex items-center gap-2"
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs sm:text-sm rounded-xl transition-colors shadow-md shadow-indigo-900/20 inline-flex items-center gap-2 cursor-pointer"
               >
                 <ShieldCheck className="w-4 h-4" />
                 <span>Buka Panel Validasi Admin (Uji Coba)</span>
+              </button>
+            )}
+            {onNavigateToDashboard && (
+              <button
+                type="button"
+                onClick={onNavigateToDashboard}
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm rounded-xl transition-colors shadow-sm cursor-pointer"
+              >
+                <span>{activeUser ? (activeUser.authority === 'Anggota' ? 'Ke Portal Warga' : 'Ke Dashboard') : '← Selesai / Ke Beranda'}</span>
               </button>
             )}
           </div>
@@ -451,11 +474,22 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                     </span>
                   </div>
                 ) : (
-                  <div className="relative">
+                  <div className="relative space-y-2">
                     {isKetuaRt && userRtCluster && (
-                      <div className="mb-2 px-3 py-1.5 bg-amber-50 border border-amber-300 rounded-lg text-xs font-semibold text-amber-900 flex items-center justify-between">
+                      <div className="px-3 py-1.5 bg-amber-50 border border-amber-300 rounded-lg text-xs font-semibold text-amber-900 flex items-center justify-between">
                         <span>Pilihan Warga: Lingkungan RT {userRtCluster}</span>
                         <span className="font-extrabold text-[11px] text-amber-950">({selectableMembers.length} Terdaftar)</span>
+                      </div>
+                    )}
+                    {selectableMembers.length > 5 && (
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="Ketik nama warga, NIK, atau NPA untuk mencari..."
+                          value={memberSearch}
+                          onChange={(e) => setMemberSearch(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all"
+                        />
                       </div>
                     )}
                     <select
@@ -463,30 +497,34 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                       onChange={(e) => setMemberId(e.target.value)}
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none"
                     >
-                      {selectableMembers.map((m) => {
-                        const isMPending = m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending';
-                        const isMRejected = m.status === 'Ditolak' || m.verificationStatus === 'Rejected';
-                        const isMAwaitingPay = m.status === 'Menunggu Pembayaran';
-                        const isMAwaitingTreas = m.status === 'Menunggu Validasi Bendahara';
-                        
-                        const labelStatus = isMPending 
-                          ? '[⛔ Menunggu RT - Belum Bisa Bayar]' 
-                          : isMRejected 
-                          ? '[✕ Ditolak RT]' 
-                          : isMAwaitingPay 
-                          ? '[✓ Disetujui RT - Siap Bayar]'
-                          : isMAwaitingTreas 
-                          ? '[⏳ Menunggu Validasi Bendahara]'
-                          : m.status === 'Aktif' 
-                          ? '[✓ Anggota Aktif]' 
-                          : `[${m.status}]`;
+                      {filteredSelectableMembers.length === 0 ? (
+                        <option value="" disabled>Warga tidak ditemukan untuk pencarian '{memberSearch}'</option>
+                      ) : (
+                        filteredSelectableMembers.map((m) => {
+                          const isMPending = m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending';
+                          const isMRejected = m.status === 'Ditolak' || m.verificationStatus === 'Rejected';
+                          const isMAwaitingPay = m.status === 'Menunggu Pembayaran';
+                          const isMAwaitingTreas = m.status === 'Menunggu Validasi Bendahara';
+                          
+                          const labelStatus = isMPending 
+                            ? '[⛔ Menunggu RT - Belum Bisa Bayar]' 
+                            : isMRejected 
+                            ? '[✕ Ditolak RT]' 
+                            : isMAwaitingPay 
+                            ? '[✓ Disetujui RT - Siap Bayar]'
+                            : isMAwaitingTreas 
+                            ? '[⏳ Menunggu Validasi Bendahara]'
+                            : m.status === 'Aktif' 
+                            ? '[✓ Anggota Aktif]' 
+                            : `[${m.status}]`;
 
-                        return (
-                          <option key={m.id} value={m.id}>
-                            {m.name} ({m.memberNumber}) • {m.cluster || 'Cluster'} {labelStatus}
-                          </option>
-                        );
-                      })}
+                          return (
+                            <option key={m.id} value={m.id}>
+                              {m.name} ({m.memberNumber}) • {m.cluster || 'Cluster'} {labelStatus}
+                            </option>
+                          );
+                        })
+                      )}
                     </select>
                   </div>
                 )}
@@ -573,7 +611,6 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                   >
                     <option value="Iuran Tahunan">Iuran Tahunan (1 Tahun Sekali)</option>
                     <option value="Iuran Bulanan">Iuran Bulanan</option>
-                    <option value="Iuran Pendaftaran">Iuran Pendaftaran Anggota</option>
                     <option value="Iuran Sukarela">Iuran Sukarela / Donasi</option>
                     <option value="Iuran Duka Khusus">Iuran Duka Khusus</option>
                   </select>

@@ -39,6 +39,7 @@ import {
   clearAllClaimsLocally,
   syncClustersToRtUsers,
   createMemberUser,
+  getMemberForUser,
 } from './lib/storage';
 import {
   seedInitialFirestoreData,
@@ -134,13 +135,7 @@ export default function App() {
   }, []);
 
   const handleOpenRegistrationFromDock = () => {
-    if (currentTab !== 'public') {
-      setCurrentTab('public');
-    }
-    setIsPublicRegisterOpen(true);
-    setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('open-public-registration'));
-    }, 60);
+    setCurrentTab('registration');
   };
 
   // Load Initial Data from Storage & Subscribe to Firebase Firestore
@@ -432,6 +427,12 @@ export default function App() {
         } else {
           setCurrentTab(permittedTabs.includes('dashboard') ? 'dashboard' : (permittedTabs[0] || 'dashboard'));
         }
+      }
+    } else {
+      // Tamu / Belum Login: Pembayaran iuran tetap melalui halaman user anggota
+      if (currentTab === 'payment') {
+        setCurrentTab('public');
+        setIsLoginModalOpen(true);
       }
     }
   }, [activeUser, currentTab, rolePermissions]);
@@ -1818,6 +1819,8 @@ export default function App() {
             onOpenLoginModal={() => setIsLoginModalOpen(true)}
             initialOpenRegister={isPublicRegisterOpen}
             onRegisterStateChange={setIsPublicRegisterOpen}
+            onNavigateToTab={(tab) => setCurrentTab(tab)}
+            onSelectMemberForPayment={handleSelectMemberForPayment}
           />
         )}
 
@@ -1869,12 +1872,20 @@ export default function App() {
             benefits={benefits}
             users={users}
             activeUser={activeUser}
+            initialMode="form"
             onAddMember={handleAddMember}
             onUpdateMember={handleUpdateMember}
             onImportBatchMembers={handleImportBatchMembers}
             onSelectMemberForPayment={handleSelectMemberForPayment}
             onViewReceipt={(p) => setSelectedReceiptPayment(p)}
             onNavigateToVerification={can(activeUser?.authority, 'verify_rt_members') ? () => setCurrentTab('rt-verification') : undefined}
+            onNavigateToDashboard={() => {
+              if (activeUser) {
+                setCurrentTab(activeUser.authority === 'Anggota' ? 'member-portal' : 'dashboard');
+              } else {
+                setCurrentTab('public');
+              }
+            }}
           />
         )}
 
@@ -1919,7 +1930,13 @@ export default function App() {
             onAddPayment={handleAddPayment}
             onNavigateToValidation={() => setCurrentTab('validation')}
             onNavigateToVerification={can(activeUser?.authority, 'verify_rt_members') ? () => setCurrentTab('rt-verification') : undefined}
-            onNavigateToDashboard={() => setCurrentTab('dashboard')}
+            onNavigateToDashboard={() => {
+              if (activeUser) {
+                setCurrentTab(activeUser.authority === 'Anggota' ? 'member-portal' : 'dashboard');
+              } else {
+                setCurrentTab('public');
+              }
+            }}
           />
         )}
 
@@ -2031,6 +2048,13 @@ export default function App() {
         userCount={users.length}
         onOpenRegistration={handleOpenRegistrationFromDock}
         onOpenPayment={() => {
+          if (activeUser?.authority === 'Anggota') {
+            const myMem = getMemberForUser(activeUser, members) || members.find((m) => m.id === activeUser.memberId || (m.email && activeUser.email && m.email.toLowerCase() === activeUser.email.toLowerCase()));
+            if (myMem) {
+              handleSelectMemberForPayment(myMem);
+              return;
+            }
+          }
           setSelectedMemberForPayment(null);
           setCurrentTab('payment');
         }}

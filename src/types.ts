@@ -430,7 +430,7 @@ export interface SystemSettings {
   defaultAdminSignerTitle?: string; // Jabatan default (e.g. Bendahara Paguyuban)
   annualFeeAmount: number; // Iuran 1 tahun sekali (e.g. Rp 300.000/tahun)
   monthlyFeeAmount: number; // e.g. Rp 25.000/bulan (rekap per bulan)
-  registrationFeeAmount: number;
+  registrationFeeAmount?: number; // Opsional / Dihapus (Pendaftaran gratis)
   treasurerName: string;
   treasurerPhone: string;
   bankAccounts: {

@@ -40,6 +40,8 @@ import {
   AlertTriangle,
   AlertCircle,
   Smartphone,
+  UserPlus,
+  Coins,
 } from 'lucide-react';
 import { DataManagementModal } from './DataManagementModal';
 import { AppIcon } from './AppIcon';
@@ -434,12 +436,37 @@ export const Navbar: React.FC<NavbarProps> = ({
               )}
             </div>
           ) : (
-            /* GUEST MODE LOGIN BUTTON */
-            <div className="flex items-center gap-2">
-              <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold">
-                <Globe className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Mode Tamu</span>
-              </span>
+            /* GUEST MODE QUICK NAVIGATION & LOGIN BUTTONS */
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <button
+                type="button"
+                onClick={() => setCurrentTab('registration')}
+                className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  currentTab === 'registration'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/40 ring-1 ring-emerald-400'
+                    : 'bg-emerald-950/70 hover:bg-emerald-900/90 text-emerald-300 border border-emerald-500/40'
+                }`}
+                title="Pendaftaran Anggota Warga Baru"
+              >
+                <UserPlus className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Registrasi</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (currentTab !== 'public') {
+                    setCurrentTab('public');
+                  }
+                  setTimeout(() => {
+                    window.dispatchEvent(new CustomEvent('open-besaran-iuran'));
+                  }, 80);
+                }}
+                className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer bg-indigo-950/70 hover:bg-indigo-900/90 text-indigo-300 border border-indigo-500/40"
+                title="Pengumuman Besaran Iuran Kas Paguyuban"
+              >
+                <Coins className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Pengumuman Iuran</span>
+              </button>
               <button
                 type="button"
                 onClick={() => {

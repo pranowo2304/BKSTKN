@@ -13,6 +13,7 @@ import {
   Building2,
   Globe,
   UserCheck,
+  Coins,
 } from 'lucide-react';
 import { AppUser } from '../types';
 import { useRolePermissions } from '../lib/permissions';
@@ -59,42 +60,29 @@ export const PersistentRoleFloatingDock: React.FC<PersistentRoleFloatingDockProp
   let dockItems: DockItemDef[] = [];
 
   // 0. Untuk Publik Portal / Tamu (Belum Login)
-  // Menunya : Iuran & Registrasi
-  // Dengan urutan dari kiri ke kanan : Iuran, Registrasi
+  // Menunya : Beranda, Besaran Iuran, Registrasi
   if (!activeUser) {
     dockItems = [
       {
-        id: 'dock-public-bayar',
-        label: 'Iuran',
-        icon: CreditCard,
+        id: 'dock-public-home',
+        label: 'Beranda',
+        icon: Globe,
         isActive: currentTab === 'public',
+        onClick: () => setCurrentTab('public'),
+      },
+      {
+        id: 'dock-public-iuran',
+        label: 'Besaran Iuran',
+        icon: Coins,
+        isCenterFloating: true,
+        isActive: false,
         onClick: () => {
-          if (currentTab === 'public') {
-            const el = document.getElementById('section-informasi-pengumuman');
-            if (el) {
-              const navOffset = 100;
-              const elementPosition = el.getBoundingClientRect().top;
-              const offsetPosition = elementPosition + window.pageYOffset - navOffset;
-              window.scrollTo({
-                top: offsetPosition,
-                behavior: 'smooth',
-              });
-              return;
-            }
+          if (currentTab !== 'public') {
+            setCurrentTab('public');
           }
-          setCurrentTab('public');
           setTimeout(() => {
-            const el = document.getElementById('section-informasi-pengumuman');
-            if (el) {
-              const navOffset = 100;
-              const elementPosition = el.getBoundingClientRect().top;
-              const offsetPosition = elementPosition + window.pageYOffset - navOffset;
-              window.scrollTo({
-                top: offsetPosition,
-                behavior: 'smooth',
-              });
-            }
-          }, 120);
+            window.dispatchEvent(new CustomEvent('open-besaran-iuran'));
+          }, 80);
         },
       },
       {
@@ -105,17 +93,9 @@ export const PersistentRoleFloatingDock: React.FC<PersistentRoleFloatingDockProp
         onClick: () => {
           if (onOpenRegistration) {
             onOpenRegistration();
-            return;
+          } else {
+            setCurrentTab('registration');
           }
-          if (currentTab !== 'public') {
-            setCurrentTab('public');
-          }
-          const trigger = () => {
-            window.dispatchEvent(new CustomEvent('open-public-registration'));
-          };
-          trigger();
-          setTimeout(trigger, 80);
-          setTimeout(trigger, 220);
         },
       },
     ];
@@ -416,40 +396,27 @@ export const PersistentRoleFloatingDock: React.FC<PersistentRoleFloatingDockProp
     ];
   } else {
     // 8. Role: Guest / Mode Publik (Belum Login)
-    // Urutan dari kiri ke kanan : Iuran, Registrasi
     dockItems = [
       {
-        id: 'dock-public-bayar',
-        label: 'Iuran',
-        icon: CreditCard,
+        id: 'dock-public-home',
+        label: 'Beranda',
+        icon: Globe,
         isActive: currentTab === 'public',
+        onClick: () => setCurrentTab('public'),
+      },
+      {
+        id: 'dock-public-iuran',
+        label: 'Pengumuman Iuran',
+        icon: Coins,
+        isCenterFloating: true,
+        isActive: false,
         onClick: () => {
-          if (currentTab === 'public') {
-            const el = document.getElementById('section-informasi-pengumuman');
-            if (el) {
-              const navOffset = 100;
-              const elementPosition = el.getBoundingClientRect().top;
-              const offsetPosition = elementPosition + window.pageYOffset - navOffset;
-              window.scrollTo({
-                top: offsetPosition,
-                behavior: 'smooth',
-              });
-              return;
-            }
+          if (currentTab !== 'public') {
+            setCurrentTab('public');
           }
-          setCurrentTab('public');
           setTimeout(() => {
-            const el = document.getElementById('section-informasi-pengumuman');
-            if (el) {
-              const navOffset = 100;
-              const elementPosition = el.getBoundingClientRect().top;
-              const offsetPosition = elementPosition + window.pageYOffset - navOffset;
-              window.scrollTo({
-                top: offsetPosition,
-                behavior: 'smooth',
-              });
-            }
-          }, 120);
+            window.dispatchEvent(new CustomEvent('open-besaran-iuran'));
+          }, 80);
         },
       },
       {
@@ -460,17 +427,9 @@ export const PersistentRoleFloatingDock: React.FC<PersistentRoleFloatingDockProp
         onClick: () => {
           if (onOpenRegistration) {
             onOpenRegistration();
-            return;
+          } else {
+            setCurrentTab('registration');
           }
-          if (currentTab !== 'public') {
-            setCurrentTab('public');
-          }
-          const trigger = () => {
-            window.dispatchEvent(new CustomEvent('open-public-registration'));
-          };
-          trigger();
-          setTimeout(trigger, 80);
-          setTimeout(trigger, 220);
         },
       },
     ];

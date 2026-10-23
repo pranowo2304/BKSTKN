@@ -97,7 +97,7 @@ export const GRANULAR_PERMISSION_DEFS: GranularPermissionDef[] = [
     key: 'record_payments',
     label: 'Record Payments',
     indonesianLabel: 'Input & Catat Pembayaran Iuran',
-    description: 'Mengunggah bukti bayar atau mencatat pembayaran iuran pendaftaran/tahunan secara manual.',
+    description: 'Mengunggah bukti bayar atau mencatat pembayaran iuran tahunan secara manual.',
     category: 'payments',
     categoryLabel: 'Keuangan & Kas Iuran',
     iconName: 'credit-card',
@@ -489,7 +489,7 @@ export const getPermittedTabsForRole = (
   permsMap?: RolePermissionsMap
 ): string[] => {
   if (!role) {
-    return ['public'];
+    return ['public', 'registration'];
   }
   const effectiveRole: UserAuthority =
     role === 'Ketua RT' || (typeof role === 'string' && role.includes('RT'))
@@ -499,7 +499,7 @@ export const getPermittedTabsForRole = (
   const rolePerms = perms[effectiveRole] || DEFAULT_ROLE_PERMISSIONS[effectiveRole] || DEFAULT_ROLE_PERMISSIONS['Anggota'];
 
   if (effectiveRole === 'Anggota') {
-    const tabs = ['member-portal', 'public', 'payment'];
+    const tabs = ['member-portal', 'public', 'payment', 'registration'];
     if (rolePerms.view_reports) tabs.push('history');
     if (rolePerms.view_claims || rolePerms.process_claims) tabs.push('realization');
     return Array.from(new Set(tabs));

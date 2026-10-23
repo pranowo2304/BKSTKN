@@ -75,12 +75,14 @@ interface MemberRegistrationProps {
   benefits?: BenefitMaster[];
   users?: AppUser[];
   activeUser?: AppUser;
+  initialMode?: 'form' | 'directory';
   onAddMember: (newMember: Member) => void;
   onUpdateMember?: (updatedMember: Member) => void;
   onImportBatchMembers?: (newMembers: Member[]) => void;
   onSelectMemberForPayment?: (member: Member) => void;
   onViewReceipt?: (payment: Payment) => void;
   onNavigateToVerification?: () => void;
+  onNavigateToDashboard?: () => void;
 }
 
 export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
@@ -96,7 +98,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
     treasurerPhone: '0813-9876-5432',
     monthlyFeeAmount: 25000,
     annualFeeAmount: 300000,
-    registrationFeeAmount: 50000,
+    registrationFeeAmount: 0,
     mainMemberBenefitAmount: 10000000,
     dependentBenefitAmount: 6000000,
     bankAccounts: [],
@@ -104,12 +106,14 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
   benefits = DEFAULT_BENEFITS,
   users = [],
   activeUser,
+  initialMode = 'form',
   onAddMember,
   onUpdateMember,
   onImportBatchMembers,
   onSelectMemberForPayment,
   onViewReceipt,
   onNavigateToVerification,
+  onNavigateToDashboard,
 }) => {
   const { can } = useRolePermissions();
   const canRegisterMembers = can(activeUser?.authority, 'register_members');
@@ -120,11 +124,16 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
   const userRtCluster = activeUser?.cluster;
   const userCluster = (activeUser?.cluster as ClusterType) || 'Cluster Sanur';
 
-  const [showForm, setShowForm] = useState(false);
+  // Active view: 'form' for dedicated full-page form, 'directory' for table
+  const [activeView, setActiveView] = useState<'form' | 'directory'>(() => initialMode || 'form');
+  const [submittedMember, setSubmittedMember] = useState<Member | null>(null);
+  const [showForm, setShowForm] = useState(true);
 
   // Listen for open registration request event
   useEffect(() => {
     const handleOpen = () => {
+      setActiveView('form');
+      setSubmittedMember(null);
       setShowForm(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     };
@@ -448,7 +457,8 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
     setFamilyCardFileName('');
     setFamilyCardNumber('');
     setFamilyCardQualityReport(null);
-    setShowForm(false);
+    setSubmittedMember(newMember);
+    setShowForm(true);
   };
 
   const handleResetFilters = () => {
@@ -623,7 +633,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
     ? (getMemberForUser(activeUser, members) || members.find(m => m?.name && activeUser?.name && m.name.toLowerCase() === activeUser.name.toLowerCase()) || members[0])
     : null;
 
-  if (isAnggota && myMember) {
+  if (isAnggota && myMember && activeView !== 'form') {
     const expiry = calculateMemberExpiry(myMember, payments, new Date(), settings);
 
     return (
@@ -664,6 +674,21 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+            {/* BUTTON BUKA FORM DAFTAR WARGA BARU */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveView('form');
+                setSubmittedMember(null);
+                setShowForm(true);
+              }}
+              className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md shadow-emerald-950/20 inline-flex items-center gap-1.5 hover:scale-[1.02] active:scale-[0.98]"
+              title="Buka Formulir Pendaftaran Warga Baru"
+            >
+              <UserPlus className="w-4 h-4 text-emerald-200" />
+              <span>+ Form Pendaftaran Baru</span>
+            </button>
+
             {/* BUTTON HUBUNGI PENGURUS VIA WA */}
             <button
               type="button"
@@ -1073,13 +1098,22 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Header Banner */}
+      {/* Dynamic Header Banner with Navigation and View Switcher */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Users className="w-6 h-6 text-emerald-600" />
-              <span>Pendaftaran & Data Anggota Dana Kematian</span>
+              {activeView === 'form' ? (
+                <>
+                  <UserPlus className="w-6 h-6 text-emerald-600" />
+                  <span>Formulir Pendaftaran Warga Baru</span>
+                </>
+              ) : (
+                <>
+                  <Users className="w-6 h-6 text-emerald-600" />
+                  <span>Direktori & Data Anggota Paguyuban</span>
+                </>
+              )}
             </h2>
             {isKetuaRt && userRtCluster && (
               <span className="px-2.5 py-0.5 bg-amber-100 border border-amber-300 text-amber-900 text-xs font-black rounded-lg">
@@ -1088,140 +1122,220 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
             )}
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            {isKetuaRt && userRtCluster 
-              ? `Menampilkan data warga dan pendaftaran khusus lingkungan RT ${userRtCluster}.`
-              : 'Kelola pendaftaran warga, data tanggungan keluarga, dan status keanggotaan.'}
+            {activeView === 'form'
+              ? 'Lengkapi biodata calon anggota dan susunan tanggungan keluarga untuk mendapatkan jaminan santunan kematian paguyuban.'
+              : isKetuaRt && userRtCluster 
+              ? `Menampilkan data warga terdaftar khusus lingkungan RT ${userRtCluster}.`
+              : 'Kelola direktori warga terdaftar, verifikasi KTA, dan status keanggotaan.'}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-          {/* Quick QR Scanner for All Users & Roles */}
-          <button
-            type="button"
-            onClick={() => setIsQrScannerOpen(true)}
-            className="px-4 py-2.5 bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-600 hover:to-teal-600 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md shadow-emerald-950/20 inline-flex items-center gap-2 cursor-pointer active:scale-95"
-            title="Pindai QR Code Kartu Tanda Anggota (KTA) menggunakan kamera perangkat untuk melihat data lengkap anggota"
-          >
-            <QrCode className="w-4 h-4 text-emerald-200" />
-            <span>Pindai QR KTA</span>
-          </button>
+          {/* Tombol Kembali ke Beranda / Dashboard */}
+          {onNavigateToDashboard && (
+            <button
+              type="button"
+              onClick={onNavigateToDashboard}
+              className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200 shadow-2xs"
+              title="Kembali ke Beranda"
+            >
+              <ArrowRight className="w-4 h-4 rotate-180 text-emerald-600" />
+              <span>{activeUser ? (activeUser.authority === 'Anggota' ? 'Ke Portal Warga' : 'Ke Dashboard') : '← Kembali ke Beranda'}</span>
+            </button>
+          )}
 
-          {isReadOnlyRole ? (
-            <div className="px-4 py-2.5 bg-slate-100 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-2 shadow-2xs">
-              <Eye className="w-4 h-4 text-slate-500" />
-              <span>Mode Monitoring Direktori ({activeUser?.authority})</span>
+          {/* Segmented View Switcher untuk Pengurus/Admin/RT */}
+          {canRegisterMembers && (
+            <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveView('form');
+                  setSubmittedMember(null);
+                  setShowForm(true);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  activeView === 'form'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Form Pendaftaran</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveView('directory')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  activeView === 'directory'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Direktori Warga ({accessibleMembers.length})</span>
+              </button>
             </div>
-          ) : (
+          )}
+
+          {/* Aksi Khusus Mode Direktori */}
+          {activeView === 'directory' && (
             <>
               <button
                 type="button"
-                onClick={() => setIsImportModalOpen(true)}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs sm:text-sm rounded-xl transition-all shadow-sm inline-flex items-center gap-2"
-                title="Upload data anggota massal via CSV/Excel"
+                onClick={() => setIsQrScannerOpen(true)}
+                className="px-3.5 py-2 bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-600 hover:to-teal-600 text-white font-bold text-xs rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                title="Pindai QR KTA Warga"
               >
-                <UploadCloud className="w-4 h-4 text-emerald-400" />
-                <span>Impor CSV Massal</span>
+                <QrCode className="w-4 h-4 text-emerald-200" />
+                <span>Pindai QR</span>
               </button>
-              <button
-                type="button"
-                onClick={() => setShowForm(!showForm)}
-                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs sm:text-sm rounded-xl transition-all shadow-md shadow-emerald-900/20 inline-flex items-center gap-2"
-              >
-                <UserPlus className="w-4 h-4" />
-                <span>{showForm ? 'Tutup Form Pendaftaran' : '+ Daftar Anggota Baru'}</span>
-              </button>
+
+              {canRegisterMembers && (
+                <button
+                  type="button"
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-xl transition-all shadow-sm flex items-center gap-1.5"
+                  title="Impor CSV Massal"
+                >
+                  <UploadCloud className="w-4 h-4 text-emerald-400" />
+                  <span>Impor CSV</span>
+                </button>
+              )}
             </>
           )}
         </div>
       </div>
 
-      {isReadOnlyRole && (
-        <div className="p-4 bg-indigo-50 border border-indigo-200 text-indigo-900 rounded-xl text-xs flex items-center justify-between gap-3 shadow-2xs">
-          <div className="flex items-center gap-2.5">
-            <Eye className="w-4 h-4 text-indigo-600 shrink-0" />
-            <span>
-              <strong>Akses Supervisi & Monitoring:</strong> Anda masuk sebagai <strong>{activeUser?.authority}</strong>. Anda dapat melihat dan mencari seluruh direktori data warga serta memantau status keanggotaan tanpa kewenangan mengubah atau menambah data.
-            </span>
-          </div>
-        </div>
-      )}
-
       {notification && (
-        <div className="p-4 bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 animate-in zoom-in-95">
-          <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
-          <span>{notification}</span>
+        <div className="p-4 bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-between gap-2 animate-in zoom-in-95">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>{notification}</span>
+          </div>
+          <button type="button" onClick={() => setNotification(null)} className="text-emerald-800 hover:text-emerald-950 p-1">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
-      {/* EARLY OUTREACH NOTICE BANNER (≤ 30 Hari Expiring Alert) */}
-      {expiringSoonMembers.length > 0 && (
-        <div className="bg-gradient-to-r from-amber-50 via-amber-100/60 to-amber-50 border-2 border-amber-400/80 rounded-2xl p-5 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in slide-in-from-top-2">
-          <div className="flex items-start gap-3.5">
-            <div className="p-3 bg-amber-500 text-slate-950 rounded-2xl font-black shrink-0 shadow-sm flex items-center justify-center">
-              <AlertTriangle className="w-6 h-6 animate-pulse" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-sm sm:text-base font-extrabold text-slate-950">
-                  Pemberitahuan Outreach: {expiringSoonMembers.length} Anggota Segera Habis Masa Iuran
-                </h3>
-                <span className="px-2.5 py-0.5 bg-amber-500 text-slate-950 font-black text-[11px] rounded-full shadow-xs">
-                  ≤ 30 Hari Lagi
-                </span>
+      {/* ========================================================================= */}
+      {/* TAMPILAN PENUH 1 HALAMAN: FORMULIR PENDAFTARAN WARGA BARU                */}
+      {/* ========================================================================= */}
+      {activeView === 'form' && (
+        <div className="space-y-6">
+          {submittedMember ? (
+            /* SUCCESS CONFIRMATION PANEL */
+            <div className="bg-white rounded-3xl p-8 sm:p-12 border-2 border-emerald-500/40 shadow-xl text-center space-y-6 animate-in zoom-in-95 max-w-2xl mx-auto">
+              <div className="w-20 h-20 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+                <CheckCircle className="w-10 h-10" />
               </div>
-              <p className="text-xs text-slate-700 mt-1 max-w-2xl leading-relaxed">
-                Masa berlaku perlindungan iuran tahunan anggota berikut akan berakhir dalam 30 hari ke depan. Lakukan penjangkauan awal (early outreach via WhatsApp) agar santunan dan hak fardhu kifayah keluarga warga tetap aktif tanpa terputus.
-              </p>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
-            {statusFilter === 'Segera Habis' ? (
-              <button
-                type="button"
-                onClick={() => setStatusFilter('Semua')}
-                className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl transition-all shadow-sm"
-              >
-                Tampilkan Semua Anggota
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setStatusFilter('Segera Habis')}
-                className="w-full sm:w-auto px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs sm:text-sm rounded-xl transition-all shadow-md inline-flex items-center justify-center gap-2"
-              >
-                <AlertTriangle className="w-4 h-4 text-amber-400" />
-                <span>Lihat {expiringSoonMembers.length} Warga Ini</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+              <div>
+                <span className="px-3.5 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full uppercase tracking-wider">
+                  PENDAFTARAN BERHASIL TERCATAT
+                </span>
+                <h3 className="text-2xl font-black text-slate-900 mt-3">
+                  Selamat Datang, {submittedMember.name}!
+                </h3>
+                <p className="text-sm text-slate-600 max-w-md mx-auto mt-2 leading-relaxed">
+                  Data pendaftaran warga baru Anda telah berhasil dikirim ke database paguyuban dan sedang menunggu verifikasi serta persetujuan dari Ketua RT {submittedMember.cluster}.
+                </p>
+              </div>
 
-      {/* FORM PENDAFTARAN ANGGOTA BARU */}
-      {showForm && !isReadOnlyRole && (
-        <div className="bg-white rounded-2xl p-6 sm:p-8 border-2 border-emerald-500/30 shadow-lg animate-in slide-in-from-top duration-200">
-          <div className="border-b border-slate-200 pb-4 mb-6 flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                <UserPlus className="w-5 h-5 text-emerald-600" />
-                <span>Formulir Pendaftaran Anggota Baru</span>
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Isi data lengkap sesuai KTP untuk pendaftaran anggota paguyuban dana kematian.
-              </p>
+              {/* Data Ringkasan Pendaftaran */}
+              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 text-left text-xs space-y-2.5 font-mono max-w-lg mx-auto">
+                <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                  <span className="text-slate-500 font-sans">Nomor Pokok Anggota (NPA):</span>
+                  <span className="font-extrabold text-emerald-700 text-sm">{submittedMember.memberNumber}</span>
+                </div>
+                <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                  <span className="text-slate-500 font-sans">Nomor NIK:</span>
+                  <span className="font-bold text-slate-900">{submittedMember.nik}</span>
+                </div>
+                <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                  <span className="text-slate-500 font-sans">Cluster / RT:</span>
+                  <span className="font-bold text-slate-900">{submittedMember.cluster}</span>
+                </div>
+                <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                  <span className="text-slate-500 font-sans">Tanggungan Keluarga:</span>
+                  <span className="font-bold text-slate-900">{submittedMember.dependentsCount} Jiwa Terdaftar</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-sans">Status Verifikasi:</span>
+                  <span className="font-bold text-amber-600 uppercase">Menunggu Verifikasi RT</span>
+                </div>
+              </div>
+
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 text-left max-w-lg mx-auto leading-relaxed">
+                <p className="font-bold mb-1 flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Tahapan Selanjutnya:</span>
+                </p>
+                <ol className="list-decimal list-inside space-y-1 text-[11px] text-amber-800 pl-1">
+                  <li>Ketua RT {submittedMember.cluster} akan memverifikasi keabsahan data kependudukan & berkas KK Anda.</li>
+                  <li>Setelah diverifikasi RT, Anda dapat melakukan pembayaran iuran paguyuban melalui menu Pembayaran.</li>
+                  <li>Setelah divalidasi bendahara, KTA Digital resmi Anda akan langsung aktif.</li>
+                </ol>
+              </div>
+
+              <div className="flex flex-wrap justify-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSubmittedMember(null);
+                    setShowForm(true);
+                  }}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md shadow-emerald-950/20 flex items-center gap-2 cursor-pointer"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>+ Daftarkan Warga Lain</span>
+                </button>
+
+                {canRegisterMembers && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveView('directory')}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                  >
+                    <Users className="w-4 h-4" />
+                    <span>Lihat di Direktori Warga</span>
+                  </button>
+                )}
+
+                {onNavigateToDashboard && (
+                  <button
+                    type="button"
+                    onClick={onNavigateToDashboard}
+                    className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs sm:text-sm rounded-xl transition-all border border-slate-300 cursor-pointer"
+                  >
+                    <span>{activeUser ? 'Kembali ke Dashboard' : '← Selesai / Ke Beranda'}</span>
+                  </button>
+                )}
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={handleCloseForm}
-              className="px-3.5 py-2 bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-200 hover:border-rose-300 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 shrink-0"
-              title="Tutup Formulir dan Batal Mendaftar"
-            >
-              <X className="w-4 h-4 text-slate-500" />
-              <span>Batal / Tutup</span>
-            </button>
-          </div>
+          ) : (
+            <div className="bg-white rounded-2xl p-6 sm:p-8 border-2 border-emerald-500/30 shadow-lg animate-in slide-in-from-top duration-200">
+              <div className="border-b border-slate-200 pb-4 mb-6 flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                    <UserPlus className="w-5 h-5 text-emerald-600" />
+                    <span>Formulir Lengkap Pendaftaran Calon Anggota</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Isi data lengkap sesuai KTP & Kartu Keluarga untuk pendaftaran anggota paguyuban dana kematian.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCloseForm}
+                  className="px-3.5 py-2 bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-200 hover:border-rose-300 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 shrink-0"
+                  title="Tutup Formulir dan Batal Mendaftar"
+                >
+                  <X className="w-4 h-4 text-slate-500" />
+                  <span>Batal / Tutup</span>
+                </button>
+              </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Draft Auto-save Indicator */}
@@ -1712,6 +1826,59 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
               </button>
             </div>
           </form>
+        </div>
+      )}
+    </div>
+  )}
+
+  {/* ========================================================================= */}
+  {/* TAMPILAN DIREKTORI DATA WARGA & ANGGOTA (KHUSUS PENGURUS/ADMIN/RT)        */}
+  {/* ========================================================================= */}
+  {activeView === 'directory' && (
+    <div className="space-y-6 animate-in fade-in duration-200">
+      {/* EARLY OUTREACH NOTICE BANNER (≤ 30 Hari Expiring Alert) */}
+      {expiringSoonMembers.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-50 via-amber-100/60 to-amber-50 border-2 border-amber-400/80 rounded-2xl p-5 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in slide-in-from-top-2">
+          <div className="flex items-start gap-3.5">
+            <div className="p-3 bg-amber-500 text-slate-950 rounded-2xl font-black shrink-0 shadow-sm flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm sm:text-base font-extrabold text-slate-950">
+                  Pemberitahuan Outreach: {expiringSoonMembers.length} Anggota Segera Habis Masa Iuran
+                </h3>
+                <span className="px-2.5 py-0.5 bg-amber-500 text-slate-950 font-black text-[11px] rounded-full shadow-xs">
+                  ≤ 30 Hari Lagi
+                </span>
+              </div>
+              <p className="text-xs text-slate-700 mt-1 max-w-2xl leading-relaxed">
+                Masa berlaku perlindungan iuran tahunan anggota berikut akan berakhir dalam 30 hari ke depan. Lakukan penjangkauan awal (early outreach via WhatsApp) agar santunan dan hak fardhu kifayah keluarga warga tetap aktif tanpa terputus.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+            {statusFilter === 'Segera Habis' ? (
+              <button
+                type="button"
+                onClick={() => setStatusFilter('Semua')}
+                className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl transition-all shadow-sm"
+              >
+                Tampilkan Semua Anggota
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setStatusFilter('Segera Habis')}
+                className="w-full sm:w-auto px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs sm:text-sm rounded-xl transition-all shadow-md inline-flex items-center justify-center gap-2"
+              >
+                <AlertTriangle className="w-4 h-4 text-amber-400" />
+                <span>Lihat {expiringSoonMembers.length} Warga Ini</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -2502,6 +2669,8 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
           </table>
         </div>
       </div>
+    </div>
+  )}
 
       {/* MEMBER DETAIL MODAL */}
       <MemberDetailModal

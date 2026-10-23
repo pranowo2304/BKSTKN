@@ -194,6 +194,7 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
     );
     const cleanedSettings: SystemSettings = {
       ...formData,
+      registrationFeeAmount: 0,
       bankAccounts: cleanedBanks.length > 0 ? cleanedBanks : formData.bankAccounts,
     };
     onSaveSettings(cleanedSettings);
@@ -679,7 +680,7 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
                 Tarif Standard Iuran Paguyuban
               </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
                     Nominal Iuran Tahunan (Rp / 1 Tahun) <span className="text-emerald-600 font-black">*Utama</span>
@@ -691,21 +692,7 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
                     onChange={(e) => setFormData({ ...formData, annualFeeAmount: Number(e.target.value) })}
                     className="w-full px-3.5 py-2.5 bg-emerald-50/50 border border-emerald-300 rounded-xl text-sm font-mono font-black text-emerald-900 focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">Dibayarkan 1 tahun sekali per kepala keluarga.</p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Iuran Pendaftaran Baru (Rp)
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={formData.registrationFeeAmount}
-                    onChange={(e) => setFormData({ ...formData, registrationFeeAmount: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
-                  />
-                  <p className="text-[10px] text-slate-500 mt-1">Biaya administrasi awal saat mendaftar.</p>
+                  <p className="text-[10px] text-slate-500 mt-1">Dibayarkan 1 tahun sekali per kepala keluarga. Pendaftaran warga baru bebas biaya.</p>
                 </div>
 
                 <div>
@@ -718,7 +705,7 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
                     onChange={(e) => setFormData({ ...formData, monthlyFeeAmount: Number(e.target.value) })}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-medium text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">Estimasi proporsi per bulan.</p>
+                  <p className="text-[10px] text-slate-500 mt-1">Estimasi proporsi per bulan (Rp 0 biaya pendaftaran).</p>
                 </div>
               </div>
 

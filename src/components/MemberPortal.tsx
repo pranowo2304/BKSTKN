@@ -1041,8 +1041,21 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
 
             {/* Special status notice if not Aktif */}
             {member.status === 'Menunggu Pembayaran' && (
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between gap-2 text-blue-900 text-xs">
-                <span className="font-semibold">Verifikasi berkas disetujui RT. Pembayaran dan aktivasi iuran kas dicatat oleh Bendahara Paguyuban.</span>
+              <div className="p-3.5 bg-blue-50 border-2 border-blue-300 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-blue-950 text-xs shadow-xs">
+                <div>
+                  <span className="font-black text-sm block text-blue-950">Verifikasi RT Disetujui!</span>
+                  <p className="text-[11px] text-blue-800 mt-0.5">Silakan lakukan pembayaran iuran untuk mengaktifkan KTA resmi dan hak santunan.</p>
+                </div>
+                {onNavigateToPayment && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigateToPayment(member)}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer shrink-0 hover:scale-105 active:scale-95"
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>Bayar Iuran Sekarang</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -1424,6 +1437,16 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
               </p>
             </div>
 
+            {onNavigateToPayment && (
+              <button
+                type="button"
+                onClick={() => onNavigateToPayment(member)}
+                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs sm:text-sm rounded-xl transition-all shadow-md shadow-emerald-950/20 inline-flex items-center gap-2 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
+              >
+                <CreditCard className="w-4 h-4" />
+                <span>+ Bayar Iuran Sekarang</span>
+              </button>
+            )}
           </div>
 
           {/* Statistik Pembayaran Ringkas */}

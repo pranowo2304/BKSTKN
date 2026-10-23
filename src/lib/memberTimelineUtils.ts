@@ -204,7 +204,7 @@ export const getMemberStatusTimeline = (
       timestamp: 'Menunggu Konfirmasi Warga',
       actor: member.name,
       actorRole: 'Warga / Pendaftar',
-      notes: 'Pendaftaran telah disetujui Ketua RT. Menunggu warga mengunggah bukti transfer iuran pendaftaran/tahunan.',
+      notes: 'Pendaftaran telah disetujui Ketua RT. Menunggu warga mengunggah bukti transfer iuran tahunan.',
       isCompleted: false,
       isCurrent: true,
     };

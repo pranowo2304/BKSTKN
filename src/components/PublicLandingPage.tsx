@@ -74,6 +74,7 @@ import { DigitalKtaModal } from './DigitalKtaModal';
 import { KtaScannerModal } from './KtaScannerModal';
 import { MemberKtaQrGeneratorModal } from './MemberKtaQrGeneratorModal';
 import { MembershipCertificateModal } from './MembershipCertificateModal';
+import { BesaranIuranModal } from './BesaranIuranModal';
 import { AppIcon } from './AppIcon';
 
 interface PublicLandingPageProps {
@@ -104,6 +105,8 @@ interface PublicLandingPageProps {
   onOpenLoginModal?: () => void;
   initialOpenRegister?: boolean;
   onRegisterStateChange?: (isOpen: boolean) => void;
+  onNavigateToTab?: (tab: string) => void;
+  onSelectMemberForPayment?: (member: Member) => void;
 }
 
 export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
@@ -125,6 +128,8 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
   onOpenLoginModal,
   initialOpenRegister = false,
   onRegisterStateChange,
+  onNavigateToTab,
+  onSelectMemberForPayment,
 }) => {
   // Navigation within landing page
   const [activeSection, setActiveSection] = useState<'beranda' | 'daftar' | 'manfaat' | 'login' | 'kontak'>('beranda');
@@ -423,6 +428,13 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
   const [payProofFileName, setPayProofFileName] = useState('');
   const [paySuccessMsg, setPaySuccessMsg] = useState(false);
   const [selectedCertificateMember, setSelectedCertificateMember] = useState<Member | null>(null);
+  const [isBesaranIuranModalOpen, setIsBesaranIuranModalOpen] = useState(false);
+
+  useEffect(() => {
+    const handleOpenBesaran = () => setIsBesaranIuranModalOpen(true);
+    window.addEventListener('open-besaran-iuran', handleOpenBesaran);
+    return () => window.removeEventListener('open-besaran-iuran', handleOpenBesaran);
+  }, []);
 
   // FAQ Accordion State
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
@@ -596,6 +608,17 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
       alert('Pendaftaran Anda tidak disetujui oleh Ketua RT. Tidak dapat melakukan pembayaran.');
       return;
     }
+    // Sesuai aturan: Pembayaran tetap lewat halaman user anggota
+    if (!activeUser) {
+      alert(`Pembayaran iuran kas paguyuban dilakukan melalui Portal Warga akun anggota "${member.name}".\n\nSilakan masuk (login) ke akun anggota Anda untuk menginput setoran iuran dan mendapatkan kwitansi resmi.`);
+      if (onOpenLoginModal) onOpenLoginModal();
+      return;
+    }
+    if (onSelectMemberForPayment && onNavigateToTab) {
+      onSelectMemberForPayment(member);
+      onNavigateToTab('payment');
+      return;
+    }
     setPayingMember(member);
     setPayType('Iuran Tahunan');
     setPayAmount(settings.annualFeeAmount || 300000);
@@ -688,7 +711,13 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
           {/* Menu 1: Daftar Warga */}
           <button
             type="button"
-            onClick={() => navigateToSection('section-daftar', { openRegister: true, mobileNav: 'daftar' })}
+            onClick={() => {
+              if (onNavigateToTab) {
+                onNavigateToTab('registration');
+              } else {
+                navigateToSection('section-daftar', { openRegister: true, mobileNav: 'daftar' });
+              }
+            }}
             className="group flex flex-col items-center text-center p-2 rounded-2xl hover:bg-emerald-50/70 transition-all cursor-pointer active:scale-95"
           >
             <div className="relative">
@@ -733,25 +762,25 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
             </span>
           </button>
 
-          {/* Menu 3: Iuran */}
+          {/* Menu 3: Pengumuman Besaran Iuran */}
           <button
             type="button"
-            onClick={() => navigateToSection('section-informasi-pengumuman')}
+            onClick={() => setIsBesaranIuranModalOpen(true)}
             className="group flex flex-col items-center text-center p-2 rounded-2xl hover:bg-indigo-50/70 transition-all cursor-pointer active:scale-95"
           >
             <div className="relative">
               <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/20 group-hover:scale-105 group-hover:shadow-indigo-600/30 transition-all">
-                <CreditCard className="w-6 h-6 sm:w-7 sm:h-7" />
+                <Coins className="w-6 h-6 sm:w-7 sm:h-7" />
               </div>
               <span className="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 bg-indigo-700 text-white font-black text-[9px] rounded-full uppercase tracking-wider shadow-xs">
                 Iuran
               </span>
             </div>
             <span className="mt-2 text-xs font-bold text-slate-800 group-hover:text-indigo-700 transition-colors whitespace-nowrap">
-              Iuran
+              Pengumuman Iuran
             </span>
             <span className="text-[10px] text-slate-400 mt-0.5 leading-tight hidden sm:block whitespace-nowrap">
-              Info & Pengumuman
+              Besaran Iuran Kas
             </span>
           </button>
 
@@ -1018,17 +1047,18 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
 
         {/* Horizontal scrollable cards */}
         <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory">
-          {/* Banner Awal: Besaran Iuran Kas Paguyuban Sesuai Pengaturan Sistem */}
+          {/* Banner Awal: Pengumuman Besaran Iuran Kas Paguyuban */}
           <div
-            onClick={() => navigateToSection('section-transparansi')}
-            className="snap-start shrink-0 w-[88%] sm:w-[380px] bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 text-white rounded-2xl p-4 sm:p-5 border-2 border-emerald-500/40 shadow-lg cursor-pointer hover:border-emerald-400 hover:shadow-xl transition-all relative overflow-hidden group"
+            id="section-pengumuman-iuran"
+            onClick={() => setIsBesaranIuranModalOpen(true)}
+            className="snap-start shrink-0 w-[88%] sm:w-[380px] bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 text-white rounded-2xl p-4 sm:p-5 border-2 border-emerald-500/40 shadow-lg cursor-pointer hover:border-emerald-400 hover:shadow-xl transition-all relative overflow-hidden group scroll-mt-28"
           >
             {/* Subtle glow effect */}
             <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none group-hover:bg-emerald-500/20 transition-all" />
 
             <div className="relative z-10 flex items-start justify-between gap-2">
-              <span className="px-2.5 py-0.5 bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 rounded-full text-[10px] font-black uppercase tracking-wider">
-                Besaran Iuran Resmi Sistem
+              <span className="px-2.5 py-0.5 bg-amber-400 text-slate-950 rounded-full text-[10px] font-black uppercase tracking-wider shadow-xs">
+                Pengumuman Resmi Iuran
               </span>
               <div className="w-8 h-8 rounded-xl bg-emerald-950/80 border border-emerald-400/30 flex items-center justify-center text-amber-300 shadow-xs">
                 <CreditCard className="w-4 h-4" />
@@ -1152,10 +1182,23 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
         </button>
         <button
           type="button"
-          onClick={() => navigateToSection('section-daftar', { openRegister: true, mobileNav: 'daftar' })}
-          className="px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap bg-white text-slate-700 border border-slate-300 hover:bg-slate-50"
+          onClick={() => {
+            if (onNavigateToTab) {
+              onNavigateToTab('registration');
+            } else {
+              navigateToSection('section-daftar', { openRegister: true, mobileNav: 'daftar' });
+            }
+          }}
+          className="px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 cursor-pointer"
         >
           Form Pendaftaran
+        </button>
+        <button
+          type="button"
+          onClick={() => setIsBesaranIuranModalOpen(true)}
+          className="px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 cursor-pointer"
+        >
+          Pengumuman Iuran
         </button>
         <button
           type="button"
@@ -1807,12 +1850,16 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
           <button
             type="button"
             onClick={() => {
-              if (onOpenLoginModal) onOpenLoginModal();
+              if (onNavigateToTab) {
+                onNavigateToTab('payment');
+              } else if (onOpenLoginModal) {
+                onOpenLoginModal();
+              }
             }}
             className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
           >
             <CreditCard className="w-3.5 h-3.5" />
-            <span>Bayar Iuran via Portal Warga</span>
+            <span>Bayar Iuran</span>
           </button>
         </div>
 
@@ -1972,13 +2019,17 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
           <button
             type="button"
             onClick={() => {
-              setIsRegistering(true);
-              setTimeout(() => {
-                const el = document.getElementById('section-daftar');
-                el?.scrollIntoView({ behavior: 'smooth' });
-              }, 50);
+              if (onNavigateToTab) {
+                onNavigateToTab('registration');
+              } else {
+                setIsRegistering(true);
+                setTimeout(() => {
+                  const el = document.getElementById('section-daftar');
+                  el?.scrollIntoView({ behavior: 'smooth' });
+                }, 50);
+              }
             }}
-            className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 shrink-0"
+            className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer"
           >
             <UserPlus className="w-4 h-4" />
             <span>Daftar Jadi Anggota Baru</span>
@@ -2213,12 +2264,10 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                       const val = e.target.value as PaymentType;
                       setPayType(val);
                       if (val === 'Iuran Tahunan') setPayAmount(settings.annualFeeAmount || 300000);
-                      else if (val === 'Iuran Pendaftaran') setPayAmount(settings.registrationFeeAmount || 50000);
                     }}
                     className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold bg-white"
                   >
                     <option value="Iuran Tahunan">Iuran Tahunan ({formatIDR(settings.annualFeeAmount || 300000)})</option>
-                    <option value="Iuran Pendaftaran">Iuran Pendaftaran Baru ({formatIDR(settings.registrationFeeAmount || 50000)})</option>
                     <option value="Donasi Kas Kematian">Donasi Sukarela Kas Kematian</option>
                   </select>
                 </div>
@@ -2352,6 +2401,21 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
           }}
         />
       )}
+
+      {/* BESARAN IURAN RESMI MODAL */}
+      <BesaranIuranModal
+        isOpen={isBesaranIuranModalOpen}
+        onClose={() => setIsBesaranIuranModalOpen(false)}
+        settings={settings}
+        onOpenLoginModal={onOpenLoginModal}
+        onOpenRegister={() => {
+          if (onNavigateToTab) {
+            onNavigateToTab('registration');
+          } else {
+            setIsRegistering(true);
+          }
+        }}
+      />
     </div>
   );
 };
