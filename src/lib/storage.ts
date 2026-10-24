@@ -231,12 +231,12 @@ export const syncClustersToRtUsers = (
       const current = usersList[existingIndex];
       usersList[existingIndex] = {
         ...current,
-        name: defaultName,
-        email: defaultEmail,
-        phone: defaultPhone || current.phone,
-        cluster: cls.name,
-        status: cls.isActive ? 'Aktif' : 'Non-Aktif',
-        notes: `Ketua RT resmi wilayah ${cls.name} (${cls.rtNumber || 'RT'}). Sinkron dengan Master Cluster.`,
+        name: current.name?.trim() ? current.name : defaultName,
+        email: current.email?.trim() ? current.email : defaultEmail,
+        phone: current.phone?.trim() ? current.phone : defaultPhone,
+        cluster: current.cluster?.trim() ? current.cluster : cls.name,
+        status: current.status || (cls.isActive ? 'Aktif' : 'Non-Aktif'),
+        notes: current.notes || `Ketua RT resmi wilayah ${cls.name} (${cls.rtNumber || 'RT'}). Sinkron dengan Master Cluster.`,
       };
     } else {
       // Create new Ketua RT user
@@ -323,14 +323,16 @@ export const syncMembersToUsers = (members: Member[] = [], existingUsers: AppUse
     if (existingIndex === -1) {
       usersList.push(createMemberUser(m));
     } else {
+      const current = usersList[existingIndex];
       usersList[existingIndex] = {
-        ...usersList[existingIndex],
-        email: m.email ? m.email.toLowerCase() : usersList[existingIndex].email,
-        password: m.password || usersList[existingIndex].password,
+        ...current,
+        name: current.name?.trim() ? current.name : m.name,
+        email: current.email?.trim() ? current.email : (m.email ? m.email.toLowerCase() : current.email),
+        password: current.password || m.password,
         memberId: m.id,
         memberNumber: m.memberNumber,
-        cluster: m.cluster,
-        phone: m.phone || usersList[existingIndex].phone,
+        cluster: current.cluster || m.cluster,
+        phone: current.phone || m.phone,
       };
     }
   });

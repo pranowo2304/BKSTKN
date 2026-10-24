@@ -502,7 +502,8 @@ export async function deleteClusterFromCloud(clusterId: string): Promise<void> {
 export async function syncMemberToCloud(member: Member): Promise<void> {
   const ref = doc(db, COLLECTIONS.MEMBERS, member.id);
   try {
-    await setDoc(ref, member, { merge: true });
+    const sanitized = sanitizeFirestoreData(member);
+    await setDoc(ref, sanitized, { merge: true });
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.MEMBERS}/${member.id}`);
@@ -516,7 +517,8 @@ export async function syncMembersBatchToCloud(members: Member[]): Promise<void> 
   const batch = writeBatch(db);
   members.forEach((m) => {
     const ref = doc(db, COLLECTIONS.MEMBERS, m.id);
-    batch.set(ref, m, { merge: true });
+    const sanitized = sanitizeFirestoreData(m);
+    batch.set(ref, sanitized, { merge: true });
   });
   try {
     await batch.commit();
@@ -600,7 +602,8 @@ export async function syncSettingsToCloud(settings: SystemSettings): Promise<voi
 export async function syncUserToCloud(user: AppUser): Promise<void> {
   const ref = doc(db, COLLECTIONS.USERS, user.id);
   try {
-    await setDoc(ref, user, { merge: true });
+    const sanitized = sanitizeFirestoreData(user);
+    await setDoc(ref, sanitized, { merge: true });
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.USERS}/${user.id}`);
@@ -614,7 +617,8 @@ export async function syncUsersBatchToCloud(users: AppUser[]): Promise<void> {
   const batch = writeBatch(db);
   users.forEach((u) => {
     const ref = doc(db, COLLECTIONS.USERS, u.id);
-    batch.set(ref, u, { merge: true });
+    const sanitized = sanitizeFirestoreData(u);
+    batch.set(ref, sanitized, { merge: true });
   });
   try {
     await batch.commit();

@@ -51,6 +51,7 @@ import {
   syncSettingsToCloud,
   syncUserToCloud,
   syncUsersBatchToCloud,
+  deleteUserFromCloud,
   syncClusterToCloud,
   deleteClusterFromCloud,
   syncBenefitToCloud,
@@ -676,6 +677,32 @@ export default function App() {
       setActiveUser(updatedUser);
       saveStoredActiveUser(updatedUser);
     }
+
+    // Sinkronkan profil pengguna di master users
+    setUsers((prevUsers) => {
+      const userIdx = prevUsers.findIndex(
+        (u) =>
+          (u.memberId && u.memberId === updatedMember.id) ||
+          (u.email && updatedMember.email && u.email.toLowerCase() === updatedMember.email.toLowerCase()) ||
+          (u.name && oldMember?.name && u.name.toLowerCase() === oldMember.name.toLowerCase())
+      );
+      if (userIdx !== -1) {
+        const updatedUsersList = [...prevUsers];
+        const targetUser: AppUser = {
+          ...updatedUsersList[userIdx],
+          name: updatedMember.name,
+          email: updatedMember.email || updatedUsersList[userIdx].email,
+          phone: updatedMember.phone || updatedUsersList[userIdx].phone,
+          cluster: updatedMember.cluster || updatedUsersList[userIdx].cluster,
+          password: updatedMember.password || updatedUsersList[userIdx].password,
+        };
+        updatedUsersList[userIdx] = targetUser;
+        saveUsers(updatedUsersList);
+        syncUserToCloud(targetUser).catch((e) => console.warn('Cloud sync user error:', e));
+        return updatedUsersList;
+      }
+      return prevUsers;
+    });
 
     if (statusChanged && settings.autoNotifyOnMemberStatusChange !== false && updatedMember.phone) {
       const msg = buildGeneralStatusChangeMessage({
@@ -1610,7 +1637,7 @@ export default function App() {
     saveUsers(updatedUsers);
     syncUserToCloud(updatedUser).catch((e) => console.warn('Cloud sync updated user error:', e));
 
-    if (activeUser.id === updatedUser.id) {
+    if (activeUser && activeUser.id === updatedUser.id) {
       setActiveUser(updatedUser);
       saveStoredActiveUser(updatedUser);
       setIsAdmin(updatedUser.authority !== 'Anggota');
@@ -1618,13 +1645,54 @@ export default function App() {
         setCurrentTab('dashboard');
       }
     }
+
+    // 1. Jika pengguna Ketua RT diperbarui, sinkronkan data leader di ClusterMaster
+    if (updatedUser.authority === 'Ketua RT (Cluster)' && updatedUser.cluster) {
+      const linkedCluster = clusters.find(
+        (c) => c.name === updatedUser.cluster || c.id === `cls-${updatedUser.cluster}` || (updatedUser.id && updatedUser.id.includes(c.id))
+      );
+      if (linkedCluster) {
+        const updatedCluster: ClusterMaster = {
+          ...linkedCluster,
+          leaderName: updatedUser.name,
+          leaderEmail: updatedUser.email,
+          leaderPhone: updatedUser.phone || linkedCluster.leaderPhone,
+        };
+        const updatedClustersList = clusters.map((c) => (c.id === updatedCluster.id ? updatedCluster : c));
+        setClusters(updatedClustersList);
+        saveStoredClusters(updatedClustersList);
+        syncClusterToCloud(updatedCluster).catch((e) => console.warn('Cloud sync cluster error:', e));
+      }
+    }
+
+    // 2. Jika pengguna Anggota diperbarui, sinkronkan biodata Member yang tertaut
+    const linkedMember = members.find(
+      (m) =>
+        (updatedUser.memberId && m.id === updatedUser.memberId) ||
+        (m.email && updatedUser.email && m.email.toLowerCase() === updatedUser.email.toLowerCase()) ||
+        (m.phone && updatedUser.phone && m.phone === updatedUser.phone)
+    );
+    if (linkedMember) {
+      const updatedMember: Member = {
+        ...linkedMember,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        phone: updatedUser.phone || linkedMember.phone,
+        cluster: updatedUser.cluster || linkedMember.cluster,
+        password: updatedUser.password || linkedMember.password,
+      };
+      const updatedMembersList = members.map((m) => (m.id === updatedMember.id ? updatedMember : m));
+      setMembers(updatedMembersList);
+      saveMembers(updatedMembersList);
+      syncMemberToCloud(updatedMember).catch((e) => console.warn('Cloud sync member error:', e));
+    }
   };
 
   const handleDeleteUser = (userId: string) => {
     const updatedUsers = users.filter((u) => u.id !== userId);
     setUsers(updatedUsers);
     saveUsers(updatedUsers);
-    // Cloud sync logic handles deletion
+    deleteUserFromCloud(userId).catch((e) => console.warn('Cloud delete user error:', e));
   };
 
   const handleSwitchActiveUser = (newUser: AppUser) => {

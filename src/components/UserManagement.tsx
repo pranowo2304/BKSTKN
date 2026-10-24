@@ -569,6 +569,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({
       return;
     }
 
+    const duplicateEmail = users.find(
+      (u) => u.id !== editingUser.id && u.email && u.email.toLowerCase() === editEmail.trim().toLowerCase()
+    );
+    if (duplicateEmail) {
+      alert(`Alamat email "${editEmail}" sudah digunakan oleh pengguna lain (${duplicateEmail.name})!`);
+      return;
+    }
+
     const updatedUser: AppUser = {
       ...editingUser,
       name: editName.trim(),
