@@ -117,6 +117,20 @@ export const getStoredClusters = (): ClusterMaster[] => {
       if (migrated) {
         localStorage.setItem(KEYS.CLUSTERS, JSON.stringify(normalized));
       }
+
+      // Sync leader phone and name with stored users if available
+      try {
+        const storedUsersStr = localStorage.getItem(KEYS.USERS);
+        if (storedUsersStr) {
+          const parsedUsers = JSON.parse(storedUsersStr);
+          if (Array.isArray(parsedUsers) && parsedUsers.length > 0) {
+            return syncRtUsersToClusters(normalized, parsedUsers);
+          }
+        }
+      } catch {
+        // ignore parse error and proceed with normalized clusters
+      }
+
       return normalized;
     }
     return DEFAULT_CLUSTERS;
@@ -181,6 +195,100 @@ export const getStoredUsers = (): AppUser[] => {
 };
 
 /**
+ * Matches a ClusterMaster to its corresponding Ketua RT user from Master Pengguna (users).
+ * Resolves by user ID, cluster name, leader email, or cluster code/alias.
+ */
+export const getRtUserForCluster = (
+  cluster: ClusterMaster,
+  users: AppUser[] = []
+): AppUser | undefined => {
+  if (!cluster || !Array.isArray(users) || users.length === 0) return undefined;
+
+  const clusterIdToDefaultUserId: Record<string, string> = {
+    'cls-1': 'usr-3',
+    'cls-2': 'usr-4',
+    'cls-3': 'usr-5',
+    'cls-4': 'usr-5b',
+    'cls-5': 'usr-5c',
+    'cls-6': 'usr-6',
+  };
+
+  const defaultUserId = clusterIdToDefaultUserId[cluster.id] || `usr-rt-${cluster.id}`;
+
+  // 1. Direct ID match
+  let matched = users.find(
+    (u) =>
+      u &&
+      u.authority === 'Ketua RT (Cluster)' &&
+      (u.id === defaultUserId || u.id === `usr-rt-${cluster.id}` || (cluster.id && u.id.includes(cluster.id)))
+  );
+  if (matched) return matched;
+
+  // 2. Exact cluster name match
+  if (cluster.name) {
+    const cName = cluster.name.trim().toLowerCase();
+    matched = users.find(
+      (u) =>
+        u &&
+        u.authority === 'Ketua RT (Cluster)' &&
+        u.cluster &&
+        u.cluster.trim().toLowerCase() === cName
+    );
+    if (matched) return matched;
+  }
+
+  // 3. Email match
+  if (cluster.leaderEmail) {
+    const cEmail = cluster.leaderEmail.trim().toLowerCase();
+    matched = users.find(
+      (u) =>
+        u &&
+        u.authority === 'Ketua RT (Cluster)' &&
+        u.email &&
+        u.email.trim().toLowerCase() === cEmail
+    );
+    if (matched) return matched;
+  }
+
+  // 4. Loose / code / alias match
+  matched = users.find((u) => {
+    if (!u || u.authority !== 'Ketua RT (Cluster)' || !u.cluster) return false;
+    const uCluster = u.cluster.trim().toLowerCase();
+    const cName = (cluster.name || '').trim().toLowerCase();
+    if (cluster.code && uCluster.includes(cluster.code.trim().toLowerCase())) return true;
+    if (cluster.id === 'cls-4' && (uCluster.includes('pasundan rt 05') || uCluster.includes('pasundan rt 02'))) return true;
+    if (cluster.id === 'cls-5' && (uCluster.includes('pasundan rt 06') || uCluster.includes('pasundan rt 03'))) return true;
+    if (cName && (cName.includes(uCluster) || uCluster.includes(cName))) return true;
+    return false;
+  });
+
+  return matched;
+};
+
+/**
+ * Synchronizes ClusterMaster data with the latest phone, name, and email from Ketua RT users in Master Pengguna.
+ */
+export const syncRtUsersToClusters = (
+  clusters: ClusterMaster[] = [],
+  users: AppUser[] = []
+): ClusterMaster[] => {
+  if (!Array.isArray(clusters) || clusters.length === 0) return clusters;
+  if (!Array.isArray(users) || users.length === 0) return clusters;
+
+  return clusters.map((cls) => {
+    const rtUser = getRtUserForCluster(cls, users);
+    if (!rtUser) return cls;
+
+    return {
+      ...cls,
+      leaderPhone: rtUser.phone?.trim() || cls.leaderPhone,
+      leaderName: rtUser.name?.trim() || cls.leaderName,
+      leaderEmail: rtUser.email?.trim() || cls.leaderEmail,
+    };
+  });
+};
+
+/**
  * Synchronizes Ketua RT user accounts with Master RT Clusters (ClusterMaster).
  * For each cluster in master clusters:
  * 1. Checks if a Ketua RT user exists for this cluster.
@@ -216,16 +324,9 @@ export const syncClustersToRtUsers = (
     const defaultName = cls.leaderName?.trim() || `Ketua ${cls.name}`;
     const defaultUserId = clusterIdToDefaultUserId[cls.id] || `usr-rt-${cls.id}`;
 
-    // Find existing Ketua RT user for this cluster
-    const existingIndex = usersList.findIndex((u) => {
-      if (!u || u.authority !== 'Ketua RT (Cluster)') return false;
-      if (u.id === defaultUserId || u.id === `usr-rt-${cls.id}`) return true;
-      if (cls.leaderEmail && u.email && u.email.toLowerCase() === cls.leaderEmail.trim().toLowerCase()) return true;
-      if (u.cluster && u.cluster.toLowerCase() === cls.name.toLowerCase()) return true;
-      if (cls.id === 'cls-4' && u.cluster === 'Cluster Pasundan RT 02') return true;
-      if (cls.id === 'cls-5' && u.cluster === 'Cluster Pasundan RT 03') return true;
-      return false;
-    });
+    // Find existing Ketua RT user for this cluster using helper
+    const existingUser = getRtUserForCluster(cls, usersList);
+    const existingIndex = existingUser ? usersList.findIndex((u) => u.id === existingUser.id) : -1;
 
     if (existingIndex !== -1) {
       const current = usersList[existingIndex];

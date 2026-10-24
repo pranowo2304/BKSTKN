@@ -38,6 +38,8 @@ import {
   clearAllDemoDataLocally,
   clearAllClaimsLocally,
   syncClustersToRtUsers,
+  getRtUserForCluster,
+  syncRtUsersToClusters,
   createMemberUser,
   getMemberForUser,
 } from './lib/storage';
@@ -253,14 +255,17 @@ export default function App() {
             if (cloudUsers && cloudUsers.length > 0) {
               setClusters((currentClusters) => {
                 const effectiveClusters = currentClusters.length > 0 ? currentClusters : getStoredClusters();
-                const synced = syncClustersToRtUsers(effectiveClusters, cloudUsers);
-                setUsers(synced);
-                saveUsers(synced);
+                const syncedUsers = syncClustersToRtUsers(effectiveClusters, cloudUsers);
+                setUsers(syncedUsers);
+                saveUsers(syncedUsers);
+
+                const syncedClusters = syncRtUsersToClusters(effectiveClusters, syncedUsers);
+                saveStoredClusters(syncedClusters);
 
                 // Strictly validate activeUser against live Master Users from cloud
                 setActiveUser((currentActive) => {
                   if (!currentActive) return null;
-                  const found = synced.find(
+                  const found = syncedUsers.find(
                     (u) =>
                       (u.id && u.id === currentActive.id) ||
                       (u.email && currentActive.email && u.email.toLowerCase() === currentActive.email.toLowerCase())
@@ -276,19 +281,20 @@ export default function App() {
                   return found;
                 });
 
-                return currentClusters;
+                return syncedClusters;
               });
             }
             setIsInitialLoading(false);
           },
           onClustersChange: (cloudClusters) => {
             if (cloudClusters && cloudClusters.length > 0) {
-              setClusters(cloudClusters);
-              saveStoredClusters(cloudClusters);
               setUsers((prevUsers) => {
-                const synced = syncClustersToRtUsers(cloudClusters, prevUsers);
-                saveUsers(synced);
-                return synced;
+                const syncedUsers = syncClustersToRtUsers(cloudClusters, prevUsers);
+                saveUsers(syncedUsers);
+                const syncedClusters = syncRtUsersToClusters(cloudClusters, syncedUsers);
+                setClusters(syncedClusters);
+                saveStoredClusters(syncedClusters);
+                return syncedUsers;
               });
             }
             setIsInitialLoading(false);
@@ -1647,22 +1653,35 @@ export default function App() {
     }
 
     // 1. Jika pengguna Ketua RT diperbarui, sinkronkan data leader di ClusterMaster
-    if (updatedUser.authority === 'Ketua RT (Cluster)' && updatedUser.cluster) {
-      const linkedCluster = clusters.find(
-        (c) => c.name === updatedUser.cluster || c.id === `cls-${updatedUser.cluster}` || (updatedUser.id && updatedUser.id.includes(c.id))
-      );
+    if (updatedUser.authority === 'Ketua RT (Cluster)') {
+      const linkedCluster = clusters.find((c) => {
+        const matched = getRtUserForCluster(c, [updatedUser]);
+        return matched?.id === updatedUser.id;
+      });
       if (linkedCluster) {
         const updatedCluster: ClusterMaster = {
           ...linkedCluster,
-          leaderName: updatedUser.name,
-          leaderEmail: updatedUser.email,
-          leaderPhone: updatedUser.phone || linkedCluster.leaderPhone,
+          leaderName: updatedUser.name.trim(),
+          leaderEmail: updatedUser.email.trim(),
+          leaderPhone: updatedUser.phone !== undefined ? updatedUser.phone.trim() : linkedCluster.leaderPhone,
         };
         const updatedClustersList = clusters.map((c) => (c.id === updatedCluster.id ? updatedCluster : c));
         setClusters(updatedClustersList);
         saveStoredClusters(updatedClustersList);
         syncClusterToCloud(updatedCluster).catch((e) => console.warn('Cloud sync cluster error:', e));
       }
+    }
+
+    // 1b. Jika pengguna Bendahara diperbarui, sinkronkan data bendahara di settings
+    if (updatedUser.authority === 'Bendahara') {
+      const updatedSettings: SystemSettings = {
+        ...settings,
+        treasurerName: updatedUser.name.trim() || settings.treasurerName,
+        treasurerPhone: updatedUser.phone !== undefined ? updatedUser.phone.trim() : settings.treasurerPhone,
+      };
+      setSettings(updatedSettings);
+      saveSettings(updatedSettings);
+      syncSettingsToCloud(updatedSettings).catch((e) => console.warn('Cloud sync treasurer settings error:', e));
     }
 
     // 2. Jika pengguna Anggota diperbarui, sinkronkan biodata Member yang tertaut

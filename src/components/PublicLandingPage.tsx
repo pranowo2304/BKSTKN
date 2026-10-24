@@ -12,7 +12,7 @@ import {
   BenefitMaster,
   DEFAULT_BENEFITS,
 } from '../types';
-import { formatIDR } from '../lib/storage';
+import { formatIDR, getRtUserForCluster } from '../lib/storage';
 import { calculateMemberExpiry } from '../lib/expiryUtils';
 import { getMemberKtaIssuanceInfo } from '../lib/ktaUtils';
 import { checkDuplicateMember, findDuplicateNikMember, findDuplicateKkMember } from '../lib/duplicateValidator';
@@ -2056,72 +2056,128 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {/* Bendahara Card */}
-          <div className="p-4 bg-emerald-900 text-white rounded-2xl border border-emerald-800 flex flex-col justify-between gap-3 shadow-md">
-            <div>
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="px-2.5 py-0.5 bg-emerald-700 text-emerald-200 text-[10px] font-black rounded-full uppercase">
-                  Bendahara Kas Paguyuban
-                </span>
-                <Landmark className="w-4 h-4 text-emerald-300" />
-              </div>
-              <h4 className="text-base font-bold">{settings?.treasurerName || 'Bendahara Paguyuban'}</h4>
-              <p className="text-xs text-emerald-200/80 mt-1">Layanan Konfirmasi Pembayaran & Pembukuan Kas</p>
-            </div>
+          {(() => {
+            const bendaharaUser = users.find((u) => u.authority === 'Bendahara');
+            const treasurerName = bendaharaUser?.name?.trim() || settings?.treasurerName || 'Bendahara Paguyuban';
+            const treasurerPhone = bendaharaUser?.phone?.trim() || settings?.treasurerPhone || '';
+            const cleanTreasurerPhone = treasurerPhone.replace(/[^0-9]/g, '');
 
-            <a
-              href={`https://wa.me/${(settings?.treasurerPhone || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                'Halo Bendahara Paguyuban, saya ingin menanyakan perihal iuran dana kematian.'
-              )}`}
-              target="_blank"
-              rel="noreferrer"
-              className="w-full py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <MessageCircle className="w-4 h-4" />
-              <span>Chat WhatsApp Bendahara</span>
-            </a>
-          </div>
-
-          {/* Cluster RT Cards */}
-          {activeClustersList.map((cluster) => (
-            <div
-              key={cluster.id}
-              className="p-4 bg-slate-50 hover:bg-slate-100/80 rounded-2xl border border-slate-200 flex flex-col justify-between gap-3 transition-all"
-            >
-              <div>
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <span className="px-2 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-bold rounded-md">
-                    {cluster.rtNumber || 'RT'} {cluster.code ? `• ${cluster.code}` : ''}
-                  </span>
-                  <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                    Aktif
-                  </span>
+            return (
+              <div className="p-4 bg-emerald-900 text-white rounded-2xl border border-emerald-800 flex flex-col justify-between gap-3 shadow-md">
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="px-2.5 py-0.5 bg-emerald-700 text-emerald-200 text-[10px] font-black rounded-full uppercase">
+                      Bendahara Kas Paguyuban
+                    </span>
+                    <Landmark className="w-4 h-4 text-emerald-300" />
+                  </div>
+                  <h4 className="text-base font-bold">{treasurerName}</h4>
+                  <p className="text-xs text-emerald-200/80 mt-1">Layanan Konfirmasi Pembayaran & Pembukuan Kas</p>
                 </div>
-                <h4 className="text-sm font-bold text-slate-900">{cluster.name}</h4>
-                <p className="text-xs text-slate-600 mt-1 font-medium">
-                  Ketua RT: <strong>{cluster.leaderName || 'Belum diisi'}</strong>
-                </p>
-                {cluster.addressCoverage && (
-                  <p className="text-[10px] text-slate-400 mt-0.5">Blok: {cluster.addressCoverage}</p>
+
+                {cleanTreasurerPhone ? (
+                  <a
+                    href={`https://wa.me/${cleanTreasurerPhone}?text=${encodeURIComponent(
+                      'Halo Bendahara Paguyuban, saya ingin menanyakan perihal iuran dana kematian.'
+                    )}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Chat WhatsApp Bendahara</span>
+                  </a>
+                ) : (
+                  <span className="text-[11px] text-emerald-200/60 text-center py-2 bg-emerald-800/50 rounded-xl">Kontak WA belum terdaftar</span>
                 )}
               </div>
+            );
+          })()}
 
-              {cluster.leaderPhone ? (
-                <a
-                  href={`https://wa.me/${cluster.leaderPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                    `Halo Pak RT ${cluster.leaderName || ''}, saya warga ${cluster.name} ingin menanyakan verifikasi keanggotaan Dana Kematian.`
-                  )}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors"
-                >
-                  <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Chat WA ({cluster.leaderPhone})</span>
-                </a>
-              ) : (
-                <span className="text-[11px] text-slate-400 text-center py-1">Kontak WA belum terdaftar</span>
-              )}
-            </div>
-          ))}
+          {/* Ketua Paguyuban Card (jika terdaftar di sistem) */}
+          {(() => {
+            const ketua = users.find((u) => u.authority === 'Ketua Paguyuban');
+            if (!ketua) return null;
+            return (
+              <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 flex flex-col justify-between gap-3 shadow-md">
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="px-2.5 py-0.5 bg-slate-800 text-slate-200 text-[10px] font-black rounded-full uppercase">
+                      Ketua Paguyuban
+                    </span>
+                    <Building2 className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <h4 className="text-base font-bold">{ketua.name}</h4>
+                  <p className="text-xs text-slate-300 mt-1">Pimpinan Paguyuban & Pengesahan Santunan Warga</p>
+                </div>
+
+                {ketua.phone ? (
+                  <a
+                    href={`https://wa.me/${ketua.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                      'Halo Ketua Paguyuban, saya warga ingin menanyakan perihal paguyuban Dana Kematian.'
+                    )}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Chat WhatsApp Ketua Paguyuban</span>
+                  </a>
+                ) : (
+                  <span className="text-[11px] text-slate-400 text-center py-2 bg-slate-800 rounded-xl">Kontak WA belum terdaftar</span>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Cluster RT Cards - Nomor WA & Nama Ketua RT tersinkronisasi dinamis dari Master Pengguna */}
+          {activeClustersList.map((cluster) => {
+            const rtUser = getRtUserForCluster(cluster, users);
+            const leaderName = rtUser?.name?.trim() || cluster.leaderName || 'Belum diisi';
+            const leaderPhone = rtUser?.phone?.trim() || cluster.leaderPhone || '';
+            const cleanPhone = leaderPhone.replace(/[^0-9]/g, '');
+
+            return (
+              <div
+                key={cluster.id}
+                className="p-4 bg-slate-50 hover:bg-slate-100/80 rounded-2xl border border-slate-200 flex flex-col justify-between gap-3 transition-all"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="px-2 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-bold rounded-md">
+                      {cluster.rtNumber || 'RT'} {cluster.code ? `• ${cluster.code}` : ''}
+                    </span>
+                    <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      Aktif
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-900">{cluster.name}</h4>
+                  <p className="text-xs text-slate-600 mt-1 font-medium">
+                    Ketua RT: <strong>{leaderName}</strong>
+                  </p>
+                  {cluster.addressCoverage && (
+                    <p className="text-[10px] text-slate-400 mt-0.5">Blok: {cluster.addressCoverage}</p>
+                  )}
+                </div>
+
+                {cleanPhone ? (
+                  <a
+                    href={`https://wa.me/${cleanPhone}?text=${encodeURIComponent(
+                      `Halo Pak RT ${leaderName}, saya warga ${cluster.name} ingin menanyakan verifikasi keanggotaan Dana Kematian.`
+                    )}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Chat WhatsApp Ketua RT</span>
+                  </a>
+                ) : (
+                  <span className="text-[11px] text-slate-400 text-center py-2 bg-slate-100 rounded-xl">Kontak WA belum terdaftar</span>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
 
