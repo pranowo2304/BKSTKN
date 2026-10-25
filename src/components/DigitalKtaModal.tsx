@@ -39,7 +39,6 @@ import {
 import { KtaCardSkeleton } from './KtaCardSkeleton';
 import { KtaAuthenticityVerificationModal } from './KtaAuthenticityVerificationModal';
 import { MemberKtaQrGeneratorModal } from './MemberKtaQrGeneratorModal';
-import { MembershipCertificateModal } from './MembershipCertificateModal';
 import { downloadKtaCardAsImage, KtaCardSide } from '../lib/ktaImageGenerator';
 
 interface DigitalKtaModalProps {
@@ -72,7 +71,6 @@ export const DigitalKtaModal: React.FC<DigitalKtaModalProps> = ({
   const [qrMode, setQrMode] = useState<'url' | 'json'>('url');
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
   const [isQrGeneratorOpen, setIsQrGeneratorOpen] = useState(false);
-  const [isCertModalOpen, setIsCertModalOpen] = useState(false);
   const [downloadingImage, setDownloadingImage] = useState(false);
 
   // Trigger smooth skeleton loading effect when modal opens or member switches
@@ -722,7 +720,7 @@ export const DigitalKtaModal: React.FC<DigitalKtaModalProps> = ({
                   type="button"
                   onClick={() => setIsVerificationModalOpen(true)}
                   className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                  title="Lihat hasil sertifikat verifikasi yang muncul saat QR discan"
+                  title="Lihat hasil verifikasi keaslian yang muncul saat QR discan"
                 >
                   <Search className="w-3.5 h-3.5" />
                   <span>Uji Cek Keaslian</span>
@@ -927,28 +925,6 @@ export const DigitalKtaModal: React.FC<DigitalKtaModalProps> = ({
               </button>
             ) : null}
 
-            <button
-              type="button"
-              onClick={() => setIsCertModalOpen(true)}
-              className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all shadow-md inline-flex items-center gap-1.5 cursor-pointer ${
-                ktaInfo.isIssued
-                  ? 'text-white bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 shadow-amber-950/40 hover:scale-105 active:scale-95'
-                  : 'text-amber-200 bg-amber-950/60 hover:bg-amber-900/80 border border-amber-600/40'
-              }`}
-              title={
-                ktaInfo.isIssued
-                  ? 'Buka & Cetak Sertifikat Keanggotaan Resmi (A4 Landscape)'
-                  : 'Sertifikat bisa terbit setelah disetujui ketua paguyuban'
-              }
-            >
-              {ktaInfo.isIssued ? (
-                <Award className="w-3.5 h-3.5 text-amber-200" />
-              ) : (
-                <Lock className="w-3.5 h-3.5 text-amber-400" />
-              )}
-              <span>{ktaInfo.isIssued ? 'Sertifikat Resmi' : 'Sertifikat (Menunggu Ketua Paguyuban)'}</span>
-            </button>
-
             {!ktaInfo.isIssued && onOpenPreviewKtaModal ? (
               <button
                 type="button"
@@ -1011,16 +987,7 @@ export const DigitalKtaModal: React.FC<DigitalKtaModalProps> = ({
         />
       )}
 
-      {/* Official Membership Certificate Modal */}
-      {isCertModalOpen && member && (
-        <MembershipCertificateModal
-          isOpen={isCertModalOpen}
-          onClose={() => setIsCertModalOpen(false)}
-          member={member}
-          payments={payments}
-          settings={settings}
-        />
-      )}
+      {/* Member KTA QR Generator Modal */}
     </div>
   );
 };

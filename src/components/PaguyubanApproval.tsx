@@ -29,7 +29,6 @@ import {
 } from 'lucide-react';
 import { FamilyCardModal } from './FamilyCardModal';
 import { PreviewKtaModal } from './PreviewKtaModal';
-import { MembershipCertificateModal } from './MembershipCertificateModal';
 import { MemberDetailModal } from './MemberDetailModal';
 import { DigitalKtaModal } from './DigitalKtaModal';
 import { MemberStatusTimeline } from './MemberStatusTimeline';
@@ -115,7 +114,6 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
   const [selectedPreviewMember, setSelectedPreviewMember] = useState<Member | null>(null);
   const [selectedDetailMember, setSelectedDetailMember] = useState<Member | null>(null);
   const [selectedDigitalKtaMember, setSelectedDigitalKtaMember] = useState<Member | null>(null);
-  const [selectedCertificateMember, setSelectedCertificateMember] = useState<Member | null>(null);
   const [expandedTimelineMemberIds, setExpandedTimelineMemberIds] = useState<Set<string>>(new Set());
 
   // Approval Form State
@@ -1080,7 +1078,7 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
                           className="px-5 py-2 bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 text-white font-black text-xs sm:text-sm rounded-xl transition-all shadow-md shadow-purple-950/20 flex items-center gap-2 hover:scale-[1.02] active:scale-95 cursor-pointer"
                         >
                           <Crown className="w-4 h-4 text-amber-400" />
-                          <span>Setujui & Terbitkan KTA serta Sertifikat</span>
+                          <span>Setujui & Terbitkan KTA Resmi</span>
                         </button>
                       </>
                     ) : (
@@ -1239,7 +1237,7 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
                   className="px-6 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 text-white font-black text-xs sm:text-sm rounded-xl transition-all shadow-md shadow-purple-950/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   <Check className="w-4 h-4" />
-                  <span>{isSubmitting ? 'Memproses...' : 'Sahkan & Terbitkan KTA serta Sertifikat'}</span>
+                  <span>{isSubmitting ? 'Memproses...' : 'Sahkan & Terbitkan KTA Resmi'}</span>
                 </button>
               </div>
             </form>
@@ -1353,21 +1351,6 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
           member={selectedPreviewMember}
           payments={payments}
           settings={settings}
-        />
-      )}
-
-      {/* OFFICIAL MEMBERSHIP CERTIFICATE MODAL */}
-      {selectedCertificateMember && (
-        <MembershipCertificateModal
-          isOpen={true}
-          onClose={() => setSelectedCertificateMember(null)}
-          member={selectedCertificateMember}
-          payments={payments}
-          settings={settings}
-          onOpenKtaModal={(mem) => {
-            setSelectedCertificateMember(null);
-            setSelectedDigitalKtaMember(mem);
-          }}
         />
       )}
 

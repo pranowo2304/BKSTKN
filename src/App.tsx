@@ -89,7 +89,6 @@ import { MemberPortal } from './components/MemberPortal';
 import { KtaAuthenticityVerificationModal } from './components/KtaAuthenticityVerificationModal';
 import { ReceiptAuthenticityVerificationModal } from './components/ReceiptAuthenticityVerificationModal';
 import { DigitalKtaModal } from './components/DigitalKtaModal';
-import { MembershipCertificateModal } from './components/MembershipCertificateModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { AppIcon } from './components/AppIcon';
 import { HeartHandshake, Loader2, Cloud, Database } from 'lucide-react';
@@ -127,7 +126,6 @@ export default function App() {
   const [verifiedReceiptNumber, setVerifiedReceiptNumber] = useState<string | null>(null);
   const [isReceiptVerificationModalOpen, setIsReceiptVerificationModalOpen] = useState<boolean>(false);
   const [selectedFullKtaMember, setSelectedFullKtaMember] = useState<Member | null>(null);
-  const [selectedCertificateMember, setSelectedCertificateMember] = useState<Member | null>(null);
   const [isPublicRegisterOpen, setIsPublicRegisterOpen] = useState<boolean>(false);
   const [isPWAInstallModalOpen, setIsPWAInstallModalOpen] = useState<boolean>(false);
 
@@ -2265,21 +2263,6 @@ export default function App() {
             setSelectedFullKtaMember(null);
             setSelectedMemberForPayment(mem);
             setCurrentTab('payment');
-          }}
-        />
-      )}
-
-      {/* Official Membership Certificate Modal */}
-      {selectedCertificateMember && (
-        <MembershipCertificateModal
-          isOpen={Boolean(selectedCertificateMember)}
-          member={selectedCertificateMember}
-          payments={payments}
-          settings={settings}
-          onClose={() => setSelectedCertificateMember(null)}
-          onOpenKtaModal={(mem) => {
-            setSelectedCertificateMember(null);
-            setSelectedFullKtaMember(mem);
           }}
         />
       )}

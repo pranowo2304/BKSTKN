@@ -73,7 +73,6 @@ import {
 import { DigitalKtaModal } from './DigitalKtaModal';
 import { KtaScannerModal } from './KtaScannerModal';
 import { MemberKtaQrGeneratorModal } from './MemberKtaQrGeneratorModal';
-import { MembershipCertificateModal } from './MembershipCertificateModal';
 import { BesaranIuranModal } from './BesaranIuranModal';
 import { AppIcon } from './AppIcon';
 
@@ -427,7 +426,6 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
   const [payProofImage, setPayProofImage] = useState<string | null>(null);
   const [payProofFileName, setPayProofFileName] = useState('');
   const [paySuccessMsg, setPaySuccessMsg] = useState(false);
-  const [selectedCertificateMember, setSelectedCertificateMember] = useState<Member | null>(null);
   const [isBesaranIuranModalOpen, setIsBesaranIuranModalOpen] = useState(false);
 
   useEffect(() => {
@@ -1292,10 +1290,10 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                   <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-lg text-amber-950 text-[11px] space-y-1">
                     <p className="font-bold flex items-center gap-1.5 text-amber-900">
                       <Clock className="w-3.5 h-3.5 text-amber-700" />
-                      <span>Alur Pembayaran & Penerbitan Sertifikat:</span>
+                      <span>Alur Pembayaran & Penerbitan KTA Digital:</span>
                     </p>
                     <p>• <strong>Pembayaran:</strong> Pendaftar baru bisa melakukan pembayaran setelah verifikasi dari RT disetujui.</p>
-                    <p>• <strong>Penerbitan Sertifikat & KTA:</strong> Sertifikat bisa terbit setelah disetujui ketua paguyuban.</p>
+                    <p>• <strong>Penerbitan KTA Digital:</strong> KTA digital resmi aktif setelah pembayaran iuran divalidasi dan disetujui ketua paguyuban.</p>
                   </div>
                   {regSuccess.email && (
                     <span className="block mt-1 font-semibold text-emerald-950">
@@ -2442,21 +2440,6 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
           member={selectedQrGeneratorMember}
           settings={settings}
           payments={payments}
-        />
-      )}
-
-      {/* OFFICIAL MEMBERSHIP CERTIFICATE MODAL */}
-      {selectedCertificateMember && (
-        <MembershipCertificateModal
-          isOpen={Boolean(selectedCertificateMember)}
-          onClose={() => setSelectedCertificateMember(null)}
-          member={selectedCertificateMember}
-          payments={payments}
-          settings={settings}
-          onOpenKtaModal={(mem) => {
-            setSelectedCertificateMember(null);
-            setSelectedKtaMember(mem);
-          }}
         />
       )}
 

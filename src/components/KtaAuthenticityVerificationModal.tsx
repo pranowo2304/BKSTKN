@@ -108,7 +108,7 @@ export const KtaAuthenticityVerificationModal: React.FC<KtaAuthenticityVerificat
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
-  const handlePrintVerificationCertificate = () => {
+  const handlePrintVerification = () => {
     window.print();
   };
 
@@ -505,11 +505,11 @@ export const KtaAuthenticityVerificationModal: React.FC<KtaAuthenticityVerificat
 
                 <button
                   type="button"
-                  onClick={handlePrintVerificationCertificate}
+                  onClick={handlePrintVerification}
                   className="px-3.5 py-2 text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white rounded-xl border border-slate-700 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>Cetak Sertifikat</span>
+                  <span>Cetak Lembar Verifikasi</span>
                 </button>
 
                 {onOpenFullKtaModal && (

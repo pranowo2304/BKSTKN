@@ -32,13 +32,11 @@ import {
   Check,
   Lock,
   Eye,
-  Download,
-  Award
+  Download
 } from 'lucide-react';
 import { FamilyCardModal } from './FamilyCardModal';
 import { MemberStatusTimeline } from './MemberStatusTimeline';
 import { MemberKtaQrGeneratorModal } from './MemberKtaQrGeneratorModal';
-import { MembershipCertificateModal } from './MembershipCertificateModal';
 
 interface MemberDetailModalProps {
   member: Member | null;
@@ -51,7 +49,6 @@ interface MemberDetailModalProps {
   onOpenFullKtaModal?: (member: Member) => void;
   onOpenPrintCardModal?: (member: Member) => void;
   onOpenPreviewKtaModal?: (member: Member) => void;
-  onOpenCertificateModal?: (member: Member) => void;
 }
 
 export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
@@ -65,7 +62,6 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
   onOpenFullKtaModal,
   onOpenPrintCardModal,
   onOpenPreviewKtaModal,
-  onOpenCertificateModal,
 }) => {
   if (!member) return null;
 
@@ -74,7 +70,6 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
   const [copiedKta, setCopiedKta] = useState(false);
   const [isKkViewerOpen, setIsKkViewerOpen] = useState(false);
   const [isQrGeneratorModalOpen, setIsQrGeneratorModalOpen] = useState(false);
-  const [isCertModalOpen, setIsCertModalOpen] = useState(false);
 
   const expiry = calculateMemberExpiry(member, payments, new Date(), settings);
   const ktaInfo = getMemberKtaIssuanceInfo(member, payments);
@@ -521,35 +516,6 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                         <span>Cetak Kartu Fisik</span>
                       </button>
                     )}
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (onOpenCertificateModal) {
-                          onClose();
-                          onOpenCertificateModal(member);
-                        } else {
-                          setIsCertModalOpen(true);
-                        }
-                      }}
-                      className={`px-3.5 py-1.5 text-xs font-black rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer ${
-                        ktaInfo.isIssued
-                          ? 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white shadow-amber-950/40 hover:scale-105 active:scale-95'
-                          : 'bg-amber-950/60 text-amber-200 border border-amber-600/40 hover:bg-amber-900/80'
-                      }`}
-                      title={
-                        ktaInfo.isIssued
-                          ? 'Buka & Cetak Sertifikat Keanggotaan Resmi (A4 Landscape)'
-                          : 'Sertifikat bisa terbit setelah disetujui ketua paguyuban'
-                      }
-                    >
-                      {ktaInfo.isIssued ? (
-                        <Award className="w-3.5 h-3.5 text-amber-200" />
-                      ) : (
-                        <Lock className="w-3.5 h-3.5 text-amber-400" />
-                      )}
-                      <span>{ktaInfo.isIssued ? 'Sertifikat Resmi' : 'Sertifikat (Menunggu Ketua Paguyuban)'}</span>
-                    </button>
 
                     {onOpenFullKtaModal && (
                       <button
@@ -1207,17 +1173,6 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
             member={member}
             settings={settings}
             payments={payments}
-          />
-        )}
-
-        {/* MEMBERSHIP CERTIFICATE MODAL */}
-        {isCertModalOpen && member && (
-          <MembershipCertificateModal
-            isOpen={isCertModalOpen}
-            onClose={() => setIsCertModalOpen(false)}
-            member={member}
-            payments={payments}
-            settings={settings}
           />
         )}
 

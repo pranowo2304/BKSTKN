@@ -10,7 +10,6 @@ import { FamilyCardModal } from './FamilyCardModal';
 import { ReceiptModal } from './ReceiptModal';
 import { ContactAdminModal } from './ContactAdminModal';
 import { MemberKtaQrGeneratorModal } from './MemberKtaQrGeneratorModal';
-import { MembershipCertificateModal } from './MembershipCertificateModal';
 import { RoleMobileAppMenu } from './RoleMobileAppMenu';
 import { EditMemberBiodataModal } from './EditMemberBiodataModal';
 import { downloadKtaCardAsImage, KtaCardSide } from '../lib/ktaImageGenerator';
@@ -163,7 +162,6 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
   const [isKtaModalOpen, setIsKtaModalOpen] = useState(false);
   const [isPrintKtaModalOpen, setIsPrintKtaModalOpen] = useState(false);
   const [isQrGeneratorModalOpen, setIsQrGeneratorModalOpen] = useState(false);
-  const [isCertModalOpen, setIsCertModalOpen] = useState(false);
   const [isKkModalOpen, setIsKkModalOpen] = useState(false);
   const [selectedReceiptPayment, setSelectedReceiptPayment] = useState<Payment | null>(null);
   const [isContactAdminOpen, setIsContactAdminOpen] = useState(false);
@@ -825,28 +823,6 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
               >
                 <QrCode className="w-3.5 h-3.5 text-emerald-600" />
                 <span className="hidden sm:inline">QR Code NPA</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsCertModalOpen(true)}
-                className={`py-2 px-3 font-bold text-xs rounded-xl transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95 ${
-                  ktaInfo?.isIssued
-                    ? 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white'
-                    : 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
-                }`}
-                title={
-                  ktaInfo?.isIssued
-                    ? 'Buka & Cetak Sertifikat Keanggotaan Resmi (A4 Landscape)'
-                    : 'Sertifikat bisa terbit setelah disetujui ketua paguyuban'
-                }
-              >
-                {ktaInfo?.isIssued ? (
-                  <Award className="w-3.5 h-3.5 text-amber-200" />
-                ) : (
-                  <Lock className="w-3.5 h-3.5 text-amber-700" />
-                )}
-                <span>{ktaInfo?.isIssued ? 'Sertifikat Resmi' : 'Sertifikat (Menunggu Ketua Paguyuban)'}</span>
               </button>
 
               <button
@@ -1807,18 +1783,6 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
           member={member}
           settings={settings}
           payments={payments}
-        />
-      )}
-
-      {/* Official Membership Certificate Modal */}
-      {isCertModalOpen && member && (
-        <MembershipCertificateModal
-          isOpen={isCertModalOpen}
-          onClose={() => setIsCertModalOpen(false)}
-          member={member}
-          payments={payments}
-          settings={settings}
-          onOpenKtaModal={() => setIsKtaModalOpen(true)}
         />
       )}
 
