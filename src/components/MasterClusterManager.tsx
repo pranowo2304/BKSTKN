@@ -18,7 +18,9 @@ import {
   ToggleLeft,
   ToggleRight,
   CheckCircle2,
+  MessageCircle,
 } from 'lucide-react';
+import { cleanPhoneNumberForWhatsApp, formatPhoneDisplay } from '../lib/receiptUtils';
 
 interface MasterClusterManagerProps {
   clusters: ClusterMaster[];
@@ -238,11 +240,27 @@ export const MasterClusterManager: React.FC<MasterClusterManagerProps> = ({
                 </label>
                 <input
                   type="text"
-                  placeholder="Contoh: 081234567890"
+                  placeholder="Contoh: 081234567890 atau 6281234567890"
                   value={formData.leaderPhone || ''}
                   onChange={(e) => setFormData({ ...formData, leaderPhone: e.target.value })}
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-mono"
                 />
+                {(() => {
+                  const clean = cleanPhoneNumberForWhatsApp(formData.leaderPhone);
+                  if (clean) {
+                    return (
+                      <div className="mt-1 text-[11px] text-emerald-700 font-medium flex items-center justify-between">
+                        <span>Format WA: <strong>{formatPhoneDisplay(clean)}</strong></span>
+                        <span className="text-slate-400 font-mono text-[10px]">wa.me/{clean}</span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      💡 Format: <strong>0812xxxx</strong> (otomatis dikonversi ke kode 62 saat chat) atau <strong>62812xxxx</strong>.
+                    </p>
+                  );
+                })()}
               </div>
 
               <div>
@@ -380,11 +398,25 @@ export const MasterClusterManager: React.FC<MasterClusterManagerProps> = ({
                     </span>
                   </div>
                   {cluster.leaderPhone && (
-                    <div className="flex items-center gap-2">
-                      <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span className="font-mono text-[11px] text-emerald-700 font-semibold">
-                        {cluster.leaderPhone}
-                      </span>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span className="font-mono text-[11px] text-emerald-700 font-semibold">
+                          {cluster.leaderPhone}
+                        </span>
+                      </div>
+                      {cleanPhoneNumberForWhatsApp(cluster.leaderPhone) && (
+                        <a
+                          href={`https://wa.me/${cleanPhoneNumberForWhatsApp(cluster.leaderPhone)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-1.5 py-0.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded text-[9px] font-bold inline-flex items-center gap-0.5 transition-colors"
+                          title="Tes WhatsApp Ketua RT"
+                        >
+                          <MessageCircle className="w-2.5 h-2.5 text-emerald-700" />
+                          <span>Tes WA</span>
+                        </a>
+                      )}
                     </div>
                   )}
                   {cluster.leaderEmail && (

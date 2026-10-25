@@ -47,6 +47,7 @@ import {
 } from 'lucide-react';
 import { GranularAccessControl } from './GranularAccessControl';
 import { RolePermissionsMap } from '../lib/permissions';
+import { cleanPhoneNumberForWhatsApp, formatPhoneDisplay } from '../lib/receiptUtils';
 
 export interface ModulePermissionDef {
   id: string;
@@ -329,6 +330,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'users' | 'matrix' | 'granular'>('users');
   const [copiedInfo, setCopiedInfo] = useState<string | null>(null);
+  const [showPhoneFormatGuide, setShowPhoneFormatGuide] = useState(false);
+  const [showEditPhoneFormatGuide, setShowEditPhoneFormatGuide] = useState(false);
 
   const handleCopyText = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -930,19 +933,136 @@ export const UserManagement: React.FC<UserManagementProps> = ({
 
               {/* 6. No. WhatsApp / Telepon */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  No. Telepon / WhatsApp (Opsional)
-                </label>
+                <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-slate-500" />
+                    <span>No. WhatsApp / Telepon</span>
+                    <span className="text-slate-400 font-normal text-[11px]">(Opsional)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowPhoneFormatGuide(!showPhoneFormatGuide)}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer bg-indigo-50 hover:bg-indigo-100 px-2.5 py-0.5 rounded-full border border-indigo-200"
+                    title="Klik untuk melihat panduan format nomor WhatsApp"
+                  >
+                    <HelpCircle className="w-3 h-3 text-indigo-600" />
+                    <span>Panduan Format WA</span>
+                  </button>
+                </div>
+
+                {/* Panduan Format Tooltip Card */}
+                {showPhoneFormatGuide && (
+                  <div className="mb-2.5 p-3.5 bg-gradient-to-br from-indigo-50/95 via-sky-50/90 to-emerald-50/80 border border-indigo-200 rounded-2xl text-xs text-slate-700 space-y-2.5 animate-in fade-in duration-200 shadow-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-indigo-950 font-black text-xs">
+                        <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>Panduan Format Nomor WhatsApp di Master Pengguna</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowPhoneFormatGuide(false)}
+                        className="text-slate-400 hover:text-slate-700 p-0.5 rounded-md transition-colors"
+                        title="Tutup Panduan"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      Nomor ini langsung disinkronkan ke tombol <strong>Chat WhatsApp Ketua RT</strong> di halaman publik, kontak <strong>Bendahara</strong>, dan gateway pesan. Sistem mendukung kedua format berikut:
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                      <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-1 shadow-2xs">
+                        <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                          <span>Format Awalan 0 (Lokal Indonesia)</span>
+                        </div>
+                        <code className="text-[11px] text-emerald-800 font-mono font-bold block bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                          0812-3456-7890
+                        </code>
+                        <p className="text-[10px] text-slate-500 leading-normal">
+                          Sangat mudah diinput. Sistem otomatis mengubah awalan 0 menjadi kode negara 62 (<code className="font-mono text-emerald-700">62812...</code>) saat warga mengeklik tombol WhatsApp.
+                        </p>
+                      </div>
+
+                      <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-1 shadow-2xs">
+                        <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" />
+                          <span>Format Awalan 62 / +62 (Internasional)</span>
+                        </div>
+                        <code className="text-[11px] text-indigo-800 font-mono font-bold block bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                          6281234567890 atau +62812...
+                        </code>
+                        <p className="text-[10px] text-slate-500 leading-normal">
+                          Format standar internasional resmi WhatsApp API. Langsung aktif tanpa perlu konversi tambahan.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-2 bg-white/70 rounded-xl border border-indigo-100 flex items-center gap-2 text-[10px] text-slate-600">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <span>Karakter tanda hubung (-) atau spasi akan dibersihkan otomatis oleh sistem saat membuka tautan WhatsApp.</span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="relative">
                   <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="0812-xxxx-xxxx"
+                    placeholder="Contoh: 0812-3456-7890 atau 6281234567890"
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none"
                   />
                 </div>
+
+                {/* Live Format Feedback & Tester */}
+                {(() => {
+                  const clean = cleanPhoneNumberForWhatsApp(phone);
+                  if (!phone.trim()) {
+                    return (
+                      <p className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1">
+                        <Info className="w-3 h-3 text-slate-400 shrink-0" />
+                        <span>Contoh: <strong>081234567890</strong> atau <strong>6281234567890</strong> (Tersinkron ke tautan WA Ketua RT / Bendahara)</span>
+                      </p>
+                    );
+                  }
+                  if (clean) {
+                    return (
+                      <div className="mt-1.5 p-2 px-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <div className="truncate">
+                            <span className="text-[11px] text-emerald-900 font-bold block">
+                              Format WhatsApp Valid: <strong className="font-mono text-emerald-950">{formatPhoneDisplay(clean)}</strong>
+                            </span>
+                            <span className="text-[10px] text-emerald-700 font-mono">
+                              Tautan resmi: wa.me/{clean}
+                            </span>
+                          </div>
+                        </div>
+                        <a
+                          href={`https://wa.me/${clean}?text=${encodeURIComponent('Halo, ini uji coba tautan WhatsApp dari Paguyuban Dana Kematian.')}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] rounded-lg shrink-0 inline-flex items-center gap-1 transition-all shadow-xs"
+                          title="Klik untuk menguji membuka obrolan WhatsApp dengan nomor ini"
+                        >
+                          <MessageCircle className="w-3 h-3" />
+                          <span>Tes WA</span>
+                        </a>
+                      </div>
+                    );
+                  }
+                  return (
+                    <p className="text-[11px] text-amber-700 mt-1.5 p-1.5 px-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>Nomor belum lengkap (minimal 9 digit). Masukkan nomor telepon WhatsApp dengan benar.</span>
+                    </p>
+                  );
+                })()}
               </div>
 
               {/* 7. Status Pengguna */}
@@ -1190,8 +1310,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                 filteredUsers.map((user) => {
                   const isActive = !!(activeUser && user.id === activeUser.id);
                   const matchedCluster = clusters.find((c) => c.name === user.cluster);
-                  const cleanPhone = user.phone ? user.phone.replace(/[^0-9]/g, '') : '';
-                  const waNumber = cleanPhone.startsWith('0') ? '62' + cleanPhone.slice(1) : cleanPhone;
+                  const waNumber = cleanPhoneNumberForWhatsApp(user.phone);
 
                   return (
                     <div
@@ -1473,7 +1592,23 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                                 <Copy className="w-3 h-3" />
                               </button>
                             </div>
-                            {user.phone && <p className="text-slate-400 text-[11px]">{user.phone}</p>}
+                            {user.phone && (
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-slate-500 text-[11px] font-mono">{user.phone}</span>
+                                {cleanPhoneNumberForWhatsApp(user.phone) && (
+                                  <a
+                                    href={`https://wa.me/${cleanPhoneNumberForWhatsApp(user.phone)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded text-[9px] font-bold inline-flex items-center gap-0.5 transition-all cursor-pointer"
+                                    title={`Chat WhatsApp ${user.name}`}
+                                  >
+                                    <MessageCircle className="w-2.5 h-2.5 text-emerald-600" />
+                                    <span>WA</span>
+                                  </a>
+                                )}
+                              </div>
+                            )}
                           </td>
 
                           {/* Otoritas */}
@@ -2106,15 +2241,130 @@ export const UserManagement: React.FC<UserManagementProps> = ({
 
               {/* Phone */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  No. Telepon / WhatsApp
-                </label>
-                <input
-                  type="text"
-                  value={editPhone}
-                  onChange={(e) => setEditPhone(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none"
-                />
+                <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
+                  <label className="font-bold text-slate-700 flex items-center gap-1.5 text-xs">
+                    <Phone className="w-3.5 h-3.5 text-slate-500" />
+                    <span>No. WhatsApp / Telepon</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPhoneFormatGuide(!showEditPhoneFormatGuide)}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-full border border-indigo-200"
+                    title="Klik untuk melihat panduan format nomor WhatsApp"
+                  >
+                    <HelpCircle className="w-3 h-3 text-indigo-600" />
+                    <span>Panduan Format WA</span>
+                  </button>
+                </div>
+
+                {/* Panduan Format Tooltip Card */}
+                {showEditPhoneFormatGuide && (
+                  <div className="mb-2 p-3 bg-gradient-to-br from-indigo-50/95 via-sky-50/90 to-emerald-50/80 border border-indigo-200 rounded-2xl text-xs text-slate-700 space-y-2 animate-in fade-in duration-200 shadow-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-indigo-950 font-black text-xs">
+                        <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>Format WhatsApp yang Didukung</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowEditPhoneFormatGuide(false)}
+                        className="text-slate-400 hover:text-slate-700 p-0.5 rounded-md transition-colors"
+                        title="Tutup Panduan"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      Nomor ini otomatis disinkronkan ke <strong>Chat WhatsApp Ketua RT</strong> di halaman publik & pengurus:
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                      <div className="p-2 bg-white rounded-xl border border-slate-200 space-y-0.5 shadow-2xs">
+                        <div className="font-bold text-slate-900 flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                          <span>Format Awalan 0 (Lokal)</span>
+                        </div>
+                        <code className="text-[11px] text-emerald-800 font-mono font-bold block bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          0812-3456-7890
+                        </code>
+                        <span className="text-[10px] text-slate-500 block">
+                          Otomatis diubah menjadi 62812... saat tautan WhatsApp dibuka warga.
+                        </span>
+                      </div>
+
+                      <div className="p-2 bg-white rounded-xl border border-slate-200 space-y-0.5 shadow-2xs">
+                        <div className="font-bold text-slate-900 flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" />
+                          <span>Format 62 / +62 (Internasional)</span>
+                        </div>
+                        <code className="text-[11px] text-indigo-800 font-mono font-bold block bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                          6281234567890 / +62 812...
+                        </code>
+                        <span className="text-[10px] text-slate-500 block">
+                          Format resmi WhatsApp, langsung tersambung secara instan.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="relative">
+                  <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    placeholder="Contoh: 0812-3456-7890 atau 6281234567890"
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-xs"
+                  />
+                </div>
+
+                {/* Live Preview & Tester */}
+                {(() => {
+                  const clean = cleanPhoneNumberForWhatsApp(editPhone);
+                  if (!editPhone.trim()) {
+                    return (
+                      <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
+                        <Info className="w-3 h-3 text-slate-400 shrink-0" />
+                        <span>Contoh: <strong>081234567890</strong> atau <strong>6281234567890</strong> (Tersinkron ke tautan WA)</span>
+                      </p>
+                    );
+                  }
+                  if (clean) {
+                    return (
+                      <div className="mt-1.5 p-2 px-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <div className="truncate">
+                            <span className="text-[11px] text-emerald-900 font-bold block">
+                              WhatsApp Valid: <strong className="font-mono text-emerald-950">{formatPhoneDisplay(clean)}</strong>
+                            </span>
+                            <span className="text-[10px] text-emerald-700 font-mono">
+                              wa.me/{clean}
+                            </span>
+                          </div>
+                        </div>
+                        <a
+                          href={`https://wa.me/${clean}?text=${encodeURIComponent('Halo, ini uji coba tautan WhatsApp dari Paguyuban Dana Kematian.')}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] rounded-lg shrink-0 inline-flex items-center gap-1 transition-all shadow-xs"
+                          title="Klik untuk menguji membuka obrolan WhatsApp dengan nomor ini"
+                        >
+                          <MessageCircle className="w-3 h-3" />
+                          <span>Tes WA</span>
+                        </a>
+                      </div>
+                    );
+                  }
+                  return (
+                    <p className="text-[11px] text-amber-700 mt-1 p-1.5 px-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>Nomor belum lengkap (minimal 9 digit). Masukkan nomor ponsel WhatsApp yang benar.</span>
+                    </p>
+                  );
+                })()}
               </div>
 
               {/* Status */}

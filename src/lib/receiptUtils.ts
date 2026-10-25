@@ -5,10 +5,15 @@ import { terbilang } from './terbilang';
 /**
  * Normalizes an Indonesian phone number to international WhatsApp format (e.g., 6281234567890).
  */
-export const cleanPhoneNumberForWhatsApp = (phone: string): string => {
+export const cleanPhoneNumberForWhatsApp = (phone?: string | null): string => {
   if (!phone) return '';
-  const digits = phone.replace(/[^0-9]/g, '');
-  if (!digits) return '';
+  let digits = phone.replace(/[^0-9]/g, '');
+  if (!digits || digits.length < 8) return '';
+
+  // Handle accidental +6208xxx -> 628xxx
+  if (digits.startsWith('620')) {
+    digits = '62' + digits.substring(3);
+  }
 
   if (digits.startsWith('0')) {
     return '62' + digits.substring(1);
@@ -19,7 +24,7 @@ export const cleanPhoneNumberForWhatsApp = (phone: string): string => {
   if (digits.startsWith('62')) {
     return digits;
   }
-  return '62' + digits;
+  return digits;
 };
 
 /**

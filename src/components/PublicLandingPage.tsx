@@ -16,7 +16,7 @@ import { formatIDR, getRtUserForCluster } from '../lib/storage';
 import { calculateMemberExpiry } from '../lib/expiryUtils';
 import { getMemberKtaIssuanceInfo } from '../lib/ktaUtils';
 import { checkDuplicateMember, findDuplicateNikMember, findDuplicateKkMember } from '../lib/duplicateValidator';
-import { getSystemConfiguredPeriod } from '../lib/receiptUtils';
+import { getSystemConfiguredPeriod, cleanPhoneNumberForWhatsApp } from '../lib/receiptUtils';
 import { FamilyCardUploader } from './FamilyCardUploader';
 import {
   HeartHandshake,
@@ -2060,7 +2060,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
             const bendaharaUser = users.find((u) => u.authority === 'Bendahara');
             const treasurerName = bendaharaUser?.name?.trim() || settings?.treasurerName || 'Bendahara Paguyuban';
             const treasurerPhone = bendaharaUser?.phone?.trim() || settings?.treasurerPhone || '';
-            const cleanTreasurerPhone = treasurerPhone.replace(/[^0-9]/g, '');
+            const cleanTreasurerPhone = cleanPhoneNumberForWhatsApp(treasurerPhone);
 
             return (
               <div className="p-4 bg-emerald-900 text-white rounded-2xl border border-emerald-800 flex flex-col justify-between gap-3 shadow-md">
@@ -2098,6 +2098,8 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
           {(() => {
             const ketua = users.find((u) => u.authority === 'Ketua Paguyuban');
             if (!ketua) return null;
+            const cleanKetuaPhone = cleanPhoneNumberForWhatsApp(ketua.phone);
+
             return (
               <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 flex flex-col justify-between gap-3 shadow-md">
                 <div>
@@ -2111,9 +2113,9 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                   <p className="text-xs text-slate-300 mt-1">Pimpinan Paguyuban & Pengesahan Santunan Warga</p>
                 </div>
 
-                {ketua.phone ? (
+                {cleanKetuaPhone ? (
                   <a
-                    href={`https://wa.me/${ketua.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                    href={`https://wa.me/${cleanKetuaPhone}?text=${encodeURIComponent(
                       'Halo Ketua Paguyuban, saya warga ingin menanyakan perihal paguyuban Dana Kematian.'
                     )}`}
                     target="_blank"
@@ -2135,7 +2137,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
             const rtUser = getRtUserForCluster(cluster, users);
             const leaderName = rtUser?.name?.trim() || cluster.leaderName || 'Belum diisi';
             const leaderPhone = rtUser?.phone?.trim() || cluster.leaderPhone || '';
-            const cleanPhone = leaderPhone.replace(/[^0-9]/g, '');
+            const cleanPhone = cleanPhoneNumberForWhatsApp(leaderPhone);
 
             return (
               <div
