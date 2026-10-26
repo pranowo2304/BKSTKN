@@ -713,10 +713,23 @@ export const saveSettings = (settings: SystemSettings) => {
 
 export const getBaseBalance = (): number => {
   try {
+    const isCleared = localStorage.getItem(KEYS.DEMO_CLEARED) === 'true';
+    const isTxCleared = localStorage.getItem('dana_kematian_tx_cleared_v1') === 'true';
+    if (isCleared || isTxCleared) {
+      return 0;
+    }
     const val = localStorage.getItem(KEYS.BASE_BALANCE);
     return val !== null ? parseFloat(val) : INITIAL_BASE_FUND_BALANCE;
   } catch (e) {
     return INITIAL_BASE_FUND_BALANCE;
+  }
+};
+
+export const saveBaseBalance = (balance: number) => {
+  try {
+    localStorage.setItem(KEYS.BASE_BALANCE, balance.toString());
+  } catch (e) {
+    console.error('Error saving base balance:', e);
   }
 };
 

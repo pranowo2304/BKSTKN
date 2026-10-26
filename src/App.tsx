@@ -33,6 +33,8 @@ import {
   saveStoredNotifications,
   formatIDR,
   calculateCurrentBalance,
+  getBaseBalance,
+  saveBaseBalance,
   resetToDefaultData,
   clearTransactionsLocally,
   clearAllDemoDataLocally,
@@ -59,6 +61,7 @@ import {
   syncBenefitToCloud,
   deleteBenefitFromCloud,
   syncBenefitsBatchToCloud,
+  syncBaseFundBalanceToCloud,
   clearTransactionsFromCloud,
   clearAllDemoDataFromCloud,
   clearAllClaimsFromCloud,
@@ -109,6 +112,7 @@ export default function App() {
   const [clusters, setClusters] = useState<ClusterMaster[]>([]);
   const [benefits, setBenefits] = useState<BenefitMaster[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [baseFundBalance, setBaseFundBalance] = useState<number>(() => getBaseBalance());
   const [activeUser, setActiveUser] = useState<AppUser | null>(null);
   const [cloudStatus, setCloudStatus] = useState<'connected' | 'connecting' | 'offline' | 'error'>('connecting');
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
@@ -150,6 +154,7 @@ export default function App() {
     const initialCl = getStoredClusters();
     const initialB = getStoredBenefits();
     const initialN = getStoredNotifications();
+    const initialBase = getBaseBalance();
     const storedActive = getStoredActiveUser();
 
     setMembers(initialM);
@@ -160,6 +165,7 @@ export default function App() {
     setClusters(initialCl);
     setBenefits(initialB);
     setNotifications(initialN);
+    setBaseFundBalance(initialBase);
     // Validate stored active user against Master Users list
     let validActiveUser: AppUser | null = null;
     if (storedActive) {
@@ -347,6 +353,13 @@ export default function App() {
             }
             setIsInitialLoading(false);
           },
+          onFinancialsChange: (cloudBaseBalance) => {
+            if (typeof cloudBaseBalance === 'number') {
+              setBaseFundBalance(cloudBaseBalance);
+              saveBaseBalance(cloudBaseBalance);
+            }
+            setIsInitialLoading(false);
+          },
           onStatusChange: (status) => {
             setCloudStatus(status);
             if (status === 'connected') {
@@ -387,7 +400,7 @@ export default function App() {
   const userRtCluster = activeUser?.cluster;
   const isAdminRole = activeUser ? activeUser.authority === 'Admin' : isAdmin;
 
-  const financials = calculateCurrentBalance(undefined, payments, claims);
+  const financials = calculateCurrentBalance(baseFundBalance, payments, claims);
   const pendingCount = payments.filter((p) => p.status === 'Pending').length;
   
   const pendingRtVerificationCount = members.filter((m) => {
@@ -1546,6 +1559,8 @@ export default function App() {
       clearTransactionsLocally();
       setPayments([]);
       setClaims([]);
+      setBaseFundBalance(0);
+      saveBaseBalance(0);
 
       // Hapus data transaksi dari Cloud Firestore
       await clearTransactionsFromCloud();
@@ -1571,6 +1586,8 @@ export default function App() {
       setPayments([]);
       setClaims([]);
       setNotifications([]);
+      setBaseFundBalance(0);
+      saveBaseBalance(0);
       const adminUsers = initialUsers.filter((u) => u.authority !== 'Anggota');
       setUsers(adminUsers);
       const defaultAdmin = adminUsers[0] || initialUsers[0];
@@ -1608,6 +1625,7 @@ export default function App() {
       const initialU = getStoredUsers();
       const initialCl = getStoredClusters();
       const initialN = getStoredNotifications();
+      const initialBase = getBaseBalance();
 
       setMembers(initialM);
       setPayments(initialP);
@@ -1616,6 +1634,8 @@ export default function App() {
       setUsers(initialU);
       setClusters(initialCl);
       setNotifications(initialN);
+      setBaseFundBalance(initialBase);
+      saveBaseBalance(initialBase);
       setActiveUser(initialUsers[0]);
       setIsAdmin(true);
 

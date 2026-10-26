@@ -272,6 +272,7 @@ export function subscribeToFirestore(callbacks: {
   onUsersChange?: (users: AppUser[]) => void;
   onClustersChange?: (clusters: ClusterMaster[]) => void;
   onBenefitsChange?: (benefits: BenefitMaster[]) => void;
+  onFinancialsChange?: (baseFundBalance: number) => void;
   onStatusChange?: (status: 'connected' | 'connecting' | 'offline' | 'error', errorMsg?: string) => void;
 }): () => void {
   callbacks.onStatusChange?.('connecting');
@@ -400,6 +401,28 @@ export function subscribeToFirestore(callbacks: {
       (err) => handleListenerError(err, COLLECTIONS.BENEFITS)
     );
     unsubscribers.push(unsubBenefits);
+
+    // 8. Meta / Financials (Base Fund Balance) subscription
+    const unsubFinancials = onSnapshot(
+      doc(db, COLLECTIONS.META, 'financials'),
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const baseBalance = typeof data?.baseFundBalance === 'number' ? data.baseFundBalance : 0;
+          callbacks.onFinancialsChange?.(baseBalance);
+        } else {
+          // Check init_status if transactions were cleared
+          getDoc(doc(db, COLLECTIONS.META, 'init_status')).then((initSnap) => {
+            if (initSnap && initSnap.exists() && (initSnap.data()?.transactionsCleared || initSnap.data()?.isCleared)) {
+              callbacks.onFinancialsChange?.(0);
+            }
+          }).catch(() => {});
+        }
+        callbacks.onStatusChange?.('connected');
+      },
+      (err) => handleListenerError(err, `${COLLECTIONS.META}/financials`)
+    );
+    unsubscribers.push(unsubFinancials);
   } catch (e: any) {
     console.error('Failed to set up Firestore subscriptions:', e);
     callbacks.onStatusChange?.('error', e.message);
@@ -408,6 +431,15 @@ export function subscribeToFirestore(callbacks: {
   return () => {
     unsubscribers.forEach((unsub) => unsub());
   };
+}
+
+export async function syncBaseFundBalanceToCloud(balance: number): Promise<void> {
+  const metaRef = doc(db, COLLECTIONS.META, 'financials');
+  try {
+    await setDoc(metaRef, { baseFundBalance: balance }, { merge: true });
+  } catch (error: any) {
+    console.warn('Firestore syncBaseFundBalanceToCloud notice:', error?.message);
+  }
 }
 
 /**
