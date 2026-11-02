@@ -1282,7 +1282,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               )}
 
               {/* 5. DATA WARGA & TANGGUNGAN */}
-              {(isBendaharaOrAdmin || authority === 'Ketua RT (Cluster)' || authority === 'Ketua RW') && (
+              {(isBendaharaOrAdmin || authority === 'Ketua RW') && (
                 <button
                   type="button"
                   onClick={() => setCurrentTab('registration')}
