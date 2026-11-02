@@ -481,9 +481,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="flex items-center gap-1.5 sm:gap-2 bg-slate-800/90 border border-slate-700/80 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl shadow-inner text-xs"
             title={
               cloudStatus === 'connected'
-                ? 'Cloud Firestore Database terhubung aktif & tersinkronisasi real-time'
+                ? 'Database terhubung aktif & tersinkronisasi real-time'
                 : cloudStatus === 'connecting'
-                ? 'Sedang menghubungkan ke Cloud Firestore...'
+                ? 'Sedang menghubungkan ke Database...'
                 : 'Penyimpanan lokal aktif'
             }
           >
@@ -496,8 +496,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="leading-tight">
                   <p className="text-[8px] sm:text-[9px] text-slate-400 uppercase tracking-wider font-semibold hidden xs:block">Cloud DB</p>
                   <p className="text-[10px] sm:text-[11px] font-bold text-emerald-300 flex items-center gap-1">
-                    <span>Firestore</span>
-                    <span className="hidden sm:inline">Realtime</span>
+                    <span>Realtime</span>
                   </p>
                 </div>
               </>
@@ -1144,7 +1143,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       </div>
 
       {/* 🧭 HORIZONTAL NAVIGATION BAR (MODUL OPERASIONAL UNTUK PENGURUS/ADMIN/BENDAHARA/STAF/DRIVER) */}
-      {activeUser && (isBendaharaOrAdmin || authority === 'Ketua RT (Cluster)' || authority === 'Ketua RW' || authority === 'Ketua DKM' || authority === 'Ketua Paguyuban' || authority === 'Petugas Staf' || authority === 'Driver') && (
+      {activeUser && (isBendaharaOrAdmin || (authority !== 'Ketua RT (Cluster)' && (authority === 'Ketua RW' || authority === 'Ketua DKM' || authority === 'Ketua Paguyuban' || authority === 'Petugas Staf' || authority === 'Driver'))) && (
         <div className="bg-slate-950/80 border-t border-slate-800/80 backdrop-blur-md">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-start gap-2 overflow-x-auto scrollbar-none py-1.5">
             <nav className="flex items-center gap-1 sm:gap-1.5 shrink-0" aria-label="Navigasi Menu Bar">
