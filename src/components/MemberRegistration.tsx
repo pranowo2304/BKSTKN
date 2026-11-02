@@ -125,7 +125,16 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
   const userCluster = (activeUser?.cluster as ClusterType) || 'Cluster Sanur';
 
   // Active view: 'form' for dedicated full-page form, 'directory' for table
-  const [activeView, setActiveView] = useState<'form' | 'directory'>(() => initialMode || 'form');
+  const [activeView, setActiveView] = useState<'form' | 'directory'>(() => {
+    if (isKetuaRt) return 'directory';
+    return initialMode || 'directory';
+  });
+
+  useEffect(() => {
+    if (initialMode) {
+      setActiveView(isKetuaRt ? 'directory' : initialMode);
+    }
+  }, [initialMode, isKetuaRt]);
   const [submittedMember, setSubmittedMember] = useState<Member | null>(null);
   const [showForm, setShowForm] = useState(true);
 
@@ -473,8 +482,11 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
 
   // BASE ACCESSIBLE MEMBERS: Ketua RT can strictly only see data belonging to their RT cluster
   const accessibleMembers = React.useMemo(() => {
-    if (isKetuaRt && userRtCluster) {
-      return members.filter((m) => m.cluster === userRtCluster);
+    if (isKetuaRt) {
+      const targetCluster = (userRtCluster || '').trim().toLowerCase();
+      if (targetCluster) {
+        return members.filter((m) => (m.cluster || '').trim().toLowerCase() === targetCluster);
+      }
     }
     return members;
   }, [members, isKetuaRt, userRtCluster]);
@@ -1111,7 +1123,11 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
               ) : (
                 <>
                   <Users className="w-6 h-6 text-emerald-600" />
-                  <span>Direktori & Data Anggota Paguyuban</span>
+                  <span>
+                    {isKetuaRt && userRtCluster 
+                      ? `Data Warga Anggota (${userRtCluster})` 
+                      : 'Direktori & Data Anggota Paguyuban'}
+                  </span>
                 </>
               )}
             </h2>
@@ -1125,7 +1141,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
             {activeView === 'form'
               ? 'Lengkapi biodata calon anggota dan susunan tanggungan keluarga untuk mendapatkan jaminan santunan kematian paguyuban.'
               : isKetuaRt && userRtCluster 
-              ? `Menampilkan data warga terdaftar khusus lingkungan RT ${userRtCluster}.`
+              ? `Daftar seluruh warga di lingkungan RT ${userRtCluster} yang telah terdaftar menjadi anggota paguyuban.`
               : 'Kelola direktori warga terdaftar, verifikasi KTA, dan status keanggotaan.'}
           </p>
         </div>
@@ -1149,6 +1165,18 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
             <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200 shadow-2xs">
               <button
                 type="button"
+                onClick={() => setActiveView('directory')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  activeView === 'directory'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>{isKetuaRt ? `Data Warga RT (${accessibleMembers.length})` : `Direktori Warga (${accessibleMembers.length})`}</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   setActiveView('form');
                   setSubmittedMember(null);
@@ -1162,18 +1190,6 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
               >
                 <UserPlus className="w-3.5 h-3.5" />
                 <span>Form Pendaftaran</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveView('directory')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  activeView === 'directory'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span>Direktori Warga ({accessibleMembers.length})</span>
               </button>
             </div>
           )}
@@ -2177,7 +2193,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
         <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100 gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold text-slate-700">
-              Menampilkan <span className="font-bold text-emerald-700">{filteredMembers.length}</span> dari {members.length} Anggota
+              Menampilkan <span className="font-bold text-emerald-700">{filteredMembers.length}</span> dari {isKetuaRt ? accessibleMembers.length : members.length} Anggota {isKetuaRt && userRtCluster ? `(${userRtCluster})` : ''}
             </span>
             {statusFilter === 'Aktif' && (
               <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-900 font-extrabold text-[10px] rounded-full border border-emerald-300 inline-flex items-center gap-1">

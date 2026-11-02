@@ -179,9 +179,9 @@ export const PersistentRoleFloatingDock: React.FC<PersistentRoleFloatingDockProp
         onClick: () => setCurrentTab('realization'),
       },
       {
-        id: 'dock-registration',
-        label: 'Tambah Warga',
-        icon: UserPlus,
+        id: 'dock-warga-rt',
+        label: 'Data Warga',
+        icon: Users,
         isActive: currentTab === 'registration',
         onClick: () => setCurrentTab('registration'),
       },

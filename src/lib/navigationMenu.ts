@@ -183,7 +183,7 @@ export function getAllNavigationActionsForUser(params: NavigationActionParams): 
     let subLabel = 'Database KK & Anggota';
     if (authority === 'Ketua RT (Cluster)') {
       label = 'Data Warga Cluster';
-      subLabel = 'Kelola Warga & Tambah KK';
+      subLabel = 'Daftar Anggota Wilayah RT';
     } else if (authority === 'Anggota') {
       label = 'Data Diri & Keluarga';
       subLabel = 'Profil & Daftar Tanggungan';
@@ -198,6 +198,8 @@ export function getAllNavigationActionsForUser(params: NavigationActionParams): 
       subLabel = 'Kelola Semua Data Anggota';
     }
 
+    const isKetuaRt = authority === 'Ketua RT (Cluster)';
+
     actions.push({
       id: 'registration',
       label,
@@ -206,7 +208,16 @@ export function getAllNavigationActionsForUser(params: NavigationActionParams): 
       badgeColor: 'sky',
       gradient: 'from-cyan-600 to-blue-600',
       icon: Users,
-      onClick: () => setCurrentTab('registration'),
+      onClick: () => {
+        if (isKetuaRt && currentTab === 'dashboard') {
+          const el = document.getElementById('rt-member-table-section');
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth' });
+            return;
+          }
+        }
+        setCurrentTab('registration');
+      },
     });
   }
 

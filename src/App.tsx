@@ -2517,7 +2517,7 @@ export default function App() {
             benefits={benefits}
             users={users}
             activeUser={activeUser}
-            initialMode="form"
+            initialMode="directory"
             onAddMember={handleAddMember}
             onUpdateMember={handleUpdateMember}
             onImportBatchMembers={handleImportBatchMembers}
