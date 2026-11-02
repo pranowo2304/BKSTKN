@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserAuthority, USER_AUTHORITIES } from '../types';
+import { UserAuthority, USER_AUTHORITIES, AppUser } from '../types';
 
 export type PermissionKey =
   // Laporan & Rekapitulasi (Reports)
@@ -375,6 +375,46 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissionsMap = {
     configure_settings: false,
     switch_simulation: false,
   },
+  'Petugas Staf': {
+    view_reports: true,
+    export_reports: true,
+    view_audit_logs: true,
+    approve_payments: false,
+    reject_payments: false,
+    record_payments: false,
+    issue_receipts: false,
+    process_claims: false,
+    view_claims: true,
+    register_members: false,
+    verify_rt_members: false,
+    approve_paguyuban: false,
+    manage_dependents: false,
+    view_member_directory: true,
+    manage_users: false,
+    configure_authority: false,
+    configure_settings: false,
+    switch_simulation: true,
+  },
+  Driver: {
+    view_reports: false,
+    export_reports: false,
+    view_audit_logs: false,
+    approve_payments: false,
+    reject_payments: false,
+    record_payments: false,
+    issue_receipts: false,
+    process_claims: false,
+    view_claims: false,
+    register_members: false,
+    verify_rt_members: false,
+    approve_paguyuban: false,
+    manage_dependents: false,
+    view_member_directory: true,
+    manage_users: false,
+    configure_authority: false,
+    configure_settings: false,
+    switch_simulation: true,
+  },
 };
 
 const STORAGE_KEY = 'dana_kematian_granular_permissions_v2';
@@ -484,6 +524,49 @@ export const hasPermission = (
   return !!perms[effectiveRole]?.[permKey];
 };
 
+/**
+ * Memeriksa apakah pengguna/otoritas memiliki hak akses ke modul Inventaris Duka.
+ * Aturan Kebijakan: Inventaris Duka HANYA dapat diakses oleh Admin, Bendahara, Ketua (Ketua Paguyuban & Ketua RW), dan DKM (Ketua DKM).
+ */
+export const isAuthorizedForFuneralInventory = (
+  authorityOrUser?: AppUser | UserAuthority | string | null
+): boolean => {
+  if (!authorityOrUser) return false;
+  const authority: string =
+    typeof authorityOrUser === 'string'
+      ? authorityOrUser
+      : (authorityOrUser as AppUser).authority;
+  if (!authority) return false;
+
+  const normalized = authority.toLowerCase().trim();
+
+  // 1. Admin
+  if (normalized === 'admin' || normalized.includes('admin')) {
+    return true;
+  }
+
+  // 2. Bendahara
+  if (normalized === 'bendahara' || normalized.includes('bendahara')) {
+    return true;
+  }
+
+  // 3. DKM (Ketua DKM Masjid)
+  if (normalized === 'ketua dkm' || normalized.includes('dkm')) {
+    return true;
+  }
+
+  // 4. Ketua (Ketua Paguyuban dan Ketua RW, selain RT)
+  if (
+    normalized === 'ketua paguyuban' ||
+    normalized === 'ketua rw' ||
+    (normalized.includes('ketua') && !normalized.includes('rt'))
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
 export const getPermittedTabsForRole = (
   role: UserAuthority | string | undefined,
   permsMap?: RolePermissionsMap
@@ -554,6 +637,15 @@ export const getPermittedTabsForRole = (
   // Pengaturan Kas & Sistem
   if (rolePerms.configure_settings) {
     tabs.push('settings');
+  }
+
+  // Layanan Ambulans Siaga & Jadwal Pemakaman
+  tabs.push('ambulance');
+  tabs.push('funeral-schedule');
+
+  // Modul Inventaris Duka & Logistik Operasional (HANYA Admin, Bendahara, Ketua, dan DKM)
+  if (isAuthorizedForFuneralInventory(effectiveRole)) {
+    tabs.push('inventory');
   }
 
   return tabs;

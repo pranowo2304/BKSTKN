@@ -97,7 +97,7 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
   onApproveClaim,
   onRejectClaim,
 }) => {
-  const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'all'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'pending_rt' | 'approved' | 'all'>('pending');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCluster, setSelectedCluster] = useState('Semua');
 
@@ -216,6 +216,12 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
     });
   }, [members, payments]);
 
+  const pendingRtMembers = useMemo(() => {
+    return members.filter(
+      (m) => m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending'
+    );
+  }, [members]);
+
   const approvedMembers = useMemo(() => {
     return members.filter((m) => m.isPaguyubanApproved === true && m.status === 'Aktif');
   }, [members]);
@@ -225,19 +231,13 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
     let list: Member[] = [];
     if (activeTab === 'pending') {
       list = pendingMembers;
+    } else if (activeTab === 'pending_rt') {
+      list = pendingRtMembers;
     } else if (activeTab === 'approved') {
       list = approvedMembers;
     } else {
-      // Tab Semua: hanya tampilkan warga yang sudah divalidasi kas bendahara (antrean pending atau sudah disetujui)
-      list = members.filter((m) => {
-        if (m.isPaguyubanApproved && m.status === 'Aktif') return true;
-        if (m.verificationStatus === 'Verified' && m.status !== 'Menunggu Verifikasi RT' && m.status !== 'Ditolak') {
-          return payments.some(
-            (p) => (p.memberId === m.id || p.memberNumber === m.memberNumber) && p.status === 'Verified'
-          );
-        }
-        return false;
-      });
+      // Tab Semua: Tampilkan SEMUA warga terdaftar dalam database sistem paguyuban
+      list = members;
     }
 
     if (selectedCluster !== 'Semua') {
@@ -792,15 +792,36 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
 
             <button
               type="button"
+              onClick={() => setActiveTab('pending_rt')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+                activeTab === 'pending_rt'
+                  ? 'bg-amber-600 text-white shadow-md ring-2 ring-amber-400'
+                  : 'bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5 text-amber-600" />
+              <span>Menunggu Verifikasi RT</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-black ${
+                activeTab === 'pending_rt' ? 'bg-amber-900 text-white' : 'bg-amber-200 text-amber-950'
+              }`}>
+                {pendingRtMembers.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveTab('all')}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
                 activeTab === 'all'
-                  ? 'bg-slate-900 text-white shadow-md'
+                  ? 'bg-slate-900 text-white shadow-md ring-2 ring-slate-400'
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
               <Users className="w-3.5 h-3.5" />
-              <span>Semua Riwayat Validasi</span>
+              <span>Semua Warga Terdaftar</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono bg-slate-200 text-slate-800">
+                {members.length}
+              </span>
             </button>
 
             <button
@@ -942,6 +963,23 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
                           Oleh {member.approvedByPaguyuban || 'Ketua Paguyuban'}
                         </p>
                       </div>
+                    ) : member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending' ? (
+                      <div className="text-right space-y-0.5">
+                        <span className="px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-black text-xs rounded-xl inline-flex items-center gap-1.5 shadow-2xs">
+                          <Clock className="w-3.5 h-3.5 text-amber-700" />
+                          <span>Menunggu Verifikasi RT</span>
+                        </span>
+                        <p className="text-[10px] text-amber-800 font-bold">
+                          {member.cluster || 'Cluster Warga'}
+                        </p>
+                      </div>
+                    ) : member.status === 'Ditolak' ? (
+                      <div className="text-right space-y-0.5">
+                        <span className="px-3 py-1 bg-rose-100 text-rose-900 border border-rose-300 font-black text-xs rounded-xl inline-flex items-center gap-1.5 shadow-2xs">
+                          <XCircle className="w-3.5 h-3.5 text-rose-700" />
+                          <span>Ditolak</span>
+                        </span>
+                      </div>
                     ) : (
                       <div className="text-right space-y-0.5">
                         <span className="px-3 py-1 bg-purple-100 text-purple-900 border border-purple-300 font-black text-xs rounded-xl inline-flex items-center gap-1.5 shadow-2xs animate-pulse">
@@ -962,18 +1000,33 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
                   <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tahap 1: Verifikasi RT</span>
-                      <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded font-black text-[9px]">
-                        Lolos RT
-                      </span>
+                      {member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending' ? (
+                        <span className="px-1.5 py-0.5 bg-amber-50 text-amber-900 border border-amber-300 rounded font-bold text-[9px]">
+                          Menunggu RT
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded font-black text-[9px]">
+                          Lolos RT
+                        </span>
+                      )}
                     </div>
-                    <p className="font-extrabold text-slate-800">{member.verifiedByRt || 'Ketua RT Cluster'}</p>
-                    <p className="text-[10px] text-slate-500">
-                      {member.verifiedAt ? `Tgl: ${member.verifiedAt}` : 'Berkas kependudukan valid'}
-                    </p>
-                    {member.rtNotes && (
-                      <p className="text-[10px] text-slate-600 italic bg-slate-50 p-1 rounded border border-slate-100">
-                        "{member.rtNotes}"
-                      </p>
+                    {member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending' ? (
+                      <>
+                        <p className="font-extrabold text-amber-900">Ketua RT {member.cluster || 'Cluster'}</p>
+                        <p className="text-[10px] text-slate-500">Berkas KK telah diajukan & menunggu verifikasi RT</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-extrabold text-slate-800">{member.verifiedByRt || 'Ketua RT Cluster'}</p>
+                        <p className="text-[10px] text-slate-500">
+                          {member.verifiedAt ? `Tgl: ${member.verifiedAt}` : 'Berkas kependudukan valid'}
+                        </p>
+                        {member.rtNotes && (
+                          <p className="text-[10px] text-slate-600 italic bg-slate-50 p-1 rounded border border-slate-100">
+                            "{member.rtNotes}"
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -1081,7 +1134,32 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
                           <span>Setujui & Terbitkan KTA Resmi</span>
                         </button>
                       </>
-                    ) : (
+                    ) : member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending' ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {member.familyCardPhotoUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedKkMember(member)}
+                            className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Periksa Berkas KK</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDetailMember(member)}
+                          className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-slate-600" />
+                          <span>Detail Pendaftar</span>
+                        </button>
+                        <span className="px-3 py-1.5 bg-amber-50 text-amber-900 border border-amber-300 font-bold text-xs rounded-xl flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Menunggu Verifikasi Ketua RT {member.cluster || 'Cluster'}</span>
+                        </span>
+                      </div>
+                    ) : member.isPaguyubanApproved ? (
                       <button
                         type="button"
                         onClick={() => setSelectedDigitalKtaMember(member)}
@@ -1089,6 +1167,15 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
                       >
                         <QrCode className="w-4 h-4 text-emerald-200" />
                         <span>Buka KTA Digital Resmi</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDetailMember(member)}
+                        className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-slate-600" />
+                        <span>Detail Warga</span>
                       </button>
                     )}
                   </div>

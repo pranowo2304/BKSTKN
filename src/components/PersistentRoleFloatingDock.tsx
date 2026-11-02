@@ -14,6 +14,7 @@ import {
   Globe,
   UserCheck,
   Coins,
+  Ambulance,
 } from 'lucide-react';
 import { AppUser } from '../types';
 import { useRolePermissions } from '../lib/permissions';
@@ -26,6 +27,7 @@ export interface PersistentRoleFloatingDockProps {
   pendingRtVerificationCount?: number;
   pendingCount?: number; // Validasi Kas Bendahara
   pendingPaguyubanApprovalCount?: number;
+  pendingAmbulanceCount?: number;
   userCount?: number;
   onOpenRegistration?: () => void;
   onOpenPayment?: () => void;
@@ -49,6 +51,7 @@ export const PersistentRoleFloatingDock: React.FC<PersistentRoleFloatingDockProp
   pendingRtVerificationCount = 0,
   pendingCount = 0,
   pendingPaguyubanApprovalCount = 0,
+  pendingAmbulanceCount = 0,
   userCount = 0,
   onOpenRegistration,
   onOpenPayment,
@@ -392,6 +395,67 @@ export const PersistentRoleFloatingDock: React.FC<PersistentRoleFloatingDockProp
         icon: Building2,
         isActive: currentTab === 'public',
         onClick: () => setCurrentTab('public'),
+      },
+    ];
+  } else if (authority === 'Petugas Staf') {
+    // 8. Role: PETUGAS STAF (Operasional Ambulans, Penugasan Driver, Laporan)
+    dockItems = [
+      {
+        id: 'dock-dashboard-staf',
+        label: 'Beranda Staf',
+        icon: LayoutDashboard,
+        isActive: currentTab === 'dashboard',
+        onClick: () => setCurrentTab('dashboard'),
+      },
+      {
+        id: 'dock-amb-staf',
+        label: 'Ambulans Siaga',
+        icon: Ambulance,
+        badge: pendingAmbulanceCount > 0 ? pendingAmbulanceCount : undefined,
+        isCenterFloating: true,
+        isActive: currentTab === 'ambulance',
+        onClick: () => setCurrentTab('ambulance'),
+      },
+      {
+        id: 'dock-warga-staf',
+        label: 'Data Warga',
+        icon: Users,
+        isActive: currentTab === 'registration',
+        onClick: () => setCurrentTab('registration'),
+      },
+      {
+        id: 'dock-history-staf',
+        label: 'Laporan',
+        icon: FileSpreadsheet,
+        isActive: currentTab === 'history',
+        onClick: () => setCurrentTab('history'),
+      },
+    ];
+  } else if (authority === 'Driver') {
+    // 9. Role: DRIVER AMBULANS (Tugas Antar Jenazah & Pasien Sakit)
+    dockItems = [
+      {
+        id: 'dock-amb-driver',
+        label: 'Tugas Ambulans',
+        icon: Ambulance,
+        badge: pendingAmbulanceCount > 0 ? pendingAmbulanceCount : undefined,
+        isCenterFloating: true,
+        isActive: currentTab === 'ambulance',
+        onClick: () => setCurrentTab('ambulance'),
+      },
+      {
+        id: 'dock-dashboard-driver',
+        label: 'Beranda Driver',
+        icon: LayoutDashboard,
+        isActive: currentTab === 'dashboard',
+        onClick: () => setCurrentTab('dashboard'),
+      },
+      {
+        id: 'dock-history-driver',
+        label: 'Riwayat Tugas',
+        icon: FileSpreadsheet,
+        isActive: currentTab === 'history',
+        onClick: () => setCurrentTab('history'),
       },
     ];
   } else {

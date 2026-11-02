@@ -266,6 +266,8 @@ export type UserAuthority =
   | 'Ketua Paguyuban'
   | 'Ketua RW'
   | 'Ketua DKM'
+  | 'Petugas Staf'
+  | 'Driver'
   | 'Admin';
 
 export const USER_AUTHORITIES: UserAuthority[] = [
@@ -275,6 +277,8 @@ export const USER_AUTHORITIES: UserAuthority[] = [
   'Ketua Paguyuban',
   'Ketua RW',
   'Ketua DKM',
+  'Petugas Staf',
+  'Driver',
   'Admin',
 ];
 
@@ -392,6 +396,11 @@ export interface BenefitClaim {
   createdAt: string;
   processedBy: string;
   notes?: string;
+
+  // 4. TERHUBUNG AMBULANS & JADWAL PEMAKAMAN
+  ambulanceOrderId?: string;
+  ambulanceOrderCode?: string;
+  funeralScheduleId?: string;
 }
 
 export type MembershipPeriodMode = 'payment_date' | 'fixed_period';
@@ -424,6 +433,9 @@ export interface MembershipPeriodSettings {
 export interface SystemSettings {
   communityName: string;
   communityAddress: string;
+  organizationName?: string;
+  organizationAddress?: string;
+  organizationPhone?: string;
   logoUrl?: string; // Logo Paguyuban (Base64 data URL or web image URL)
   defaultAdminSignature?: string; // Tanda tangan digital default Bendahara (Base64 PNG Data URL)
   defaultAdminSignerName?: string; // Nama penandatangan default
@@ -477,7 +489,7 @@ export interface WhatsAppNotificationLog {
 }
 
 export type NotificationType = 'success' | 'info' | 'warning' | 'error';
-export type NotificationCategory = 'payment' | 'registration' | 'claim' | 'system';
+export type NotificationCategory = 'payment' | 'registration' | 'claim' | 'system' | 'ambulance' | 'funeral';
 
 export interface AppNotification {
   id: string;
@@ -536,6 +548,355 @@ export const INITIAL_NOTIFICATIONS: AppNotification[] = [
     timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString().replace('T', ' ').substring(0, 19),
     read: true,
     linkTab: 'payments',
+  },
+];
+
+// ==========================================
+// PELAYANAN AMBULANS PAGUYUBAN (DARURAT & SAKIT)
+// ==========================================
+
+export type AmbulanceServiceType =
+  | 'Darurat Kematian (Jenazah)'
+  | 'Anggota Sakit (Medis / RS)'
+  | 'KEMATIAN'
+  | 'SAKIT';
+
+export type AmbulanceUrgency =
+  | 'Kritis / Segera'
+  | 'Tinggi'
+  | 'Normal / Terjadwal'
+  | 'DARURAT_TINGGI'
+  | 'SIAGA_TERJADWAL';
+
+export type AmbulanceOrderStatus =
+  | 'Diajukan RT'
+  | 'Disetujui Bendahara'
+  | 'Ditolak Bendahara'
+  | 'Menunggu Konfirmasi Driver'
+  | 'Driver Menolak'
+  | 'Driver Bersedia'
+  | 'Menuju Lokasi'
+  | 'Membawa Pasien/Jenazah'
+  | 'Selesai'
+  | 'Dibatalkan'
+  | 'MENUNGGU_BENDAHARA'
+  | 'DISETUJUI_BENDAHARA'
+  | 'DITOLAK_BENDAHARA'
+  | 'MENUNGGU_KONFIRMASI_DRIVER'
+  | 'PENUGASAN_ULANG_STAF'
+  | 'DRIVER_BERSIAP'
+  | 'MENUJU_LOKASI'
+  | 'MEMBAWA_PASIEN'
+  | 'SELESAI'
+  | 'DIBATALKAN';
+
+export interface AmbulanceVehicle {
+  id: string;
+  name?: string;
+  code?: string; // e.g. AMB-01
+  plateNumber: string; // e.g. B 1928 KMA
+  vehicleModel?: string; // e.g. Toyota HiAce Commuter Medis
+  model?: string;
+  specialization?: 'Medis & Oksigen' | 'Fardhu Kifayah Jenazah' | 'Multi-Fungsi' | string;
+  isAvailable?: boolean;
+  status?: 'SIAGA' | 'DALAM_TUGAS' | 'PERAWATAN' | string;
+  equipment?: string[];
+  equipmentList?: string[];
+  photoUrl?: string;
+  currentOdometer?: number;
+}
+
+export interface AmbulanceDriver {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  status: 'Siaga' | 'Bertugas' | 'Izin / Tidak Aktif' | 'SIAGA' | 'BERTUGAS' | 'ISTIRAHAT' | string;
+  defaultVehiclePlate?: string;
+  assignedOrdersCount?: number;
+  userId?: string; // Tautan ke ID akun AppUser
+  notes?: string;
+  isPrimaryDriver?: boolean;
+  simType?: string;
+}
+
+export interface AmbulanceOrder {
+  id: string;
+  orderNumber?: string; // e.g. AMB-2026-001
+  orderCode?: string;
+  serviceType: AmbulanceServiceType; // Kematian / Sakit
+  urgency: AmbulanceUrgency;
+
+  // Data Pasien / Almarhum & Kontak Keluarga
+  memberId?: string;
+  memberNumber?: string;
+  patientName: string;
+  patientAge?: number;
+  patientStatus?: 'ANGGOTA' | 'KELUARGA' | 'WARGA' | string;
+  contactPersonName?: string;
+  contactPersonPhone?: string;
+  cluster?: string;
+  clusterName?: string;
+  pickupAddress: string;
+  pickupContactName?: string;
+  pickupContactPhone?: string;
+  destinationAddress: string;
+  destinationContactName?: string;
+  destinationContactPhone?: string;
+  pickupTime?: string; // Format: YYYY-MM-DD HH:mm
+  medicalNotes?: string;
+  equipmentNeeded?: string[];
+  notes?: string;
+
+  status: AmbulanceOrderStatus;
+  createdAt: string;
+  updatedAt?: string;
+
+  // 1. Diajukan oleh RT
+  submittedByRtId?: string;
+  submittedByRtName?: string;
+  submittedByRtCluster?: string;
+  submittedByRtPhone?: string;
+  rtSubmittingUserId?: string;
+  rtSubmittingUserName?: string;
+  rtNotes?: string;
+
+  // 2. Persetujuan Bendahara
+  approvedByTreasurerId?: string;
+  approvedByTreasurerName?: string;
+  treasurerApprovedBy?: string;
+  approvedAt?: string;
+  treasurerApprovedAt?: string;
+  treasurerNotes?: string;
+  fuelSubsidyAmount?: number;
+  operationalCostEstimate?: number; // Subsidi BBM / Operasional paguyuban (Rp)
+  isCoveredByKas?: boolean; // Default true (Ditanggung Kas Paguyuban)
+  rejectionReason?: string;
+
+  // 3. Penugasan oleh Petugas Staf
+  assignedByStaffId?: string;
+  assignedByStaffName?: string;
+  staffAssignedBy?: string;
+  assignedAt?: string;
+  staffAssignedAt?: string;
+  driverId?: string;
+  driverName?: string;
+  driverPhone?: string;
+  vehicleId?: string;
+  vehiclePlate?: string;
+  vehicleModel?: string;
+  staffNotes?: string;
+
+  // 4. Konfirmasi & Pelaksanaan oleh Driver
+  driverConfirmedAt?: string;
+  driverResponse?: 'Bisa' | 'Tidak Bisa' | string;
+  driverResponseNotes?: string;
+  driverDeclineReason?: string;
+  driverStatusNotes?: string;
+  tripStatus?: 'Menuju Lokasi' | 'Di Lokasi Jemput' | 'Perjalanan ke Tujuan' | 'Tiba di Tujuan / Selesai' | string;
+  departureTime?: string;
+  patientPickedUpTime?: string;
+  tripNotes?: string;
+  completedAt?: string;
+
+  // 5. Tautan Klaim Santunan & Jadwal Pemakaman
+  claimId?: string;
+  claimNumber?: string;
+  funeralScheduleId?: string;
+}
+
+// ==========================================
+// JADWAL PEMAKAMAN & KOORDINASI LOGISTIK FARDHU KIFAYAH
+// ==========================================
+
+export type FuneralStatus = 'ACTIVE' | 'UPCOMING' | 'PAST';
+
+export interface FuneralSchedule {
+  id: string;
+  scheduleCode: string; // e.g. JKM-2026-001
+  deceasedName: string; // Nama Almarhum / Almarhumah
+  familyContactName: string; // Nama Ahli Waris / Keluarga
+  familyContactPhone: string; // Nomor HP / WhatsApp Keluarga
+  cluster: string; // RT / Lingkungan Cluster
+  memberId?: string;
+  memberNumber?: string;
+  claimId?: string;
+  claimNumber?: string;
+  ambulanceOrderId?: string;
+  ambulanceOrderCode?: string;
+
+  // Status & Waktu
+  status: FuneralStatus; // 'ACTIVE' (Sedang Berlangsung), 'UPCOMING' (Terjadwal), 'PAST' (Selesai/Riwayat)
+  date: string; // YYYY-MM-DD
+  timeDeparture?: string; // Jam Pelepasan dari Rumah Duka (e.g. 10:00 WIB)
+  timePrayer?: string; // Jam Sholat Jenazah (e.g. Ba'da Dzuhur / 12:30 WIB)
+  timeBurial?: string; // Jam Pemakaman di TPU (e.g. 13:30 WIB)
+
+  // Lokasi Koordinasi
+  homeAddress: string; // Alamat Rumah Duka
+  prayerLocation: string; // Lokasi Sholat Jenazah (Masjid/Musholla)
+  cemeteryName: string; // Nama TPU
+  cemeteryPlot?: string; // Blok / Kavling Makam
+  googleMapsUrl?: string; // Tautan Google Maps Titik Kumpul / TPU
+
+  // Koordinasi Logistik & Petugas Lapangan
+  coordinatorName: string; // Koordinator Lapangan / RT
+  coordinatorPhone: string; // Kontak WA Koordinator
+  coordinatorRole?: string; // Jabatan (e.g. Ketua RT 02 / Koordinator Fardhu Kifayah)
+  prayerImamName?: string; // Imam Sholat Jenazah
+  talkinOfficerName?: string; // Petugas Doa & Talkin
+  bathingTeam?: string; // Tim Pemulasaraan Jenazah
+  driverName?: string; // Driver Ambulans yang Bertugas
+  vehiclePlate?: string; // Plat Mobil Ambulans
+  ambulanceStatus?: string; // Status Layanan Ambulans
+  equipmentNeeded?: string[]; // Logistik Warga (Tenda Duka, Kursi, Sound System, Bendera Kuning, Keranda Jenazah)
+  notes?: string; // Catatan khusus koordinasi warga
+
+  // Tautan ke Inventaris Duka
+  allocatedInventoryLoanId?: string;
+  allocatedInventorySummary?: string;
+
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// ==========================================
+// INVENTARIS DUKA & PERALATAN FARDHU KIFAYAH
+// ==========================================
+
+export type InventoryCondition = 'Baik' | 'Perlu Perawatan' | 'Rusak Ringan' | 'Rusak' | 'Rusak / Perlu Ganti';
+export type InventoryCategory =
+  | 'Tenda'
+  | 'Kursi'
+  | 'Keranda'
+  | 'Kain Penutup'
+  | 'Peralatan Mandi'
+  | 'Sound & Penerangan'
+  | 'Tenda & Terpal'
+  | 'Kursi & Meja'
+  | 'Fardhu Kifayah'
+  | 'Penerangan & Sound'
+  | 'Peralatan TPU'
+  | 'Lainnya';
+
+export interface FuneralInventoryItem {
+  id: string;
+  itemCode: string; // e.g. INV-TND-01, INV-KRS-01, INV-KRD-01
+  name: string; // e.g. Tenda Duka Portable 4x6m, Kursi Lipat Stainless, Keranda Jenazah Stainless, Kain Penutup Lafadz Hijau
+  category: InventoryCategory;
+  totalStock: number; // Jumlah total aset yang dimiliki paguyuban
+  availableStock: number; // Stok yang saat ini ada di pos/gudang dan siap dipinjam
+  borrowedStock: number; // Stok yang sedang aktif dipinjam di lokasi duka warga
+  unit: string; // 'Unit', 'Buah', 'Set', 'Lembar'
+  condition: InventoryCondition;
+  storageLocation: string; // e.g. 'Gudang DKM Masjid Al-Ikhlas', 'Posko RT 04 Cluster Sanur'
+  notes?: string;
+  photoUrl?: string;
+  updatedAt?: string;
+  lastUpdated?: string;
+}
+
+export type LoanStatus = 'DIPINJAM' | 'DIKEMBALIKAN' | 'HILANG_RUSAK' | 'BATAL' | 'SEBAGIAN_KEMBALI';
+
+export interface LoanItemDetail {
+  itemId?: string;
+  inventoryItemId?: string;
+  itemCode: string;
+  itemName: string;
+  quantity: number;
+  unit: string;
+  conditionBefore?: string;
+  conditionAfter?: string;
+}
+
+export interface FuneralInventoryLoan {
+  id: string;
+  loanCode: string; // e.g. PINJAM-2026-001
+  funeralScheduleId?: string; // Tautan ke Jadwal Pemakaman
+  funeralScheduleCode?: string;
+  claimId?: string;
+  claimNumber?: string;
+  deceasedName?: string; // Nama Almarhum / Acara Duka
+  borrowerName?: string;
+  borrowerPhone?: string;
+  borrowerRt?: string;
+  borrowerAddress?: string;
+  familyContactName?: string; // Peminjam / Ahli Waris
+  familyContactPhone?: string;
+  cluster?: string; // RT / Lingkungan
+  destinationAddress?: string; // Alamat Rumah Duka
+
+  items?: LoanItemDetail[];
+  borrowedItems?: LoanItemDetail[];
+
+  borrowDate?: string;
+  loanDate?: string; // YYYY-MM-DD
+  loanTime?: string; // HH:mm
+  expectedReturnDate: string; // YYYY-MM-DD
+  actualReturnDate?: string;
+  status: LoanStatus;
+  officerName?: string; // Petugas Logistik / RT yang menyerahkan
+  officerInCharge?: string;
+  returnReceivedBy?: string; // Petugas yang menerima pengembalian
+  conditionOnReturn?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export const DEFAULT_AMBULANCE_VEHICLES: AmbulanceVehicle[] = [
+  {
+    id: 'veh-1',
+    code: 'AMB-01',
+    plateNumber: 'B 1928 KMA',
+    vehicleModel: 'Toyota HiAce Commuter Medis',
+    specialization: 'Medis & Oksigen',
+    isAvailable: true,
+    equipment: ['Tabung Oksigen 2x', 'Tandu Medis Lipat', 'Suction Pump', 'First Aid Kit Lengkap'],
+    equipmentList: ['Tabung Oksigen 2x', 'Tandu Medis Lipat', 'Suction Pump', 'First Aid Kit Lengkap'],
+  },
+  {
+    id: 'veh-2',
+    code: 'AMB-02',
+    plateNumber: 'B 2341 DKA',
+    vehicleModel: 'Suzuki APV Arena Jenazah',
+    specialization: 'Fardhu Kifayah Jenazah',
+    isAvailable: true,
+    equipment: ['Kereta Sorong Jenazah Stainless', 'Tenda Mandi Jenazah Portable', 'Kain Penutup Keranda', 'Kotak P3K'],
+    equipmentList: ['Kereta Sorong Jenazah Stainless', 'Tenda Mandi Jenazah Portable', 'Kain Penutup Keranda', 'Kotak P3K'],
+  },
+];
+
+export const DEFAULT_AMBULANCE_DRIVERS: AmbulanceDriver[] = [
+  {
+    id: 'drv-1',
+    name: 'Bpk. Joko Prasetyo',
+    phone: '081298811223',
+    email: 'driver.joko@danakematian.org',
+    status: 'Siaga',
+    defaultVehiclePlate: 'B 1928 KMA',
+    userId: 'usr-drv-1',
+    notes: 'Driver siaga armada medis dan pasien darurat.',
+  },
+  {
+    id: 'drv-2',
+    name: 'Bpk. Rahmat Hidayat',
+    phone: '081377889900',
+    email: 'driver.rahmat@danakematian.org',
+    status: 'Siaga',
+    defaultVehiclePlate: 'B 2341 DKA',
+    userId: 'usr-drv-2',
+    notes: 'Driver siaga fardhu kifayah dan pemakaman jenazah.',
+  },
+  {
+    id: 'drv-3',
+    name: 'Bpk. Tri Wahyudi',
+    phone: '081566778899',
+    email: 'driver.tri@danakematian.org',
+    status: 'Siaga',
+    defaultVehiclePlate: 'B 1928 KMA',
+    userId: 'usr-drv-3',
+    notes: 'Driver siaga shift malam dan cadangan darurat.',
   },
 ];
 

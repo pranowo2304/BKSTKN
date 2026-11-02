@@ -108,31 +108,198 @@ body {
   animation: pulseGlowRing 2.8s ease-in-out infinite;
 }
 
+/* ========================================================================= */
+/* PRINT MEDIA STYLES (LAPORAN KAS, DAFTAR ANGGOTA, KWITANSI, KTA)          */
+/* ========================================================================= */
 @media print {
-  /* Hide everything on page by default during print */
-  body {
-    background: #ffffff !important;
-    color: #000000 !important;
-    margin: 0 !important;
-    padding: 0 !important;
+  @page {
+    size: auto;
+    margin: 12mm 10mm 15mm 10mm;
   }
 
-  /* Make sure background and print colors are preserved */
-  * {
+  html,
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 9pt !important;
+    line-height: 1.35 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* Hide background elements and non-printable modal controls */
-  header,
-  nav,
-  main,
-  footer,
-  .print\:hidden {
+  /* When a modal is open, hide main so only modal prints */
+  body:has(#receipt-printable) main,
+  body:has(#member-card-printable) main {
     display: none !important;
   }
 
-  /* Modal container adjustments for printing */
+  /* When printing standard pages (Daftar Anggota, Laporan Kas, Inventaris) */
+  main {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
+
+  /* Elements that must always be hidden during print */
+  header,
+  nav,
+  footer,
+  aside,
+  [role="navigation"],
+  .print\:hidden,
+  .no-print,
+  #persistent-dock,
+  .admin-floating-dock,
+  [class*="FloatingDock"],
+  [class*="Toast"],
+  .toast-container,
+  button:not(.print\:block),
+  input:not([type="checkbox"]),
+  select,
+  textarea {
+    display: none !important;
+  }
+
+  /* Ensure print-only elements are displayed */
+  .print\:block {
+    display: block !important;
+  }
+
+  .print\:flex {
+    display: flex !important;
+  }
+
+  .print\:table {
+    display: table !important;
+  }
+
+  /* ======================================================================= */
+  /* TABEL LAPORAN BERSIH & RAPI                                             */
+  /* ======================================================================= */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    border-spacing: 0 !important;
+    margin-top: 10px !important;
+    margin-bottom: 16px !important;
+    background: #ffffff !important;
+    font-size: 8pt !important;
+    line-height: 1.3 !important;
+    page-break-inside: auto !important;
+  }
+
+  thead {
+    display: table-header-group !important; /* Repeats table header on every printed page */
+  }
+
+  tfoot {
+    display: table-footer-group !important;
+  }
+
+  tbody {
+    display: table-row-group !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  th,
+  td {
+    border: 1px solid #cbd5e1 !important;
+    padding: 5px 7px !important;
+    text-align: left !important;
+    vertical-align: middle !important;
+    color: #0f172a !important;
+    background: transparent !important;
+    word-break: normal !important;
+  }
+
+  thead th {
+    background-color: #f1f5f9 !important;
+    color: #0f172a !important;
+    font-weight: 800 !important;
+    font-size: 7.5pt !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.04em !important;
+    border: 1px solid #94a3b8 !important;
+    border-bottom: 2px solid #64748b !important;
+  }
+
+  tbody tr:nth-child(even) {
+    background-color: #f8fafc !important;
+  }
+
+  /* Hide interactive Action column (Aksi, Kwitansi Digital, Tombol Operasi) */
+  table th:last-child,
+  table td:last-child {
+    display: none !important;
+  }
+
+  table td button,
+  table th button,
+  table td a,
+  table th a,
+  .action-column,
+  .col-actions {
+    display: none !important;
+  }
+
+  /* Unclutter table wrappers, remove fixed heights and scroll overflows */
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .overflow-hidden {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+
+  /* Remove screen-only heavy drop shadows and rounded corners */
+  .shadow-sm,
+  .shadow-md,
+  .shadow-lg,
+  .shadow-xl,
+  .shadow-2xl,
+  .shadow-inner,
+  .shadow-2xs,
+  .shadow-xs {
+    box-shadow: none !important;
+  }
+
+  .rounded-2xl,
+  .rounded-3xl,
+  .rounded-xl {
+    border-radius: 2px !important;
+  }
+
+  .border,
+  .border-2 {
+    border-color: #cbd5e1 !important;
+  }
+
+  /* Page break helpers */
+  .page-break-before {
+    page-break-before: always !important;
+    break-before: always !important;
+  }
+
+  .page-break-after {
+    page-break-after: always !important;
+    break-after: always !important;
+  }
+
+  .break-inside-avoid {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Modal container adjustments for printing (Receipt & Member Card) */
   .fixed.inset-0 {
     position: static !important;
     background: transparent !important;
@@ -173,10 +340,5 @@ body {
     margin: 20px auto !important;
     padding: 0 !important;
     background: #ffffff !important;
-  }
-
-  @page {
-    size: auto;
-    margin: 10mm 12mm;
   }
 }

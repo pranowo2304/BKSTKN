@@ -7,7 +7,8 @@ import {
   AppUser,
   BenefitMaster,
   DEFAULT_BENEFITS,
-  BenefitClaimStatus
+  BenefitClaimStatus,
+  AmbulanceOrder,
 } from '../types';
 import { formatIDR } from '../lib/storage';
 import { exportBenefitClaimsCSV } from '../lib/csvExport';
@@ -52,12 +53,14 @@ import {
   ArrowUpDown,
   ChevronDown,
   LayoutDashboard,
+  Ambulance,
 } from 'lucide-react';
 import { DigitalSignaturePad } from './DigitalSignaturePad';
 
 interface BenefitRealizationProps {
   members: Member[];
   claims: BenefitClaim[];
+  ambulanceOrders?: AmbulanceOrder[];
   currentBalance: number;
   settings?: SystemSettings;
   benefits?: BenefitMaster[];
@@ -69,11 +72,14 @@ interface BenefitRealizationProps {
   onOpenExportModal?: () => void;
   onClearClaims?: () => void;
   onNavigateToDashboard?: () => void;
+  onNavigateToAmbulance?: (orderId?: string) => void;
+  onNavigateToFuneralSchedule?: (schedId?: string) => void;
 }
 
 export const BenefitRealization: React.FC<BenefitRealizationProps> = ({
   members,
   claims,
+  ambulanceOrders = [],
   currentBalance,
   settings,
   benefits = DEFAULT_BENEFITS,
@@ -85,6 +91,8 @@ export const BenefitRealization: React.FC<BenefitRealizationProps> = ({
   onOpenExportModal,
   onClearClaims,
   onNavigateToDashboard,
+  onNavigateToAmbulance,
+  onNavigateToFuneralSchedule,
 }) => {
   const isAnggota = activeUser?.authority === 'Anggota';
   const isRt =
@@ -269,8 +277,8 @@ export const BenefitRealization: React.FC<BenefitRealizationProps> = ({
     setRtNotes('Laporan warga berduka. Berkas surat kematian RT/RS telah diverifikasi.');
 
     // Success Toast
-    setSuccessToastMessage(`Klaim santunan untuk "${newClaim.deceasedName}" (${newClaim.claimNumber}) berhasil diajukan oleh RT! Data telah tersimpan dan kini tampil di daftar antrean.`);
-    setTimeout(() => setSuccessToastMessage(null), 7000);
+    setSuccessToastMessage(`Klaim santunan untuk "${newClaim.deceasedName}" (${newClaim.claimNumber}) berhasil diajukan oleh RT! 🚑 Pesanan armada ambulans jenazah fardhu kifayah juga telah otomatis diterbitkan dan diteruskan ke Bendahara.`);
+    setTimeout(() => setSuccessToastMessage(null), 8000);
   };
 
   // ---------------------------------------------------------------------------
@@ -913,6 +921,24 @@ export const BenefitRealization: React.FC<BenefitRealizationProps> = ({
               />
             </div>
 
+            {/* INTEGRATED AMBULANCE AUTO-BOOKING BANNER */}
+            <div className="p-4 bg-gradient-to-r from-red-50 to-rose-50 border-2 border-red-200 rounded-2xl flex items-start gap-3 shadow-xs">
+              <div className="p-2.5 bg-red-600 text-white rounded-xl shrink-0 mt-0.5 shadow-md">
+                <Ambulance className="w-5 h-5 text-white" />
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs font-black text-red-900 flex items-center gap-2">
+                  <span>🚑 Pemesanan Ambulans Jenazah Otomatis Diterbitkan</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-200 text-red-900">
+                    Sistem Otomatis Aktif
+                  </span>
+                </div>
+                <p className="text-xs text-red-800 leading-relaxed">
+                  Begitu formulir pengajuan santunan kematian ini dikirim oleh RT, sistem <strong>langsung menerbitkan pesanan armada ambulans fardhu kifayah jenazah</strong> ke rumah duka dan meneruskannya ke Bendahara untuk persetujuan operasional/BBM.
+                </p>
+              </div>
+            </div>
+
             <div className="flex justify-end gap-3 pt-2">
               <button
                 type="button"
@@ -1205,6 +1231,14 @@ export const BenefitRealization: React.FC<BenefitRealizationProps> = ({
               const isApproved = !claim.status || claim.status === 'Disetujui';
               const isRejected = claim.status === 'Ditolak';
 
+              const linkedAmb = ambulanceOrders.find(
+                (o) =>
+                  (claim.ambulanceOrderId && o.id === claim.ambulanceOrderId) ||
+                  (claim.claimNumber && o.claimNumber === claim.claimNumber) ||
+                  (o.claimId && o.claimId === claim.id) ||
+                  (o.patientName && claim.deceasedName && o.patientName.toLowerCase().trim() === claim.deceasedName.toLowerCase().trim())
+              );
+
               return (
                 <div
                   key={claim.id}
@@ -1247,6 +1281,19 @@ export const BenefitRealization: React.FC<BenefitRealizationProps> = ({
                           <X className="w-3 h-3 text-rose-600" />
                           <span>Ditolak</span>
                         </span>
+                      )}
+
+                      {/* Linked Ambulance Order Status Badge */}
+                      {linkedAmb && (
+                        <button
+                          type="button"
+                          onClick={() => onNavigateToAmbulance && onNavigateToAmbulance(linkedAmb.id)}
+                          className="px-2.5 py-0.5 bg-red-100 hover:bg-red-200 text-red-900 font-bold text-[10px] rounded-full border border-red-300 inline-flex items-center gap-1 cursor-pointer transition-colors"
+                          title="Klik untuk membuka pelayanan ambulans jenazah"
+                        >
+                          <Ambulance className="w-3 h-3 text-red-600" />
+                          <span>Ambulans: {linkedAmb.status || 'Diajukan'}</span>
+                        </button>
                       )}
                     </div>
 

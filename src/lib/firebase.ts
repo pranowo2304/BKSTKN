@@ -19,7 +19,7 @@ import {
 // Silence benign internal SDK connection/offline polling messages so they don't trigger error boundaries
 setLogLevel('silent');
 import firebaseConfig from '../../firebase-applet-config.json';
-import { Member, Payment, BenefitClaim, SystemSettings, AppUser, ClusterMaster, DEFAULT_CLUSTERS, BenefitMaster, DEFAULT_BENEFITS } from '../types';
+import { Member, Payment, BenefitClaim, SystemSettings, AppUser, ClusterMaster, DEFAULT_CLUSTERS, BenefitMaster, DEFAULT_BENEFITS, AmbulanceOrder, FuneralSchedule, FuneralInventoryItem, FuneralInventoryLoan } from '../types';
 import {
   initialMembers,
   initialPayments,
@@ -31,6 +31,10 @@ import {
   initialUsers,
   initialBenefits,
   INITIAL_BASE_FUND_BALANCE,
+  sampleInitialAmbulanceOrders,
+  sampleInitialFuneralSchedules,
+  sampleInitialInventoryItems,
+  sampleInitialInventoryLoans,
 } from '../data/initialData';
 
 // Initialize Firebase App
@@ -88,6 +92,10 @@ export const COLLECTIONS = {
   USERS: 'users',
   CLUSTERS: 'clusters',
   BENEFITS: 'benefits',
+  AMBULANCE_ORDERS: 'ambulance_orders',
+  FUNERAL_SCHEDULES: 'funeral_schedules',
+  FUNERAL_INVENTORY: 'funeral_inventory',
+  FUNERAL_INVENTORY_LOANS: 'funeral_inventory_loans',
   META: 'meta',
 } as const;
 
@@ -268,6 +276,10 @@ export function subscribeToFirestore(callbacks: {
   onMembersChange?: (members: Member[]) => void;
   onPaymentsChange?: (payments: Payment[]) => void;
   onClaimsChange?: (claims: BenefitClaim[]) => void;
+  onAmbulanceOrdersChange?: (orders: AmbulanceOrder[]) => void;
+  onFuneralSchedulesChange?: (schedules: FuneralSchedule[]) => void;
+  onFuneralInventoryChange?: (items: FuneralInventoryItem[]) => void;
+  onFuneralInventoryLoansChange?: (loans: FuneralInventoryLoan[]) => void;
   onSettingsChange?: (settings: SystemSettings) => void;
   onUsersChange?: (users: AppUser[]) => void;
   onClustersChange?: (clusters: ClusterMaster[]) => void;
@@ -423,6 +435,66 @@ export function subscribeToFirestore(callbacks: {
       (err) => handleListenerError(err, `${COLLECTIONS.META}/financials`)
     );
     unsubscribers.push(unsubFinancials);
+
+    // 9. Ambulance Orders subscription
+    const unsubAmbulance = onSnapshot(
+      collection(db, COLLECTIONS.AMBULANCE_ORDERS),
+      (snapshot) => {
+        const ordersList: AmbulanceOrder[] = [];
+        snapshot.forEach((d) => {
+          ordersList.push({ ...d.data(), id: d.id } as AmbulanceOrder);
+        });
+        callbacks.onAmbulanceOrdersChange?.(ordersList);
+        callbacks.onStatusChange?.('connected');
+      },
+      (err) => handleListenerError(err, COLLECTIONS.AMBULANCE_ORDERS)
+    );
+    unsubscribers.push(unsubAmbulance);
+
+    // 10. Funeral Schedules subscription
+    const unsubFuneral = onSnapshot(
+      collection(db, COLLECTIONS.FUNERAL_SCHEDULES),
+      (snapshot) => {
+        const schedList: FuneralSchedule[] = [];
+        snapshot.forEach((d) => {
+          schedList.push({ ...d.data(), id: d.id } as FuneralSchedule);
+        });
+        callbacks.onFuneralSchedulesChange?.(schedList);
+        callbacks.onStatusChange?.('connected');
+      },
+      (err) => handleListenerError(err, COLLECTIONS.FUNERAL_SCHEDULES)
+    );
+    unsubscribers.push(unsubFuneral);
+
+    // 11. Funeral Inventory subscription
+    const unsubInventory = onSnapshot(
+      collection(db, COLLECTIONS.FUNERAL_INVENTORY),
+      (snapshot) => {
+        const itemList: FuneralInventoryItem[] = [];
+        snapshot.forEach((d) => {
+          itemList.push({ ...d.data(), id: d.id } as FuneralInventoryItem);
+        });
+        callbacks.onFuneralInventoryChange?.(itemList);
+        callbacks.onStatusChange?.('connected');
+      },
+      (err) => handleListenerError(err, COLLECTIONS.FUNERAL_INVENTORY)
+    );
+    unsubscribers.push(unsubInventory);
+
+    // 12. Funeral Inventory Loans subscription
+    const unsubInventoryLoans = onSnapshot(
+      collection(db, COLLECTIONS.FUNERAL_INVENTORY_LOANS),
+      (snapshot) => {
+        const loanList: FuneralInventoryLoan[] = [];
+        snapshot.forEach((d) => {
+          loanList.push({ ...d.data(), id: d.id } as FuneralInventoryLoan);
+        });
+        callbacks.onFuneralInventoryLoansChange?.(loanList);
+        callbacks.onStatusChange?.('connected');
+      },
+      (err) => handleListenerError(err, COLLECTIONS.FUNERAL_INVENTORY_LOANS)
+    );
+    unsubscribers.push(unsubInventoryLoans);
   } catch (e: any) {
     console.error('Failed to set up Firestore subscriptions:', e);
     callbacks.onStatusChange?.('error', e.message);
@@ -531,16 +603,46 @@ export async function deleteClusterFromCloud(clusterId: string): Promise<void> {
   }
 }
 
-export async function syncMemberToCloud(member: Member): Promise<void> {
+export async function syncMemberToCloud(member: Member): Promise<boolean> {
   const ref = doc(db, COLLECTIONS.MEMBERS, member.id);
   try {
     const sanitized = sanitizeFirestoreData(member);
-    await setDoc(ref, sanitized, { merge: true });
+    let safeData = { ...sanitized };
+
+    // Firestore 1MB document limit safeguard:
+    // If familyCardPhotoUrl or photoUrl is a huge dataUrl, constrain it so document saves cleanly
+    if (safeData.familyCardPhotoUrl && typeof safeData.familyCardPhotoUrl === 'string' && safeData.familyCardPhotoUrl.length > 500000) {
+      safeData.familyCardPhotoUrl = safeData.familyCardPhotoUrl.slice(0, 300000);
+    }
+    if (safeData.photoUrl && typeof safeData.photoUrl === 'string' && safeData.photoUrl.length > 300000) {
+      safeData.photoUrl = safeData.photoUrl.slice(0, 150000);
+    }
+
+    await setDoc(ref, safeData, { merge: true });
+    return true;
   } catch (error: any) {
-    if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
-      handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.MEMBERS}/${member.id}`);
-    } else {
-      console.warn(`Firestore syncMemberToCloud notice for member ${member.id}:`, error?.message);
+    console.warn(`Firestore syncMemberToCloud initial attempt notice for member ${member.id}:`, error?.message);
+    try {
+      // Robust fallback retry: compact large attachments if document exceeds size limit
+      const sanitized = sanitizeFirestoreData(member);
+      const strippedData = {
+        ...sanitized,
+        familyCardPhotoUrl: sanitized.familyCardPhotoUrl && typeof sanitized.familyCardPhotoUrl === 'string'
+          ? sanitized.familyCardPhotoUrl.slice(0, 40000)
+          : '',
+        photoUrl: sanitized.photoUrl && typeof sanitized.photoUrl === 'string'
+          ? sanitized.photoUrl.slice(0, 30000)
+          : '',
+      };
+      await setDoc(ref, strippedData, { merge: true });
+      return true;
+    } catch (retryErr: any) {
+      if (retryErr?.code === 'permission-denied' || retryErr?.message?.includes('insufficient permissions')) {
+        handleFirestoreError(retryErr, OperationType.WRITE, `${COLLECTIONS.MEMBERS}/${member.id}`);
+      } else {
+        console.error(`Firestore syncMemberToCloud error for member ${member.id}:`, retryErr?.message);
+      }
+      return false;
     }
   }
 }
@@ -550,7 +652,14 @@ export async function syncMembersBatchToCloud(members: Member[]): Promise<void> 
   members.forEach((m) => {
     const ref = doc(db, COLLECTIONS.MEMBERS, m.id);
     const sanitized = sanitizeFirestoreData(m);
-    batch.set(ref, sanitized, { merge: true });
+    let safeData = { ...sanitized };
+    if (safeData.familyCardPhotoUrl && typeof safeData.familyCardPhotoUrl === 'string' && safeData.familyCardPhotoUrl.length > 500000) {
+      safeData.familyCardPhotoUrl = safeData.familyCardPhotoUrl.slice(0, 300000);
+    }
+    if (safeData.photoUrl && typeof safeData.photoUrl === 'string' && safeData.photoUrl.length > 300000) {
+      safeData.photoUrl = safeData.photoUrl.slice(0, 150000);
+    }
+    batch.set(ref, safeData, { merge: true });
   });
   try {
     await batch.commit();
@@ -608,6 +717,62 @@ export async function syncClaimToCloud(claim: BenefitClaim): Promise<void> {
       handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.CLAIMS}/${claim.id}`);
     } else {
       console.warn(`Firestore syncClaimToCloud notice for claim ${claim.id}:`, error?.message);
+    }
+  }
+}
+
+export async function syncAmbulanceOrderToCloud(order: AmbulanceOrder): Promise<void> {
+  const ref = doc(db, COLLECTIONS.AMBULANCE_ORDERS, order.id);
+  try {
+    const sanitized = sanitizeFirestoreData(order);
+    await setDoc(ref, sanitized, { merge: true });
+  } catch (error: any) {
+    if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
+      handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.AMBULANCE_ORDERS}/${order.id}`);
+    } else {
+      console.warn(`Firestore syncAmbulanceOrderToCloud notice for ambulance order ${order.id}:`, error?.message);
+    }
+  }
+}
+
+export async function syncFuneralScheduleToCloud(schedule: FuneralSchedule): Promise<void> {
+  const ref = doc(db, COLLECTIONS.FUNERAL_SCHEDULES, schedule.id);
+  try {
+    const sanitized = sanitizeFirestoreData(schedule);
+    await setDoc(ref, sanitized, { merge: true });
+  } catch (error: any) {
+    if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
+      handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.FUNERAL_SCHEDULES}/${schedule.id}`);
+    } else {
+      console.warn(`Firestore syncFuneralScheduleToCloud notice for funeral schedule ${schedule.id}:`, error?.message);
+    }
+  }
+}
+
+export async function syncFuneralInventoryItemToCloud(item: FuneralInventoryItem): Promise<void> {
+  const ref = doc(db, COLLECTIONS.FUNERAL_INVENTORY, item.id);
+  try {
+    const sanitized = sanitizeFirestoreData(item);
+    await setDoc(ref, sanitized, { merge: true });
+  } catch (error: any) {
+    if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
+      handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.FUNERAL_INVENTORY}/${item.id}`);
+    } else {
+      console.warn(`Firestore syncFuneralInventoryItemToCloud notice for item ${item.id}:`, error?.message);
+    }
+  }
+}
+
+export async function syncFuneralInventoryLoanToCloud(loan: FuneralInventoryLoan): Promise<void> {
+  const ref = doc(db, COLLECTIONS.FUNERAL_INVENTORY_LOANS, loan.id);
+  try {
+    const sanitized = sanitizeFirestoreData(loan);
+    await setDoc(ref, sanitized, { merge: true });
+  } catch (error: any) {
+    if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
+      handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.FUNERAL_INVENTORY_LOANS}/${loan.id}`);
+    } else {
+      console.warn(`Firestore syncFuneralInventoryLoanToCloud notice for loan ${loan.id}:`, error?.message);
     }
   }
 }
@@ -723,6 +888,88 @@ export async function deleteClaimFromCloud(claimId: string): Promise<void> {
       handleFirestoreError(error, OperationType.DELETE, `${COLLECTIONS.CLAIMS}/${claimId}`);
     } else {
       console.warn(`Firestore deleteClaimFromCloud notice for claim ${claimId}:`, error?.message);
+    }
+  }
+}
+
+export async function deleteAmbulanceOrderFromCloud(orderId: string): Promise<void> {
+  const ref = doc(db, COLLECTIONS.AMBULANCE_ORDERS, orderId);
+  try {
+    await deleteDoc(ref);
+  } catch (error: any) {
+    if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
+      handleFirestoreError(error, OperationType.DELETE, `${COLLECTIONS.AMBULANCE_ORDERS}/${orderId}`);
+    } else {
+      console.warn(`Firestore deleteAmbulanceOrderFromCloud notice for ambulance order ${orderId}:`, error?.message);
+    }
+  }
+}
+
+export async function clearAllAmbulanceOrdersFromCloud(): Promise<void> {
+  try {
+    const ordersSnap = await getDocs(collection(db, COLLECTIONS.AMBULANCE_ORDERS));
+    const batch = writeBatch(db);
+    ordersSnap.forEach((docItem) => {
+      batch.delete(docItem.ref);
+    });
+    await batch.commit();
+    console.log('Successfully cleared all ambulance orders from Cloud Firestore.');
+  } catch (error) {
+    console.error('Error clearing ambulance orders from Firestore:', error);
+    throw error;
+  }
+}
+
+export async function deleteFuneralScheduleFromCloud(scheduleId: string): Promise<void> {
+  const ref = doc(db, COLLECTIONS.FUNERAL_SCHEDULES, scheduleId);
+  try {
+    await deleteDoc(ref);
+  } catch (error: any) {
+    if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
+      handleFirestoreError(error, OperationType.DELETE, `${COLLECTIONS.FUNERAL_SCHEDULES}/${scheduleId}`);
+    } else {
+      console.warn(`Firestore deleteFuneralScheduleFromCloud notice for funeral schedule ${scheduleId}:`, error?.message);
+    }
+  }
+}
+
+export async function clearAllFuneralSchedulesFromCloud(): Promise<void> {
+  try {
+    const schedSnap = await getDocs(collection(db, COLLECTIONS.FUNERAL_SCHEDULES));
+    const batch = writeBatch(db);
+    schedSnap.forEach((docItem) => {
+      batch.delete(docItem.ref);
+    });
+    await batch.commit();
+    console.log('Successfully cleared all funeral schedules from Cloud Firestore.');
+  } catch (error) {
+    console.error('Error clearing funeral schedules from Firestore:', error);
+    throw error;
+  }
+}
+
+export async function deleteFuneralInventoryItemFromCloud(itemId: string): Promise<void> {
+  const ref = doc(db, COLLECTIONS.FUNERAL_INVENTORY, itemId);
+  try {
+    await deleteDoc(ref);
+  } catch (error: any) {
+    if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
+      handleFirestoreError(error, OperationType.DELETE, `${COLLECTIONS.FUNERAL_INVENTORY}/${itemId}`);
+    } else {
+      console.warn(`Firestore deleteFuneralInventoryItemFromCloud notice for item ${itemId}:`, error?.message);
+    }
+  }
+}
+
+export async function deleteFuneralInventoryLoanFromCloud(loanId: string): Promise<void> {
+  const ref = doc(db, COLLECTIONS.FUNERAL_INVENTORY_LOANS, loanId);
+  try {
+    await deleteDoc(ref);
+  } catch (error: any) {
+    if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
+      handleFirestoreError(error, OperationType.DELETE, `${COLLECTIONS.FUNERAL_INVENTORY_LOANS}/${loanId}`);
+    } else {
+      console.warn(`Firestore deleteFuneralInventoryLoanFromCloud notice for loan ${loanId}:`, error?.message);
     }
   }
 }
@@ -870,7 +1117,15 @@ export async function clearAllDemoDataFromCloud(): Promise<void> {
     });
     await batch3.commit();
 
-    // 4. Reset users collection to default admin/staff only (remove member accounts)
+    // 4. Delete inventory loans
+    const loansSnap = await getDocs(collection(db, COLLECTIONS.FUNERAL_INVENTORY_LOANS));
+    const batchLoans = writeBatch(db);
+    loansSnap.forEach((docItem) => {
+      batchLoans.delete(docItem.ref);
+    });
+    await batchLoans.commit();
+
+    // 5. Reset users collection to default admin/staff only (remove member accounts)
     const usersSnap = await getDocs(collection(db, COLLECTIONS.USERS));
     const batch4 = writeBatch(db);
     usersSnap.forEach((docItem) => {
@@ -884,7 +1139,7 @@ export async function clearAllDemoDataFromCloud(): Promise<void> {
     });
     await batch4.commit();
 
-    // 5. Reset financials balance and update init_status flag
+    // 6. Reset financials balance and update init_status flag
     const metaRef = doc(db, COLLECTIONS.META, 'financials');
     await setDoc(metaRef, { baseFundBalance: 0 });
 
@@ -933,6 +1188,26 @@ export async function restoreDemoDataToCloud(): Promise<void> {
     DEFAULT_BENEFITS.forEach((b) => {
       const ref = doc(db, COLLECTIONS.BENEFITS, b.id);
       batch.set(ref, b);
+    });
+
+    sampleInitialAmbulanceOrders.forEach((o) => {
+      const ref = doc(db, COLLECTIONS.AMBULANCE_ORDERS, o.id);
+      batch.set(ref, o);
+    });
+
+    sampleInitialFuneralSchedules.forEach((f) => {
+      const ref = doc(db, COLLECTIONS.FUNERAL_SCHEDULES, f.id);
+      batch.set(ref, f);
+    });
+
+    sampleInitialInventoryItems.forEach((item) => {
+      const ref = doc(db, COLLECTIONS.FUNERAL_INVENTORY, item.id);
+      batch.set(ref, item);
+    });
+
+    sampleInitialInventoryLoans.forEach((loan) => {
+      const ref = doc(db, COLLECTIONS.FUNERAL_INVENTORY_LOANS, loan.id);
+      batch.set(ref, loan);
     });
 
     const settingsRef = doc(db, COLLECTIONS.SETTINGS, 'main_config');

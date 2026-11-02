@@ -12,6 +12,7 @@ import {
   Globe,
   UserCheck,
   LayoutDashboard,
+  Boxes,
 } from 'lucide-react';
 import { AppUser, UserAuthority, Member, Payment, BenefitClaim } from '../types';
 import { MobileAppNavAction } from '../components/RoleMobileAppMenu';
@@ -289,6 +290,18 @@ export function getAllNavigationActionsForUser(params: NavigationActionParams): 
       gradient: 'from-slate-700 to-slate-900',
       icon: Settings,
       onClick: () => setCurrentTab('settings'),
+    });
+  }
+
+  // 12. Inventaris Duka & Logistik Operasional (Khusus Admin, Bendahara, Ketua, dan DKM)
+  if (permittedTabs.includes('inventory')) {
+    actions.push({
+      id: 'inventory',
+      label: 'Inventaris Duka',
+      subLabel: authority === 'Ketua DKM' ? 'Logistik Tenda, Kursi & Keranda' : 'Kelola Aset & Peminjaman Duka',
+      gradient: 'from-teal-600 to-emerald-600',
+      icon: Boxes,
+      onClick: () => setCurrentTab('inventory'),
     });
   }
 

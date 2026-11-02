@@ -15,6 +15,8 @@ import {
   UserPlus,
   ShieldAlert,
   Layers,
+  HeartHandshake,
+  Ambulance,
 } from 'lucide-react';
 import { AppNotification, NotificationCategory, AppUser } from '../types';
 
@@ -37,7 +39,7 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
   onClearAllNotifications,
   onNavigateTab,
 }) => {
-  const [filterCategory, setFilterCategory] = useState<'all' | 'unread' | 'payment' | 'registration'>('all');
+  const [filterCategory, setFilterCategory] = useState<'all' | 'unread' | 'payment' | 'registration' | 'claim' | 'ambulance' | 'system'>('all');
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
 
   const isKetuaRt = activeUser?.authority === 'Ketua RT (Cluster)';
@@ -57,11 +59,24 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
     return relevantNotifications.filter((n) => !n.read).length;
   }, [relevantNotifications]);
 
+  const categoryCounts = useMemo(() => {
+    return {
+      payment: relevantNotifications.filter((n) => n.category === 'payment').length,
+      registration: relevantNotifications.filter((n) => n.category === 'registration').length,
+      claim: relevantNotifications.filter((n) => n.category === 'claim').length,
+      ambulance: relevantNotifications.filter((n) => n.category === 'ambulance').length,
+      system: relevantNotifications.filter((n) => n.category === 'system' || n.category === 'funeral').length,
+    };
+  }, [relevantNotifications]);
+
   const filteredNotifications = useMemo(() => {
     return relevantNotifications.filter((n) => {
       if (filterCategory === 'unread') return !n.read;
       if (filterCategory === 'payment') return n.category === 'payment';
       if (filterCategory === 'registration') return n.category === 'registration';
+      if (filterCategory === 'claim') return n.category === 'claim';
+      if (filterCategory === 'ambulance') return n.category === 'ambulance';
+      if (filterCategory === 'system') return n.category === 'system' || n.category === 'funeral';
       return true;
     });
   }, [relevantNotifications, filterCategory]);
@@ -81,6 +96,12 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
     }
     if (category === 'registration') {
       return <UserPlus className="w-5 h-5 text-sky-600" />;
+    }
+    if (category === 'claim') {
+      return <HeartHandshake className="w-5 h-5 text-teal-600" />;
+    }
+    if (category === 'ambulance') {
+      return <Ambulance className="w-5 h-5 text-cyan-600" />;
     }
     return <Info className="w-5 h-5 text-blue-600" />;
   };
@@ -240,7 +261,7 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
               }`}
             >
               <CreditCard className="w-3 h-3" />
-              Iuran & Keuangan
+              Iuran & Kas ({categoryCounts.payment})
             </button>
             <button
               type="button"
@@ -252,9 +273,70 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
               }`}
             >
               <UserPlus className="w-3 h-3" />
-              Pendaftaran Warga
+              Pendaftaran ({categoryCounts.registration})
             </button>
+            {categoryCounts.claim > 0 && (
+              <button
+                type="button"
+                onClick={() => setFilterCategory('claim')}
+                className={`px-3 py-1 rounded-lg font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  filterCategory === 'claim'
+                    ? 'bg-teal-700 text-white shadow-2xs'
+                    : 'bg-white text-slate-600 hover:bg-slate-200/70 border border-slate-200/80'
+                }`}
+              >
+                <HeartHandshake className="w-3 h-3" />
+                Santunan Duka ({categoryCounts.claim})
+              </button>
+            )}
+            {categoryCounts.ambulance > 0 && (
+              <button
+                type="button"
+                onClick={() => setFilterCategory('ambulance')}
+                className={`px-3 py-1 rounded-lg font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  filterCategory === 'ambulance'
+                    ? 'bg-cyan-700 text-white shadow-2xs'
+                    : 'bg-white text-slate-600 hover:bg-slate-200/70 border border-slate-200/80'
+                }`}
+              >
+                <Ambulance className="w-3 h-3" />
+                Ambulans ({categoryCounts.ambulance})
+              </button>
+            )}
+            {categoryCounts.system > 0 && (
+              <button
+                type="button"
+                onClick={() => setFilterCategory('system')}
+                className={`px-3 py-1 rounded-lg font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  filterCategory === 'system'
+                    ? 'bg-blue-700 text-white shadow-2xs'
+                    : 'bg-white text-slate-600 hover:bg-slate-200/70 border border-slate-200/80'
+                }`}
+              >
+                <Info className="w-3 h-3" />
+                Sistem ({categoryCounts.system})
+              </button>
+            )}
           </div>
+
+          {/* Prompt if category filter has 0 items but there are unread notifications in other categories */}
+          {filteredNotifications.length === 0 && unreadCount > 0 && filterCategory !== 'unread' && filterCategory !== 'all' && (
+            <div className="p-3 bg-amber-50/90 border-b border-amber-200 text-amber-900 flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  Terdapat <strong>{unreadCount} pemberitahuan belum dibaca</strong> di kategori lain.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFilterCategory('unread')}
+                className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg transition-colors whitespace-nowrap shadow-xs"
+              >
+                Lihat Belum Dibaca ({unreadCount})
+              </button>
+            </div>
+          )}
 
           {/* Notifications Feed */}
           <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto">
@@ -266,7 +348,7 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
                 <p className="text-sm font-bold text-slate-700">Tidak ada notifikasi saat ini</p>
                 <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
                   {filterCategory !== 'all'
-                    ? 'Tidak ada notifikasi untuk kategori filter yang dipilih.'
+                    ? 'Tidak ada notifikasi untuk kategori filter yang dipilih. Klik "Semua" atau "Belum Dibaca".'
                     : 'Pemberitahuan verifikasi pembayaran dan persetujuan pendaftaran akan muncul di sini secara real-time.'}
                 </p>
               </div>

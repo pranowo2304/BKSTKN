@@ -52,6 +52,8 @@ interface RtClusterVerificationProps {
   onViewMemberDetail?: (member: Member) => void;
   onAddClaim?: (newClaim: BenefitClaim) => void;
   onNavigateToRealization?: () => void;
+  onNavigateToDashboard?: () => void;
+  onLogout?: () => void;
 }
 
 export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
@@ -64,6 +66,8 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
   onViewMemberDetail,
   onAddClaim,
   onNavigateToRealization,
+  onNavigateToDashboard,
+  onLogout,
 }) => {
   // Granular permissions hook
   const { can } = useRolePermissions();
@@ -366,10 +370,47 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300 pb-28 sm:pb-32">
+    <div className="space-y-6 animate-in fade-in duration-300 pb-12">
+
+      {/* Top Header Toolbar - Akses Cepat Kembali & Info RT (Bebas dari Navbar bertumpuk) */}
+      <div className="bg-slate-900 text-white rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-md border border-slate-800">
+        <div className="flex items-center gap-3">
+          {onNavigateToDashboard && (
+            <button
+              type="button"
+              onClick={onNavigateToDashboard}
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-2 cursor-pointer border border-slate-700 shadow-xs"
+              title="Kembali ke Dashboard Utama"
+            >
+              <span>←</span>
+              <span>Kembali ke Menu Utama</span>
+            </button>
+          )}
+          <div className="h-5 w-px bg-slate-700 hidden sm:block" />
+          <div className="text-xs">
+            <span className="text-slate-400">Portal Kerja:</span>{' '}
+            <span className="font-bold text-emerald-400">Verifikasi Warga Ketua RT / Cluster</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs">
+          <span className="px-3 py-1 rounded-xl bg-indigo-950 text-indigo-300 border border-indigo-700/60 font-semibold">
+            {officerName}
+          </span>
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              className="px-3 py-1 bg-rose-900/40 text-rose-300 hover:bg-rose-700 hover:text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer border border-rose-700/50"
+            >
+              Keluar
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* ========================================================================= */}
-      {/* MOBILE APP STYLE OPERATIONAL MENU & DASHBOARD                             */}
+      {/* MOBILE APP STYLE OPERATIONAL MENU & DASHBOARD (Tanpa Bottom Dock Navbar)  */}
       {/* ========================================================================= */}
       <RoleMobileAppMenu
         activeUser={activeUser}
@@ -381,6 +422,7 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
         counterHighlight={pendingMembers.length > 0}
         sectionTitle={canVerifyRt ? "MENU CEPAT VERIFIKASI RT" : "MONITORING BERKAS RT"}
         sectionSubtitle={canVerifyRt ? "Kelola warga cluster & verifikasi berkas KK" : "Pantau data warga dan antrean berkas RT"}
+        renderBottomDock={false}
         actions={[
           {
             id: 'antrean-rt',
@@ -467,77 +509,6 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
             isActive: statusFilter === 'claims',
             icon: Heart,
             onClick: () => setStatusFilter('claims'),
-          },
-        ]}
-        dockItems={[
-          {
-            id: 'dock-antrean',
-            label: canVerifyRt ? 'Verifikasi' : 'Antrean',
-            icon: ShieldCheck,
-            badge: pendingMembers.length > 0 ? pendingMembers.length : undefined,
-            isActive: statusFilter === 'pending',
-            onClick: () => {
-              setStatusFilter('pending');
-              const el = document.getElementById('rt-verification-tabs');
-              el?.scrollIntoView({ behavior: 'smooth' });
-            },
-          },
-          {
-            id: 'dock-warga',
-            label: 'Data RT',
-            icon: Users,
-            isActive: statusFilter === 'all',
-            onClick: () => {
-              setStatusFilter('all');
-              const el = document.getElementById('rt-verification-tabs');
-              el?.scrollIntoView({ behavior: 'smooth' });
-            },
-          },
-          {
-            id: 'dock-klaim',
-            label: 'Klaim Duka',
-            icon: Heart,
-            badge: relevantRtClaims.length > 0 ? relevantRtClaims.length : undefined,
-            isActive: statusFilter === 'claims',
-            onClick: () => {
-              setStatusFilter('claims');
-              const el = document.getElementById('rt-verification-tabs');
-              el?.scrollIntoView({ behavior: 'smooth' });
-            },
-          },
-          ...(canVerifyRt
-            ? [
-                {
-                  id: 'dock-massal',
-                  label: 'Setujui Semua',
-                  icon: CheckCircle2,
-                  isCenterFloating: true,
-                  onClick: handleBatchVerifyCluster,
-                },
-              ]
-            : []),
-          {
-            id: 'dock-lolos',
-            label: 'Lolos RT',
-            icon: CheckCircle,
-            isActive: statusFilter === 'verified',
-            onClick: () => {
-              setStatusFilter('verified');
-              const el = document.getElementById('rt-verification-tabs');
-              el?.scrollIntoView({ behavior: 'smooth' });
-            },
-          },
-          {
-            id: 'dock-ditolak',
-            label: 'Ditolak',
-            icon: XCircle,
-            badge: rejectedMembers.length > 0 ? rejectedMembers.length : undefined,
-            isActive: statusFilter === 'rejected',
-            onClick: () => {
-              setStatusFilter('rejected');
-              const el = document.getElementById('rt-verification-tabs');
-              el?.scrollIntoView({ behavior: 'smooth' });
-            },
           },
         ]}
       />

@@ -11,6 +11,9 @@ import {
   Dependent,
   BenefitMaster,
   DEFAULT_BENEFITS,
+  FuneralInventoryItem,
+  FuneralInventoryLoan,
+  FuneralSchedule,
 } from '../types';
 import { formatIDR, getRtUserForCluster } from '../lib/storage';
 import { calculateMemberExpiry } from '../lib/expiryUtils';
@@ -95,6 +98,9 @@ interface PublicLandingPageProps {
     currentBalance?: number;
     baseFundBalance?: number;
   };
+  inventoryItems?: FuneralInventoryItem[];
+  inventoryLoans?: FuneralInventoryLoan[];
+  funeralSchedules?: FuneralSchedule[];
   onRegisterMember: (newMember: Member) => void;
   onMakePayment: (payment: Payment) => void;
   onNavigateToInternal: () => void;
@@ -118,6 +124,9 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
   users,
   activeUser,
   financials,
+  inventoryItems = [],
+  inventoryLoans = [],
+  funeralSchedules = [],
   onRegisterMember,
   onMakePayment,
   onNavigateToInternal,
@@ -704,8 +713,8 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
           </div>
         </div>
 
-        {/* 8-Icon Grid Menu (Mirip Launcher Aplikasi Mobile: 4 Kolom di HP / 8 di Desktop) */}
-        <div className="p-4 sm:p-6 grid grid-cols-4 sm:grid-cols-4 md:grid-cols-8 gap-3 sm:gap-4 bg-white">
+        {/* 8-Icon Grid Menu (Mirip Launcher Aplikasi Mobile: 4 Kolom di HP / 4 di Tablet / 8 di Desktop) */}
+        <div className="p-4 sm:p-6 grid grid-cols-4 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-8 gap-3 sm:gap-4 bg-white">
           {/* Menu 1: Daftar Warga */}
           <button
             type="button"
@@ -804,7 +813,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
             </span>
           </button>
 
-          {/* Menu 5: Laporan Kas */}
+          {/* Menu 6: Laporan Kas */}
           <button
             type="button"
             onClick={() => navigateToSection('section-transparansi')}
@@ -1827,6 +1836,8 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
         </div>
       </section>
 
+
+
       {/* ========================================================================= */}
       {/* 4.5. TRANSPARANSI KAS & REKENING RESMI PAGUYUBAN */}
       {/* ========================================================================= */}
@@ -2457,6 +2468,8 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
           }
         }}
       />
+
+
     </div>
   );
 };

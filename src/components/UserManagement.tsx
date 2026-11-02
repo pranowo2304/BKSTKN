@@ -71,6 +71,8 @@ export const MODULE_PERMISSIONS: ModulePermissionDef[] = [
       'Ketua RT (Cluster)': 'scoped',
       'Ketua RW': 'full',
       'Ketua DKM': 'view',
+      'Petugas Staf': 'view',
+      Driver: 'view',
       Anggota: 'scoped',
     },
     accessLabels: {
@@ -80,6 +82,8 @@ export const MODULE_PERMISSIONS: ModulePermissionDef[] = [
       'Ketua RT (Cluster)': 'Khusus Cluster Sendiri',
       'Ketua RW': 'Seluruh RW 05',
       'Ketua DKM': 'Monitoring Santunan',
+      'Petugas Staf': 'Monitoring Armada & Status',
+      Driver: 'Monitoring Tugas',
       Anggota: 'Tagihan & Status Mandiri',
     },
   },
@@ -95,6 +99,8 @@ export const MODULE_PERMISSIONS: ModulePermissionDef[] = [
       'Ketua RT (Cluster)': 'scoped',
       'Ketua RW': 'view',
       'Ketua DKM': 'view',
+      'Petugas Staf': 'view',
+      Driver: 'none',
       Anggota: 'scoped',
     },
     accessLabels: {
@@ -104,6 +110,7 @@ export const MODULE_PERMISSIONS: ModulePermissionDef[] = [
       'Ketua RT (Cluster)': 'Data Warga Clusternya',
       'Ketua RW': 'Monitoring Seluruh RT',
       'Ketua DKM': 'Data Jamaah Santunan',
+      'Petugas Staf': 'Verifikasi Alamat Jemput',
       Anggota: 'Data Keluarga Mandiri',
     },
   },
@@ -119,6 +126,8 @@ export const MODULE_PERMISSIONS: ModulePermissionDef[] = [
       'Ketua RT (Cluster)': 'scoped',
       'Ketua RW': 'view',
       'Ketua DKM': 'none',
+      'Petugas Staf': 'none',
+      Driver: 'none',
       Anggota: 'none',
     },
     accessLabels: {
@@ -141,6 +150,8 @@ export const MODULE_PERMISSIONS: ModulePermissionDef[] = [
       'Ketua RT (Cluster)': 'scoped',
       'Ketua RW': 'view',
       'Ketua DKM': 'none',
+      'Petugas Staf': 'none',
+      Driver: 'none',
       Anggota: 'none',
     },
     accessLabels: {
@@ -162,6 +173,8 @@ export const MODULE_PERMISSIONS: ModulePermissionDef[] = [
       'Ketua RT (Cluster)': 'scoped',
       'Ketua RW': 'view',
       'Ketua DKM': 'none',
+      'Petugas Staf': 'none',
+      Driver: 'none',
       Anggota: 'full',
     },
     accessLabels: {
@@ -184,6 +197,8 @@ export const MODULE_PERMISSIONS: ModulePermissionDef[] = [
       'Ketua RT (Cluster)': 'none',
       'Ketua RW': 'none',
       'Ketua DKM': 'none',
+      'Petugas Staf': 'none',
+      Driver: 'none',
       Anggota: 'none',
     },
     accessLabels: {
@@ -204,6 +219,8 @@ export const MODULE_PERMISSIONS: ModulePermissionDef[] = [
       'Ketua RT (Cluster)': 'scoped',
       'Ketua RW': 'view',
       'Ketua DKM': 'view',
+      'Petugas Staf': 'view',
+      Driver: 'none',
       Anggota: 'view',
     },
     accessLabels: {
@@ -214,6 +231,62 @@ export const MODULE_PERMISSIONS: ModulePermissionDef[] = [
       'Ketua RW': 'Pengawasan Lintas RT',
       'Ketua RT (Cluster)': 'Info Santunan Clusternya',
       Anggota: 'Transparansi Penyaluran',
+    },
+  },
+  {
+    id: 'ambulance',
+    name: 'Pelayanan Ambulans Siaga',
+    category: 'operasional',
+    description: 'Pemesanan darurat jenazah & sakit (RT -> Bendahara -> Staf -> Driver)',
+    access: {
+      'Ketua Paguyuban': 'full',
+      Admin: 'full',
+      Bendahara: 'full',
+      'Ketua RT (Cluster)': 'scoped',
+      'Ketua RW': 'view',
+      'Ketua DKM': 'view',
+      'Petugas Staf': 'full',
+      Driver: 'scoped',
+      Anggota: 'view',
+    },
+    accessLabels: {
+      'Ketua Paguyuban': 'Pengawasan Paripurna',
+      Admin: 'Akses Penuh',
+      Bendahara: 'Persetujuan & Alokasi BBM Kas',
+      'Ketua RT (Cluster)': 'Pengajuan Pemesanan Darurat Warga',
+      'Ketua RW': 'Monitoring Lintas RT',
+      'Ketua DKM': 'Koordinasi Fardhu Kifayah',
+      'Petugas Staf': 'Penugasan Armada & Driver Siaga',
+      Driver: 'Konfirmasi Kesiapan & Perjalanan',
+      Anggota: 'Informasi Kesiagaan Ambulans',
+    },
+  },
+  {
+    id: 'funeral_schedule',
+    name: 'Jadwal Pemakaman & Fardhu Kifayah',
+    category: 'operasional',
+    description: 'Pusat agenda pemakaman aktif, koordinasi logistik tenda/kursi RT, jam pelepasan, dan lokasi TPU',
+    access: {
+      'Ketua Paguyuban': 'full',
+      Admin: 'full',
+      Bendahara: 'full',
+      'Ketua RT (Cluster)': 'full',
+      'Ketua RW': 'view',
+      'Ketua DKM': 'full',
+      'Petugas Staf': 'full',
+      Driver: 'view',
+      Anggota: 'view',
+    },
+    accessLabels: {
+      'Ketua Paguyuban': 'Pengawasan Pemakaman Warga',
+      Admin: 'Akses Penuh Kelola Agenda',
+      Bendahara: 'Monitoring Logistik & Kas',
+      'Ketua RT (Cluster)': 'Kelola & Siarkan Agenda RT',
+      'Ketua RW': 'Monitoring Seluruh RW',
+      'Ketua DKM': 'Koordinasi Sholat & Fardhu Kifayah',
+      'Petugas Staf': 'Koordinasi Logistik & Armada',
+      Driver: 'Informasi Jadwal Pengantaran',
+      Anggota: 'Informasi Takziah & Sholat Jenazah',
     },
   },
   {
@@ -228,6 +301,8 @@ export const MODULE_PERMISSIONS: ModulePermissionDef[] = [
       'Ketua RT (Cluster)': 'scoped',
       'Ketua RW': 'full',
       'Ketua DKM': 'view',
+      'Petugas Staf': 'view',
+      Driver: 'scoped',
       Anggota: 'scoped',
     },
     accessLabels: {
@@ -252,6 +327,8 @@ export const MODULE_PERMISSIONS: ModulePermissionDef[] = [
       'Ketua RT (Cluster)': 'none',
       'Ketua RW': 'none',
       'Ketua DKM': 'none',
+      'Petugas Staf': 'none',
+      Driver: 'none',
       Anggota: 'none',
     },
     accessLabels: {
@@ -271,6 +348,8 @@ export const MODULE_PERMISSIONS: ModulePermissionDef[] = [
       'Ketua RT (Cluster)': 'none',
       'Ketua RW': 'none',
       'Ketua DKM': 'none',
+      'Petugas Staf': 'none',
+      Driver: 'none',
       Anggota: 'none',
     },
     accessLabels: {
@@ -289,6 +368,7 @@ interface UserManagementProps {
   onDeleteUser: (userId: string) => void;
   onSwitchActiveUser: (user: AppUser) => void;
   onSyncRtUsersWithClusters?: () => void;
+  onSyncMembersWithUsers?: () => void;
   onPermissionsChange?: (permissions: RolePermissionsMap) => void;
   onNavigateToSettings?: () => void;
   onClose?: () => void;
@@ -303,6 +383,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({
   onDeleteUser,
   onSwitchActiveUser,
   onSyncRtUsersWithClusters,
+  onSyncMembersWithUsers,
   onPermissionsChange,
   onNavigateToSettings,
   onClose,
@@ -714,6 +795,22 @@ export const UserManagement: React.FC<UserManagementProps> = ({
               >
                 <RefreshCw className="w-4 h-4 text-slate-950 shrink-0" />
                 <span>Sesuaikan RT dg Master</span>
+              </button>
+            )}
+
+            {onSyncMembersWithUsers && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSyncMembersWithUsers();
+                  setToastMessage('Berhasil menyinkronkan seluruh data anggota warga ke akun pengguna (User)!');
+                  setTimeout(() => setToastMessage(null), 5000);
+                }}
+                className="min-h-[44px] px-4 py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-black text-xs sm:text-sm rounded-2xl transition-all shadow-lg shadow-emerald-950/40 inline-flex items-center justify-center gap-2 cursor-pointer"
+                title="Sinkronkan seluruh data warga terdaftar (termasuk pendaftar baru) menjadi akun login User portal anggota"
+              >
+                <Users className="w-4 h-4 text-emerald-200 shrink-0" />
+                <span>Sinkronkan Akun Warga</span>
               </button>
             )}
 

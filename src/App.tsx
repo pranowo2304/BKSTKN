@@ -10,6 +10,10 @@ import {
   BenefitMaster,
   DEFAULT_BENEFITS,
   AppNotification,
+  AmbulanceOrder,
+  FuneralSchedule,
+  FuneralInventoryItem,
+  FuneralInventoryLoan,
 } from './types';
 import {
   getStoredMembers,
@@ -31,6 +35,14 @@ import {
   saveStoredBenefits,
   getStoredNotifications,
   saveStoredNotifications,
+  getStoredAmbulanceOrders,
+  saveAmbulanceOrders,
+  getStoredFuneralSchedules,
+  saveFuneralSchedules,
+  getStoredFuneralInventory,
+  saveFuneralInventory,
+  getStoredFuneralInventoryLoans,
+  saveFuneralInventoryLoans,
   formatIDR,
   calculateCurrentBalance,
   getBaseBalance,
@@ -43,6 +55,7 @@ import {
   getRtUserForCluster,
   syncRtUsersToClusters,
   createMemberUser,
+  syncMembersToUsers,
   getMemberForUser,
 } from './lib/storage';
 import {
@@ -52,6 +65,16 @@ import {
   syncMembersBatchToCloud,
   syncPaymentToCloud,
   syncClaimToCloud,
+  syncAmbulanceOrderToCloud,
+  deleteAmbulanceOrderFromCloud,
+  clearAllAmbulanceOrdersFromCloud,
+  syncFuneralScheduleToCloud,
+  deleteFuneralScheduleFromCloud,
+  clearAllFuneralSchedulesFromCloud,
+  syncFuneralInventoryItemToCloud,
+  deleteFuneralInventoryItemFromCloud,
+  syncFuneralInventoryLoanToCloud,
+  deleteFuneralInventoryLoanFromCloud,
   syncSettingsToCloud,
   syncUserToCloud,
   syncUsersBatchToCloud,
@@ -80,6 +103,10 @@ import { PaguyubanApproval } from './components/PaguyubanApproval';
 import { PaymentForm } from './components/PaymentForm';
 import { AdminValidation } from './components/AdminValidation';
 import { BenefitRealization } from './components/BenefitRealization';
+import { AmbulanceManagement } from './components/AmbulanceManagement';
+import { FuneralScheduleSection } from './components/FuneralSchedule';
+import { FuneralInventory } from './components/FuneralInventory';
+import { RealtimeToastNotifier, ToastAlertItem } from './components/RealtimeToastNotifier';
 import { PaymentHistory } from './components/PaymentHistory';
 import { FundSettings } from './components/FundSettings';
 import { UserManagement } from './components/UserManagement';
@@ -94,8 +121,8 @@ import { ReceiptAuthenticityVerificationModal } from './components/ReceiptAuthen
 import { DigitalKtaModal } from './components/DigitalKtaModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { AppIcon } from './components/AppIcon';
-import { HeartHandshake, Loader2, Cloud, Database } from 'lucide-react';
-import { useRolePermissions, getPermittedTabsForRole } from './lib/permissions';
+import { HeartHandshake, Loader2, Cloud, Database, Lock, Check } from 'lucide-react';
+import { useRolePermissions, getPermittedTabsForRole, isAuthorizedForFuneralInventory } from './lib/permissions';
 import {
   dispatchWhatsAppNotification,
   buildPaymentValidatedActiveMessage,
@@ -112,6 +139,11 @@ export default function App() {
   const [clusters, setClusters] = useState<ClusterMaster[]>([]);
   const [benefits, setBenefits] = useState<BenefitMaster[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [ambulanceOrders, setAmbulanceOrders] = useState<AmbulanceOrder[]>([]);
+  const [funeralSchedules, setFuneralSchedules] = useState<FuneralSchedule[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<FuneralInventoryItem[]>([]);
+  const [inventoryLoans, setInventoryLoans] = useState<FuneralInventoryLoan[]>([]);
+  const [toastAlerts, setToastAlerts] = useState<ToastAlertItem[]>([]);
   const [baseFundBalance, setBaseFundBalance] = useState<number>(() => getBaseBalance());
   const [activeUser, setActiveUser] = useState<AppUser | null>(null);
   const [cloudStatus, setCloudStatus] = useState<'connected' | 'connecting' | 'offline' | 'error'>('connecting');
@@ -149,6 +181,10 @@ export default function App() {
     const initialM = getStoredMembers();
     const initialP = getStoredPayments();
     const initialC = getStoredClaims();
+    const initialAmb = getStoredAmbulanceOrders();
+    const initialFuneral = getStoredFuneralSchedules();
+    const initialInv = getStoredFuneralInventory();
+    const initialLoans = getStoredFuneralInventoryLoans();
     const initialS = getStoredSettings();
     const initialU = getStoredUsers();
     const initialCl = getStoredClusters();
@@ -160,8 +196,14 @@ export default function App() {
     setMembers(initialM);
     setPayments(initialP);
     setClaims(initialC);
+    setAmbulanceOrders(initialAmb);
+    setFuneralSchedules(initialFuneral);
+    setInventoryItems(initialInv);
+    setInventoryLoans(initialLoans);
     setSettings(initialS);
-    setUsers(initialU);
+    const initialSyncedU = syncMembersToUsers(initialM, initialU);
+    saveUsers(initialSyncedU);
+    setUsers(initialSyncedU);
     setClusters(initialCl);
     setBenefits(initialB);
     setNotifications(initialN);
@@ -169,7 +211,7 @@ export default function App() {
     // Validate stored active user against Master Users list
     let validActiveUser: AppUser | null = null;
     if (storedActive) {
-      const match = initialU.find(
+      const match = initialSyncedU.find(
         (u) =>
           (u.id && u.id === storedActive.id) ||
           (u.email && storedActive.email && u.email.toLowerCase() === storedActive.email.toLowerCase())
@@ -226,9 +268,42 @@ export default function App() {
         await cleanupDemoClaimsFromCloud().catch(() => {});
         unsubscribeFirestore = subscribeToFirestore({
           onMembersChange: (cloudMembers) => {
-            if (cloudMembers) {
-              setMembers(cloudMembers);
-              saveMembers(cloudMembers);
+            if (cloudMembers && Array.isArray(cloudMembers)) {
+              setMembers((prevMembers) => {
+                const cloudMap = new Map(cloudMembers.map((m) => [m.id, m]));
+                const unsyncedPending = prevMembers.filter(
+                  (localM) =>
+                    !cloudMap.has(localM.id) &&
+                    (localM.status === 'Menunggu Verifikasi RT' || localM.verificationStatus === 'Pending')
+                );
+                const merged = unsyncedPending.length > 0 ? [...cloudMembers, ...unsyncedPending] : cloudMembers;
+                saveMembers(merged);
+
+                // Auto-sync any unsynced pending members to Cloud Firestore
+                if (unsyncedPending.length > 0) {
+                  unsyncedPending.forEach((unsynced) => {
+                    syncMemberToCloud(unsynced).catch((err) =>
+                      console.warn('Auto-resync pending member to Firestore error:', err)
+                    );
+                  });
+                }
+                // Auto-sync user accounts for all members so every registered citizen has an active login user
+                setUsers((prevUsers) => {
+                  const syncedUsers = syncMembersToUsers(merged, prevUsers);
+                  saveUsers(syncedUsers);
+                  const newMemberUsers = syncedUsers.filter(
+                    (u) => u.authority === 'Anggota' && !prevUsers.some((pu) => pu.id === u.id)
+                  );
+                  if (newMemberUsers.length > 0) {
+                    syncUsersBatchToCloud(newMemberUsers).catch((err) =>
+                      console.warn('Auto-sync new member users error:', err)
+                    );
+                  }
+                  return syncedUsers;
+                });
+
+                return merged;
+              });
             }
             setIsInitialLoading(false);
           },
@@ -248,6 +323,34 @@ export default function App() {
             }
             setIsInitialLoading(false);
           },
+          onAmbulanceOrdersChange: (cloudOrders) => {
+            if (cloudOrders && Array.isArray(cloudOrders)) {
+              setAmbulanceOrders(cloudOrders);
+              saveAmbulanceOrders(cloudOrders);
+            }
+            setIsInitialLoading(false);
+          },
+          onFuneralSchedulesChange: (cloudScheds) => {
+            if (cloudScheds && Array.isArray(cloudScheds)) {
+              setFuneralSchedules(cloudScheds);
+              saveFuneralSchedules(cloudScheds);
+            }
+            setIsInitialLoading(false);
+          },
+          onFuneralInventoryChange: (cloudItems) => {
+            if (cloudItems && Array.isArray(cloudItems)) {
+              setInventoryItems(cloudItems);
+              saveFuneralInventory(cloudItems);
+            }
+            setIsInitialLoading(false);
+          },
+          onFuneralInventoryLoansChange: (cloudLoans) => {
+            if (cloudLoans && Array.isArray(cloudLoans)) {
+              setInventoryLoans(cloudLoans);
+              saveFuneralInventoryLoans(cloudLoans);
+            }
+            setIsInitialLoading(false);
+          },
           onSettingsChange: (cloudSettings) => {
             if (cloudSettings) {
               setSettings(cloudSettings);
@@ -259,17 +362,31 @@ export default function App() {
             if (cloudUsers && cloudUsers.length > 0) {
               setClusters((currentClusters) => {
                 const effectiveClusters = currentClusters.length > 0 ? currentClusters : getStoredClusters();
-                const syncedUsers = syncClustersToRtUsers(effectiveClusters, cloudUsers);
-                setUsers(syncedUsers);
-                saveUsers(syncedUsers);
+                const syncedRtUsers = syncClustersToRtUsers(effectiveClusters, cloudUsers);
+                const currentOrStoredMembers = members.length > 0 ? members : getStoredMembers();
+                const fullySyncedUsers = syncMembersToUsers(currentOrStoredMembers, syncedRtUsers);
 
-                const syncedClusters = syncRtUsersToClusters(effectiveClusters, syncedUsers);
+                setUsers(fullySyncedUsers);
+                saveUsers(fullySyncedUsers);
+
+                const missingCloudUsers = fullySyncedUsers.filter(
+                  (u) =>
+                    u.authority === 'Anggota' &&
+                    !cloudUsers.some((cu) => cu.id === u.id || (cu.email && u.email && cu.email.toLowerCase() === u.email.toLowerCase()))
+                );
+                if (missingCloudUsers.length > 0) {
+                  syncUsersBatchToCloud(missingCloudUsers).catch((err) =>
+                    console.warn('Sync missing member users to cloud error:', err)
+                  );
+                }
+
+                const syncedClusters = syncRtUsersToClusters(effectiveClusters, syncedRtUsers);
                 saveStoredClusters(syncedClusters);
 
                 // Strictly validate activeUser against live Master Users from cloud
                 setActiveUser((currentActive) => {
                   if (!currentActive) return null;
-                  const found = syncedUsers.find(
+                  const found = fullySyncedUsers.find(
                     (u) =>
                       (u.id && u.id === currentActive.id) ||
                       (u.email && currentActive.email && u.email.toLowerCase() === currentActive.email.toLowerCase())
@@ -423,6 +540,22 @@ export default function App() {
     );
   }).length;
 
+  const pendingAmbulanceCount = (() => {
+    const auth = activeUser?.authority;
+    if (auth === 'Bendahara' || auth === 'Admin' || auth === 'Ketua Paguyuban') {
+      return ambulanceOrders.filter((o) => o.status === 'MENUNGGU_BENDAHARA').length;
+    }
+    if (auth === 'Petugas Staf') {
+      return ambulanceOrders.filter((o) => o.status === 'DISETUJUI_BENDAHARA' || o.status === 'PENUGASAN_ULANG_STAF').length;
+    }
+    if (auth === 'Driver') {
+      return ambulanceOrders.filter((o) => o.status === 'MENUNGGU_KONFIRMASI_DRIVER' && (o.driverId === activeUser?.id || !o.driverId)).length;
+    }
+    return ambulanceOrders.filter((o) => ['MENUNGGU_BENDAHARA', 'DISETUJUI_BENDAHARA', 'MENUNGGU_KONFIRMASI_DRIVER'].includes(o.status)).length;
+  })();
+
+  const activeFuneralCount = funeralSchedules.filter((s) => s.status === 'ACTIVE').length;
+
   const displayMemberCount = isKetuaRtUser && userRtCluster
     ? members.filter((m) => m.cluster === userRtCluster).length
     : members.length;
@@ -447,8 +580,8 @@ export default function App() {
         }
       }
     } else {
-      // Tamu / Belum Login: Pembayaran iuran tetap melalui halaman user anggota
-      if (currentTab === 'payment') {
+      // Tamu / Belum Login: Pembayaran iuran & inventaris duka dialihkan ke publik
+      if (currentTab === 'payment' || currentTab === 'inventory') {
         setCurrentTab('public');
         setIsLoginModalOpen(true);
       }
@@ -510,6 +643,14 @@ export default function App() {
     syncUsersBatchToCloud(syncedUsers).catch((e) => console.warn('Cloud batch sync RT users notice:', e));
   };
 
+  // EXPLICIT SYNC ALL MEMBERS WITH USERS
+  const handleSyncMembersWithUsers = () => {
+    const syncedUsers = syncMembersToUsers(members, users);
+    setUsers(syncedUsers);
+    saveUsers(syncedUsers);
+    syncUsersBatchToCloud(syncedUsers).catch((e) => console.warn('Cloud batch sync member users notice:', e));
+  };
+
   // SAVE / UPDATE BENEFIT MASTER
   const handleSaveBenefit = (benefitData: BenefitMaster) => {
     let updated: BenefitMaster[];
@@ -552,6 +693,27 @@ export default function App() {
       saveStoredNotifications(updated);
       return updated;
     });
+
+    // Trigger instant slide-in toast alert so officers immediately notice incoming requests
+    const shouldShowToast =
+      newNotif.category === 'ambulance' ||
+      newNotif.category === 'claim' ||
+      newNotif.category === 'funeral' ||
+      newNotif.type === 'error' ||
+      newNotif.type === 'warning' ||
+      newNotif.title.toLowerCase().includes('ambulans') ||
+      newNotif.title.toLowerCase().includes('santunan');
+
+    if (shouldShowToast) {
+      setToastAlerts((prev) => [
+        {
+          ...newNotif,
+          toastId: `toast-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          targetTab: newNotif.linkTab,
+        },
+        ...prev.slice(0, 4), // max 5 concurrent toasts to prevent clutter
+      ]);
+    }
   };
 
   const handleDismissNotification = (id: string) => {
@@ -651,6 +813,28 @@ export default function App() {
     setMembers(updatedMembers);
     saveMembers(updatedMembers);
     syncMemberToCloud(newMember).catch((e) => console.warn('Cloud sync member error:', e));
+
+    // Sinkronisasi otomatis akun login warga agar langsung masuk ke daftar users
+    const newUser = createMemberUser(newMember, newMember.email, newMember.password);
+    setUsers((prevUsers) => {
+      const existingIdx = prevUsers.findIndex(
+        (u) =>
+          u.id === newUser.id ||
+          (u.email && u.email.toLowerCase() === newUser.email.toLowerCase()) ||
+          (u.memberId && u.memberId === newMember.id) ||
+          (u.authority === 'Anggota' && u.name && u.name.toLowerCase() === newMember.name.toLowerCase())
+      );
+      let updatedUsersList: AppUser[];
+      if (existingIdx !== -1) {
+        updatedUsersList = [...prevUsers];
+        updatedUsersList[existingIdx] = { ...prevUsers[existingIdx], ...newUser };
+      } else {
+        updatedUsersList = [newUser, ...prevUsers];
+      }
+      saveUsers(updatedUsersList);
+      syncUserToCloud(newUser).catch((e) => console.warn('Cloud sync user error:', e));
+      return updatedUsersList;
+    });
 
     addNotification({
       type: 'info',
@@ -768,6 +952,17 @@ export default function App() {
     setMembers(updatedMembers);
     saveMembers(updatedMembers);
     syncMembersBatchToCloud(validBatch).catch((e) => console.warn('Cloud batch sync members error:', e));
+
+    // Sinkronkan akun login pengguna (users) untuk seluruh anggota yang diimpor
+    setUsers((prevUsers) => {
+      const updatedUsersList = syncMembersToUsers(updatedMembers, prevUsers);
+      saveUsers(updatedUsersList);
+      const newUsers = updatedUsersList.filter((u) => !prevUsers.some((pu) => pu.id === u.id));
+      if (newUsers.length > 0) {
+        syncUsersBatchToCloud(newUsers).catch((e) => console.warn('Batch cloud sync users error:', e));
+      }
+      return updatedUsersList;
+    });
 
     if (skippedDuplicates.length > 0) {
       alert(
@@ -1419,12 +1614,99 @@ export default function App() {
       return;
     }
 
+    // -------------------------------------------------------------
+    // OTOMATISASI LAYANAN AMBULANS JENAZAH & JADWAL PEMAKAMAN (RT)
+    // -------------------------------------------------------------
+    const activeMember = members.find((m) => m.id === newClaim.memberId);
+    const ambCode = `AMB-${new Date().getFullYear()}-${String(Math.floor(100 + Math.random() * 900))}`;
+    const ambId = `amb-claim-${Date.now()}`;
+    const schedCode = `JKM-${new Date().getFullYear()}-${String(Math.floor(100 + Math.random() * 900))}`;
+    const schedId = `jkm-claim-${Date.now()}`;
+
+    // 1. Pesanan Armada Ambulans Jenazah Otomatis (RT -> Bendahara -> Staf -> Driver)
+    const autoAmbulanceOrder: AmbulanceOrder = {
+      id: ambId,
+      orderCode: ambCode,
+      orderNumber: ambCode,
+      serviceType: 'KEMATIAN',
+      urgency: 'DARURAT_TINGGI',
+      status: 'MENUNGGU_BENDAHARA',
+      patientName: newClaim.deceasedName,
+      patientStatus: newClaim.relationship === 'Anggota Utama' ? 'ANGGOTA' : 'KELUARGA',
+      memberId: newClaim.memberId,
+      memberNumber: newClaim.memberNumber,
+      cluster: newClaim.cluster || activeUser?.cluster || 'Cluster RT',
+      clusterName: newClaim.cluster || activeUser?.cluster || 'Cluster RT',
+      pickupAddress: activeMember?.address || `Kediaman Almarhum/ah (${newClaim.cluster || 'Wilayah RT'})`,
+      pickupContactName: activeMember?.name || newClaim.memberName,
+      pickupContactPhone: activeMember?.phone || activeUser?.phone || '',
+      destinationAddress: 'RS / Lokasi Pemakaman / TPU Lingkungan',
+      destinationContactName: newClaim.memberName,
+      destinationContactPhone: activeMember?.phone || activeUser?.phone || '',
+      pickupTime: new Date(Date.now() + 60 * 60 * 1000).toISOString().replace('T', ' ').substring(0, 16),
+      equipmentNeeded: ['Keranda Jenazah Stainless', 'Kain Penutup', 'Peralatan Fardhu Kifayah'],
+      notes: `[OTOMATIS DARI KLAIM DUKA RT] Pemesanan ambulans pelayanan jenazah diterbitkan otomatis saat Ketua RT mengajukan Klaim Santunan Kematian (${newClaim.claimNumber}) untuk almarhum/ah ${newClaim.deceasedName} (Keluarga ${newClaim.memberName}). Sebab wafat: ${newClaim.causeOfDeath || 'Sakit/Usia Lanjut'}.`,
+      submittedByRtId: activeUser?.id,
+      submittedByRtName: activeUser?.name || 'Ketua RT Setempat',
+      submittedByRtCluster: activeUser?.cluster || newClaim.cluster || 'Cluster RT',
+      submittedByRtPhone: activeUser?.phone || activeMember?.phone || '',
+      rtSubmittingUserId: activeUser?.id,
+      rtSubmittingUserName: activeUser?.name || 'Ketua RT Setempat',
+      rtNotes: 'Permohonan ambulans jenazah & subsidi BBM operasional otomatis diteruskan ke Bendahara.',
+      claimId: newClaim.id,
+      claimNumber: newClaim.claimNumber,
+      funeralScheduleId: schedId,
+      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+    };
+
+    // 2. Agenda Jadwal Pemakaman Otomatis (Koordinasi Fardhu Kifayah & Takziah)
+    const autoFuneralSchedule: FuneralSchedule = {
+      id: schedId,
+      scheduleCode: schedCode,
+      deceasedName: newClaim.deceasedName,
+      familyContactName: newClaim.memberName,
+      familyContactPhone: activeMember?.phone || activeUser?.phone || '',
+      cluster: newClaim.cluster || activeUser?.cluster || 'Cluster RT',
+      memberId: newClaim.memberId,
+      memberNumber: newClaim.memberNumber,
+      claimId: newClaim.id,
+      claimNumber: newClaim.claimNumber,
+      ambulanceOrderId: ambId,
+      ambulanceOrderCode: ambCode,
+      status: 'ACTIVE',
+      date: newClaim.dateOfDeath || new Date().toISOString().split('T')[0],
+      timeDeparture: '10:00 WIB',
+      timePrayer: "Ba'da Sholat Dzuhur (12:30 WIB)",
+      timeBurial: '13:30 WIB',
+      homeAddress: activeMember?.address ? `Rumah Duka: ${activeMember.address}, ${newClaim.cluster || ''}` : `Rumah Duka: Kediaman Keluarga ${newClaim.memberName} (${newClaim.cluster || 'RT Setempat'})`,
+      prayerLocation: `Masjid/Musholla Wilayah ${newClaim.cluster || 'RT Setempat'}`,
+      cemeteryName: 'TPU Muslim Lingkungan Paguyuban',
+      cemeteryPlot: 'Blok Fardhu Kifayah',
+      googleMapsUrl: 'https://maps.google.com',
+      coordinatorName: activeUser?.name || 'Ketua RT Setempat',
+      coordinatorPhone: activeUser?.phone || activeMember?.phone || '',
+      coordinatorRole: 'Ketua RT / Koordinator Pemakaman',
+      prayerImamName: 'Ustadz DKM Setempat',
+      talkinOfficerName: 'Petugas Doa Paguyuban',
+      bathingTeam: 'Tim Fardhu Kifayah Lingkungan',
+      driverName: 'Menunggu Penugasan Driver',
+      ambulanceStatus: 'Menunggu Persetujuan Bendahara',
+      equipmentNeeded: ['Keranda Jenazah', 'Kain Penutup', 'Tenda Duka RT', 'Kursi Warga 50 Buah', 'Sound System', 'Bendera Kuning'],
+      notes: `Koordinasi pemakaman otomatis terhubung dari Pengajuan Klaim Santunan Kematian RT (${newClaim.claimNumber}).`,
+      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+    };
+
     const claimWithStatus: BenefitClaim = {
       ...newClaim,
       status: newClaim.status || 'Menunggu Pembayaran Bendahara',
       submittedByRtName: newClaim.submittedByRtName || activeUser?.name || 'Ketua RT',
       submittedByRtCluster: newClaim.submittedByRtCluster || activeUser?.cluster || newClaim.cluster || 'Cluster RT',
       submittedAt: newClaim.submittedAt || new Date().toISOString().replace('T', ' ').substring(0, 19),
+      ambulanceOrderId: ambId,
+      ambulanceOrderCode: ambCode,
+      funeralScheduleId: schedId,
     };
 
     setClaims((prevClaims) => {
@@ -1434,7 +1716,21 @@ export default function App() {
       return updatedClaims;
     });
 
+    setAmbulanceOrders((prev) => {
+      const updatedAmb = [autoAmbulanceOrder, ...prev.filter((o) => o.claimId !== claimWithStatus.id)];
+      saveAmbulanceOrders(updatedAmb);
+      return updatedAmb;
+    });
+
+    setFuneralSchedules((prev) => {
+      const updatedScheds = [autoFuneralSchedule, ...prev.filter((s) => s.claimId !== claimWithStatus.id)];
+      saveFuneralSchedules(updatedScheds);
+      return updatedScheds;
+    });
+
     syncClaimToCloud(claimWithStatus).catch((e) => console.warn('Cloud sync claim error:', e));
+    syncAmbulanceOrderToCloud(autoAmbulanceOrder).catch((e) => console.warn('Cloud sync auto ambulance error:', e));
+    syncFuneralScheduleToCloud(autoFuneralSchedule).catch((e) => console.warn('Cloud sync auto funeral schedule error:', e));
 
     addNotification({
       type: 'warning',
@@ -1443,6 +1739,15 @@ export default function App() {
       message: `Klaim santunan duka cita untuk almarhum/ah ${claimWithStatus.deceasedName} (Keluarga ${claimWithStatus.memberName}) telah diajukan oleh RT. Menunggu input rincian pembayaran ke pihak terkait oleh Bendahara.`,
       memberId: claimWithStatus.memberId,
       linkTab: 'realization',
+    });
+
+    addNotification({
+      type: 'info',
+      category: 'ambulance',
+      title: '🚑 Pemesanan Ambulans Jenazah Otomatis Diterbitkan',
+      message: `Pemesanan armada ambulans jenazah #${autoAmbulanceOrder.orderCode} untuk almarhum/ah ${claimWithStatus.deceasedName} telah dibuat otomatis dari pengajuan klaim RT dan diteruskan ke Bendahara.`,
+      memberId: claimWithStatus.memberId,
+      linkTab: 'ambulance',
     });
   };
 
@@ -1543,6 +1848,227 @@ export default function App() {
       message: `Pengajuan santunan ${rejectedClaim.claimNumber} (${rejectedClaim.deceasedName}) ditolak oleh Ketua Paguyuban: "${reason}".`,
       memberId: rejectedClaim.memberId,
       linkTab: 'realization',
+    });
+  };
+
+  // AMBULANCE ORDER HANDLERS (Pelayanan Ambulans Paguyuban: RT -> Bendahara -> Staf -> Driver)
+  const handleAddAmbulanceOrder = (newOrder: AmbulanceOrder) => {
+    setAmbulanceOrders((prev) => {
+      const updated = [newOrder, ...prev.filter((o) => o.id !== newOrder.id)];
+      saveAmbulanceOrders(updated);
+      return updated;
+    });
+
+    syncAmbulanceOrderToCloud(newOrder).catch((e) => console.warn('Cloud sync ambulance order error:', e));
+
+    addNotification({
+      type: 'warning',
+      category: 'claim',
+      title: 'Permohonan Ambulans Masuk (RT)',
+      message: `Layanan ${newOrder.serviceType === 'KEMATIAN' ? 'Antar Jenazah / Fardhu Kifayah' : 'Pasien Sakit'} untuk ${newOrder.patientName} (${newOrder.orderCode}) diajukan oleh ${newOrder.rtSubmittingUserName}. Menunggu persetujuan Bendahara.`,
+      linkTab: 'ambulance',
+    });
+  };
+
+  const handleUpdateAmbulanceOrder = (updatedOrder: AmbulanceOrder) => {
+    setAmbulanceOrders((prev) => {
+      const updated = prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o));
+      saveAmbulanceOrders(updated);
+      return updated;
+    });
+
+    syncAmbulanceOrderToCloud(updatedOrder).catch((e) => console.warn('Cloud sync ambulance order update error:', e));
+
+    // Contextual notification based on status
+    if (updatedOrder.status === 'DISETUJUI_BENDAHARA') {
+      addNotification({
+        type: 'info',
+        category: 'claim',
+        title: 'Ambulans Disetujui Bendahara',
+        message: `Pemesanan ambulans #${updatedOrder.orderCode} untuk ${updatedOrder.patientName} disetujui Bendahara (BBM: ${formatIDR(updatedOrder.fuelSubsidyAmount || 0)}). Menunggu Petugas Staf menugaskan driver & armada.`,
+        linkTab: 'ambulance',
+      });
+    } else if (updatedOrder.status === 'MENUNGGU_KONFIRMASI_DRIVER') {
+      addNotification({
+        type: 'info',
+        category: 'claim',
+        title: 'Penugasan Driver Ambulans',
+        message: `Driver ${updatedOrder.driverName} ditugaskan untuk ambulans #${updatedOrder.orderCode} (${updatedOrder.vehiclePlate}). Menunggu konfirmasi ketersediaan driver.`,
+        linkTab: 'ambulance',
+      });
+    } else if (updatedOrder.status === 'DRIVER_BERSIAP') {
+      addNotification({
+        type: 'info',
+        category: 'claim',
+        title: 'Driver Konfirmasi Siap Bertugas',
+        message: `Driver ${updatedOrder.driverName} telah mengonfirmasi BISA & SIAP meluncur jemput ${updatedOrder.patientName} (${updatedOrder.orderCode}).`,
+        linkTab: 'ambulance',
+      });
+    } else if (updatedOrder.status === 'PENUGASAN_ULANG_STAF') {
+      addNotification({
+        type: 'warning',
+        category: 'claim',
+        title: 'Driver Berhalangan / Menolak Tugas',
+        message: `Driver menolak penugasan ambulans #${updatedOrder.orderCode}: ${updatedOrder.driverResponseNotes || 'Tidak bisa bertugas'}. Mohon Petugas Staf menunjuk driver cadangan lain.`,
+        linkTab: 'ambulance',
+      });
+    } else if (updatedOrder.status === 'SELESAI') {
+      addNotification({
+        type: 'info',
+        category: 'claim',
+        title: 'Pelayanan Ambulans Selesai',
+        message: `Pelayanan ambulans #${updatedOrder.orderCode} untuk ${updatedOrder.patientName} telah tuntas dan mobil kembali ke pos.`,
+        linkTab: 'ambulance',
+      });
+    }
+  };
+
+  const handleDeleteAmbulanceOrder = (orderId: string) => {
+    setAmbulanceOrders((prev) => {
+      const updated = prev.filter((o) => o.id !== orderId);
+      saveAmbulanceOrders(updated);
+      return updated;
+    });
+    deleteAmbulanceOrderFromCloud(orderId).catch((e) => console.warn('Cloud delete ambulance order error:', e));
+  };
+
+  // FUNERAL SCHEDULE HANDLERS (Jadwal Pemakaman & Fardhu Kifayah)
+  const handleAddFuneralSchedule = (newSched: FuneralSchedule) => {
+    setFuneralSchedules((prev) => {
+      const updated = [newSched, ...prev.filter((s) => s.id !== newSched.id)];
+      saveFuneralSchedules(updated);
+      return updated;
+    });
+    syncFuneralScheduleToCloud(newSched).catch((e) => console.warn('Cloud sync funeral schedule error:', e));
+
+    addNotification({
+      type: 'info',
+      category: 'claim',
+      title: 'Agenda Pemakaman Diterbitkan',
+      message: `Jadwal pemakaman untuk ${newSched.deceasedName} (${newSched.scheduleCode}) di ${newSched.cemeteryName} telah dijadwalkan.`,
+      linkTab: 'funeral-schedule',
+    });
+  };
+
+  const handleUpdateFuneralSchedule = (updatedSched: FuneralSchedule) => {
+    setFuneralSchedules((prev) => {
+      const updated = prev.map((s) => (s.id === updatedSched.id ? updatedSched : s));
+      saveFuneralSchedules(updated);
+      return updated;
+    });
+    syncFuneralScheduleToCloud(updatedSched).catch((e) => console.warn('Cloud sync funeral schedule update error:', e));
+  };
+
+  const handleDeleteFuneralSchedule = (schedId: string) => {
+    setFuneralSchedules((prev) => {
+      const updated = prev.filter((s) => s.id !== schedId);
+      saveFuneralSchedules(updated);
+      return updated;
+    });
+    deleteFuneralScheduleFromCloud(schedId).catch((e) => console.warn('Cloud delete funeral schedule error:', e));
+  };
+
+  // INVENTARIS DUKA & LOGISTIK OPERASIONAL HELPERS
+  const handleSaveInventoryItem = (item: FuneralInventoryItem) => {
+    setInventoryItems((prev) => {
+      const exists = prev.some((i) => i.id === item.id);
+      const updated = exists ? prev.map((i) => (i.id === item.id ? item : i)) : [item, ...prev];
+      saveFuneralInventory(updated);
+      return updated;
+    });
+    syncFuneralInventoryItemToCloud(item).catch((e) => console.warn('Cloud sync inventory item error:', e));
+  };
+
+  const handleDeleteInventoryItem = (itemId: string) => {
+    setInventoryItems((prev) => {
+      const updated = prev.filter((i) => i.id !== itemId);
+      saveFuneralInventory(updated);
+      return updated;
+    });
+    deleteFuneralInventoryItemFromCloud(itemId).catch((e) => console.warn('Cloud delete inventory item error:', e));
+  };
+
+  const handleSaveInventoryLoan = (newLoan: FuneralInventoryLoan, updatedItems: FuneralInventoryItem[]) => {
+    setInventoryLoans((prev) => {
+      const updated = [newLoan, ...prev];
+      saveFuneralInventoryLoans(updated);
+      return updated;
+    });
+
+    setInventoryItems(updatedItems);
+    saveFuneralInventory(updatedItems);
+
+    // Sync to Cloud Firestore
+    syncFuneralInventoryLoanToCloud(newLoan).catch((e) => console.warn('Cloud sync inventory loan error:', e));
+    updatedItems.forEach((it) => {
+      syncFuneralInventoryItemToCloud(it).catch((e) => console.warn('Cloud sync updated item error:', e));
+    });
+
+    // If linked to a funeral schedule, update that schedule's allocation summary
+    if (newLoan.funeralScheduleId) {
+      const loanItemsList = newLoan.items || newLoan.borrowedItems || [];
+      const summaryText = loanItemsList.map((i) => `${i.quantity} ${i.itemName}`).join(', ');
+      setFuneralSchedules((prev) => {
+        const updated = prev.map((s) => {
+          if (s.id === newLoan.funeralScheduleId) {
+            const updatedSched: FuneralSchedule = {
+              ...s,
+              allocatedInventoryLoanId: newLoan.id,
+              allocatedInventorySummary: summaryText,
+            };
+            syncFuneralScheduleToCloud(updatedSched).catch(() => {});
+            return updatedSched;
+          }
+          return s;
+        });
+        saveFuneralSchedules(updated);
+        return updated;
+      });
+    }
+
+    const borrowerDisp = newLoan.borrowerName || newLoan.familyContactName || 'Keluarga Duka';
+    const borrowerRtDisp = newLoan.borrowerRt || newLoan.cluster || 'RT Setempat';
+    const totalLoanedCount = (newLoan.items || newLoan.borrowedItems || []).length;
+
+    addNotification({
+      type: 'info',
+      category: 'funeral',
+      title: '📦 Peminjaman Peralatan Duka Diterbitkan',
+      message: `Peminjaman ${newLoan.loanCode} untuk ${borrowerDisp} (${borrowerRtDisp}) berisi ${totalLoanedCount} macam peralatan telah dicatat.`,
+      linkTab: 'inventory',
+    });
+  };
+
+  const handleReturnInventoryLoan = (loanId: string, updatedItems: FuneralInventoryItem[]) => {
+    setInventoryLoans((prev) => {
+      const updated = prev.map((l) => {
+        if (l.id === loanId) {
+          const finishedLoan: FuneralInventoryLoan = {
+            ...l,
+            status: 'DIKEMBALIKAN',
+            actualReturnDate: new Date().toISOString(),
+          };
+          syncFuneralInventoryLoanToCloud(finishedLoan).catch((e) => console.warn('Cloud sync return loan error:', e));
+          return finishedLoan;
+        }
+        return l;
+      });
+      saveFuneralInventoryLoans(updated);
+      return updated;
+    });
+
+    setInventoryItems(updatedItems);
+    saveFuneralInventory(updatedItems);
+    updatedItems.forEach((it) => {
+      syncFuneralInventoryItemToCloud(it).catch((e) => console.warn('Cloud sync item restore error:', e));
+    });
+
+    addNotification({
+      type: 'info',
+      category: 'funeral',
+      title: '✅ Logistik Duka Dikembalikan ke Gudang',
+      message: `Peralatan inventaris duka peminjaman #${loanId} telah diterima kembali oleh petugas dan stok siap pakai dipulihkan.`,
+      linkTab: 'inventory',
     });
   };
 
@@ -1876,32 +2402,43 @@ export default function App() {
         </div>
       )}
 
-      {/* Top Main Navbar */}
-      <Navbar
-        currentTab={currentTab}
-        setCurrentTab={setCurrentTab}
-        isAdmin={isAdmin}
-        setIsAdmin={setIsAdmin}
-        pendingCount={pendingCount}
-        pendingRtVerificationCount={pendingRtVerificationCount}
-        pendingPaguyubanApprovalCount={pendingPaguyubanApprovalCount}
-        totalBalance={financials.totalBalance}
-        settings={settings}
-        payments={payments}
-        users={users}
-        activeUser={activeUser}
-        memberCount={displayMemberCount}
-        claimCount={claims.length}
-        cloudStatus={cloudStatus}
-        onSwitchActiveUser={handleSwitchActiveUser}
-        onResetData={handleResetData}
-        onClearTransactions={handleClearTransactions}
-        onClearDemoData={handleClearTransactions}
-        onClearClaims={handleClearClaims}
-        onOpenExportModal={() => setIsExportModalOpen(true)}
-        onLogout={handleRequestLogout}
-        onOpenLoginModal={() => setIsLoginModalOpen(true)}
-      />
+      {/* Top Main Navbar - Hapus semua navbar pada halaman RT sesuai permintaan */}
+      {currentTab !== 'rt-verification' && (
+        <Navbar
+          currentTab={currentTab}
+          setCurrentTab={setCurrentTab}
+          isAdmin={isAdmin}
+          setIsAdmin={setIsAdmin}
+          pendingCount={pendingCount}
+          pendingRtVerificationCount={pendingRtVerificationCount}
+          pendingPaguyubanApprovalCount={pendingPaguyubanApprovalCount}
+          pendingAmbulanceCount={pendingAmbulanceCount}
+          activeFuneralCount={activeFuneralCount}
+          activeLoanCount={inventoryLoans.filter((l) => l.status === 'DIPINJAM').length}
+          totalBalance={financials.totalBalance}
+          settings={settings}
+          payments={payments}
+          members={members}
+          notifications={notifications}
+          ambulanceOrders={ambulanceOrders}
+          users={users}
+          activeUser={activeUser}
+          memberCount={displayMemberCount}
+          claimCount={claims.length}
+          cloudStatus={cloudStatus}
+          onSwitchActiveUser={handleSwitchActiveUser}
+          onResetData={handleResetData}
+          onClearTransactions={handleClearTransactions}
+          onClearDemoData={handleClearTransactions}
+          onClearClaims={handleClearClaims}
+          onOpenExportModal={() => setIsExportModalOpen(true)}
+          onLogout={handleRequestLogout}
+          onOpenLoginModal={() => setIsLoginModalOpen(true)}
+          onMarkNotificationRead={handleMarkNotificationRead}
+          onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
+          onClearAllNotifications={handleClearAllNotifications}
+        />
+      )}
 
       {/* Main Container Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-24 sm:pb-28">
@@ -1916,6 +2453,9 @@ export default function App() {
             users={users}
             activeUser={activeUser}
             financials={financials}
+            inventoryItems={inventoryItems}
+            inventoryLoans={inventoryLoans}
+            funeralSchedules={funeralSchedules}
             onRegisterMember={handlePublicRegisterMember}
             onMakePayment={handleAddPayment}
             onNavigateToInternal={() => setCurrentTab('dashboard')}
@@ -2004,6 +2544,14 @@ export default function App() {
             onUpdateMemberCluster={handleUpdateMemberCluster}
             onAddClaim={handleAddClaim}
             onNavigateToRealization={() => setCurrentTab('realization')}
+            onNavigateToDashboard={() => {
+              if (activeUser) {
+                setCurrentTab(activeUser.authority === 'Anggota' ? 'member-portal' : 'dashboard');
+              } else {
+                setCurrentTab('public');
+              }
+            }}
+            onLogout={handleRequestLogout}
           />
         )}
 
@@ -2063,6 +2611,7 @@ export default function App() {
           <BenefitRealization
             members={members}
             claims={claims}
+            ambulanceOrders={ambulanceOrders}
             currentBalance={financials.totalBalance}
             settings={settings}
             benefits={benefits}
@@ -2074,7 +2623,113 @@ export default function App() {
             onOpenExportModal={() => setIsExportModalOpen(true)}
             onClearClaims={handleClearClaims}
             onNavigateToDashboard={() => setCurrentTab('dashboard')}
+            onNavigateToAmbulance={() => setCurrentTab('ambulance')}
+            onNavigateToFuneralSchedule={() => setCurrentTab('funeral-schedule')}
           />
+        )}
+
+        {currentTab === 'ambulance' && (
+          <AmbulanceManagement
+            orders={ambulanceOrders}
+            members={members}
+            currentUser={activeUser}
+            settings={settings}
+            onAddOrder={handleAddAmbulanceOrder}
+            onUpdateOrder={handleUpdateAmbulanceOrder}
+            onDeleteOrder={handleDeleteAmbulanceOrder}
+            onSwitchUser={handleSwitchActiveUser}
+            availableUsers={users}
+          />
+        )}
+
+        {currentTab === 'funeral-schedule' && (
+          <FuneralScheduleSection
+            schedules={funeralSchedules}
+            members={members}
+            claims={claims}
+            ambulanceOrders={ambulanceOrders}
+            currentUser={activeUser}
+            settings={settings}
+            onAddSchedule={handleAddFuneralSchedule}
+            onUpdateSchedule={handleUpdateFuneralSchedule}
+            onDeleteSchedule={handleDeleteFuneralSchedule}
+            onNavigateToAmbulance={() => setCurrentTab('ambulance')}
+            onNavigateToClaims={() => setCurrentTab('realization')}
+            onNavigateToInventory={(schedId) => setCurrentTab('inventory')}
+          />
+        )}
+
+        {currentTab === 'inventory' && (
+          isAuthorizedForFuneralInventory(activeUser) ? (
+            <FuneralInventory
+              items={inventoryItems}
+              loans={inventoryLoans}
+              funeralSchedules={funeralSchedules}
+              currentUser={activeUser}
+              settings={settings}
+              onSaveItem={handleSaveInventoryItem}
+              onDeleteItem={handleDeleteInventoryItem}
+              onSaveLoan={handleSaveInventoryLoan}
+              onReturnLoan={handleReturnInventoryLoan}
+              onNavigateToFuneralSchedule={(schedId) => setCurrentTab('funeral-schedule')}
+            />
+          ) : (
+            <div className="max-w-2xl mx-auto py-12 px-4">
+              <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-xl text-center space-y-5">
+                <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-3xl flex items-center justify-center mx-auto border border-amber-200 shadow-inner">
+                  <Lock className="w-8 h-8" />
+                </div>
+                <div>
+                  <span className="px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-bold uppercase tracking-wider border border-amber-200">
+                    Akses Terbatas: Pengurus Khusus
+                  </span>
+                  <h3 className="text-xl sm:text-2xl font-black text-slate-900 mt-2">
+                    Inventaris Duka Hanya Dapat Diakses oleh Admin, Bendahara, Ketua, dan DKM
+                  </h3>
+                  <p className="text-sm text-slate-600 mt-2 leading-relaxed max-w-lg mx-auto">
+                    Modul pengelolaan dan pencatatan inventaris perlengkapan fardhu kifayah (tenda duka, kursi, keranda, kain penutup) dipusatkan secara amanah kepada Administrator, Bendahara, Ketua Paguyuban, dan Pengurus DKM Masjid.
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 text-left space-y-2">
+                  <p className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+                    Peran Berwenang Mengakses Modul Ini:
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-slate-700">
+                    <span className="flex items-center gap-1.5 bg-white p-2.5 rounded-xl border border-slate-200">
+                      <Check className="w-4 h-4 text-emerald-500" /> Admin Sistem
+                    </span>
+                    <span className="flex items-center gap-1.5 bg-white p-2.5 rounded-xl border border-slate-200">
+                      <Check className="w-4 h-4 text-emerald-500" /> Bendahara Paguyuban
+                    </span>
+                    <span className="flex items-center gap-1.5 bg-white p-2.5 rounded-xl border border-slate-200">
+                      <Check className="w-4 h-4 text-emerald-500" /> Ketua (Paguyuban / RW)
+                    </span>
+                    <span className="flex items-center gap-1.5 bg-white p-2.5 rounded-xl border border-slate-200">
+                      <Check className="w-4 h-4 text-emerald-500" /> Pengurus DKM Masjid
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentTab(activeUser?.authority === 'Anggota' ? 'member-portal' : 'dashboard')}
+                    className="w-full sm:w-auto px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                  >
+                    Kembali ke Halaman Utama
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsLoginModalOpen(true)}
+                    className="w-full sm:w-auto px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                  >
+                    {activeUser ? 'Ganti ke Akun Pengurus' : 'Login Akun Pengurus'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
         )}
 
         {currentTab === 'history' && (
@@ -2099,6 +2754,7 @@ export default function App() {
             onDeleteUser={handleDeleteUser}
             onSwitchActiveUser={handleSwitchActiveUser}
             onSyncRtUsersWithClusters={handleSyncRtUsersWithClusters}
+            onSyncMembersWithUsers={handleSyncMembersWithUsers}
             onPermissionsChange={() => refreshPermissions()}
             onNavigateToSettings={() => setCurrentTab('settings')}
             onClose={() => setCurrentTab('dashboard')}
@@ -2141,29 +2797,32 @@ export default function App() {
         </div>
       </footer>
 
-      {/* Persistent Floating Bottom Dock across all menus */}
-      <PersistentRoleFloatingDock
-        currentTab={currentTab}
-        setCurrentTab={setCurrentTab}
-        activeUser={activeUser}
-        isAdminRole={isAdminRole}
-        pendingRtVerificationCount={pendingRtVerificationCount}
-        pendingCount={pendingCount}
-        pendingPaguyubanApprovalCount={pendingPaguyubanApprovalCount}
-        userCount={users.length}
-        onOpenRegistration={handleOpenRegistrationFromDock}
-        onOpenPayment={() => {
-          if (activeUser?.authority === 'Anggota') {
-            const myMem = getMemberForUser(activeUser, members) || members.find((m) => m.id === activeUser.memberId || (m.email && activeUser.email && m.email.toLowerCase() === activeUser.email.toLowerCase()));
-            if (myMem) {
-              handleSelectMemberForPayment(myMem);
-              return;
+      {/* Persistent Floating Bottom Dock across all menus - Sembunyikan semua navbar pada halaman RT */}
+      {currentTab !== 'rt-verification' && (
+        <PersistentRoleFloatingDock
+          currentTab={currentTab}
+          setCurrentTab={setCurrentTab}
+          activeUser={activeUser}
+          isAdminRole={isAdminRole}
+          pendingRtVerificationCount={pendingRtVerificationCount}
+          pendingCount={pendingCount}
+          pendingPaguyubanApprovalCount={pendingPaguyubanApprovalCount}
+          pendingAmbulanceCount={pendingAmbulanceCount}
+          userCount={users.length}
+          onOpenRegistration={handleOpenRegistrationFromDock}
+          onOpenPayment={() => {
+            if (activeUser?.authority === 'Anggota') {
+              const myMem = getMemberForUser(activeUser, members) || members.find((m) => m.id === activeUser.memberId || (m.email && activeUser.email && m.email.toLowerCase() === activeUser.email.toLowerCase()));
+              if (myMem) {
+                handleSelectMemberForPayment(myMem);
+                return;
+              }
             }
-          }
-          setSelectedMemberForPayment(null);
-          setCurrentTab('payment');
-        }}
-      />
+            setSelectedMemberForPayment(null);
+            setCurrentTab('payment');
+          }}
+        />
+      )}
 
       {/* Kwitansi Receipt Modal Popup */}
       {selectedReceiptPayment && (
@@ -2291,6 +2950,13 @@ export default function App() {
       <PWAInstallModal
         isOpen={isPWAInstallModalOpen}
         onClose={() => setIsPWAInstallModalOpen(false)}
+      />
+
+      {/* Floating Real-time Animated Slide-in Toast Notifier */}
+      <RealtimeToastNotifier
+        toasts={toastAlerts}
+        onDismiss={(id) => setToastAlerts((prev) => prev.filter((t) => t.toastId !== id))}
+        onNavigateTab={(tab) => setCurrentTab(tab)}
       />
     </div>
   );

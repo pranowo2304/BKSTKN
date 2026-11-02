@@ -56,6 +56,7 @@ import {
   HeartHandshake,
   Award,
   Heart,
+  Ambulance,
 } from 'lucide-react';
 import { KtaCardSkeleton } from './KtaCardSkeleton';
 
@@ -974,14 +975,25 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setIsContactAdminOpen(true)}
                   className="w-full py-2 px-3 bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-300 hover:border-emerald-300 font-bold text-xs rounded-xl transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Hubungi Pengurus Paguyuban</span>
+                  <span>Hubungi Pengurus</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (setCurrentTab) setCurrentTab('ambulance');
+                  }}
+                  className="w-full py-2 px-3 bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 font-bold text-xs rounded-xl transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Ambulance className="w-3.5 h-3.5 text-red-600" />
+                  <span>Ambulans Siaga 24 Jam</span>
                 </button>
               </div>
 

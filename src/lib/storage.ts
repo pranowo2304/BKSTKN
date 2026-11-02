@@ -1,4 +1,4 @@
-import { Member, Payment, BenefitClaim, SystemSettings, AppUser, ClusterMaster, DEFAULT_CLUSTERS, BenefitMaster, DEFAULT_BENEFITS, AppNotification, INITIAL_NOTIFICATIONS } from '../types';
+import { Member, Payment, BenefitClaim, SystemSettings, AppUser, ClusterMaster, DEFAULT_CLUSTERS, BenefitMaster, DEFAULT_BENEFITS, AppNotification, INITIAL_NOTIFICATIONS, AmbulanceOrder, FuneralSchedule, FuneralInventoryItem, FuneralInventoryLoan } from '../types';
 import {
   initialMembers,
   initialPayments,
@@ -6,6 +6,10 @@ import {
   sampleDemoMembers,
   sampleDemoPayments,
   sampleDemoClaims,
+  sampleInitialAmbulanceOrders,
+  sampleInitialFuneralSchedules,
+  sampleInitialInventoryItems,
+  sampleInitialInventoryLoans,
   initialSettings,
   initialUsers,
   initialBenefits,
@@ -23,6 +27,10 @@ const KEYS = {
   CLUSTERS: 'dana_kematian_clusters_v1',
   BENEFITS: 'dana_kematian_benefits_v1',
   NOTIFICATIONS: 'dana_kematian_notifications_v1',
+  AMBULANCE_ORDERS: 'dana_kematian_ambulance_orders_v1',
+  FUNERAL_SCHEDULES: 'dana_kematian_funeral_schedules_v1',
+  FUNERAL_INVENTORY: 'dana_kematian_funeral_inventory_v1',
+  FUNERAL_INVENTORY_LOANS: 'dana_kematian_funeral_inventory_loans_v1',
   IS_INITIALIZED: 'dana_kematian_initialized_v1',
   DEMO_CLEARED: 'dana_kematian_demo_cleared_v1',
 };
@@ -669,6 +677,118 @@ export const saveClaims = (claims: BenefitClaim[]) => {
   }
 };
 
+export const getStoredAmbulanceOrders = (): AmbulanceOrder[] => {
+  try {
+    const isCleared = localStorage.getItem(KEYS.DEMO_CLEARED) === 'true';
+    const data = localStorage.getItem(KEYS.AMBULANCE_ORDERS);
+    if (data === null) {
+      if (isCleared) return [];
+      localStorage.setItem(KEYS.AMBULANCE_ORDERS, JSON.stringify(sampleInitialAmbulanceOrders));
+      return sampleInitialAmbulanceOrders;
+    }
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    console.error('Error reading ambulance orders:', e);
+    return [];
+  }
+};
+
+export const saveAmbulanceOrders = (orders: AmbulanceOrder[]) => {
+  try {
+    localStorage.setItem(KEYS.AMBULANCE_ORDERS, JSON.stringify(orders));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('adk_ambulance_orders_updated', { detail: orders }));
+    }
+  } catch (e) {
+    console.warn('Storage quota warning when saving ambulance orders:', e);
+  }
+};
+
+export const getStoredFuneralSchedules = (): FuneralSchedule[] => {
+  try {
+    const isCleared = localStorage.getItem(KEYS.DEMO_CLEARED) === 'true';
+    const data = localStorage.getItem(KEYS.FUNERAL_SCHEDULES);
+    if (data === null) {
+      if (isCleared) return [];
+      localStorage.setItem(KEYS.FUNERAL_SCHEDULES, JSON.stringify(sampleInitialFuneralSchedules));
+      return sampleInitialFuneralSchedules;
+    }
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    console.error('Error reading funeral schedules:', e);
+    return [];
+  }
+};
+
+export const saveFuneralSchedules = (schedules: FuneralSchedule[]) => {
+  try {
+    localStorage.setItem(KEYS.FUNERAL_SCHEDULES, JSON.stringify(schedules));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('adk_funeral_schedules_updated', { detail: schedules }));
+    }
+  } catch (e) {
+    console.warn('Storage quota warning when saving funeral schedules:', e);
+  }
+};
+
+export const getStoredFuneralInventory = (): FuneralInventoryItem[] => {
+  try {
+    const isCleared = localStorage.getItem(KEYS.DEMO_CLEARED) === 'true';
+    const data = localStorage.getItem(KEYS.FUNERAL_INVENTORY);
+    if (data === null) {
+      if (isCleared) return [];
+      localStorage.setItem(KEYS.FUNERAL_INVENTORY, JSON.stringify(sampleInitialInventoryItems));
+      return sampleInitialInventoryItems;
+    }
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    console.error('Error reading funeral inventory items:', e);
+    return [];
+  }
+};
+
+export const saveFuneralInventory = (items: FuneralInventoryItem[]) => {
+  try {
+    localStorage.setItem(KEYS.FUNERAL_INVENTORY, JSON.stringify(items));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('adk_funeral_inventory_updated', { detail: items }));
+    }
+  } catch (e) {
+    console.warn('Storage quota warning when saving funeral inventory:', e);
+  }
+};
+
+export const getStoredFuneralInventoryLoans = (): FuneralInventoryLoan[] => {
+  try {
+    const isCleared = localStorage.getItem(KEYS.DEMO_CLEARED) === 'true';
+    const data = localStorage.getItem(KEYS.FUNERAL_INVENTORY_LOANS);
+    if (data === null) {
+      if (isCleared) return [];
+      localStorage.setItem(KEYS.FUNERAL_INVENTORY_LOANS, JSON.stringify(sampleInitialInventoryLoans));
+      return sampleInitialInventoryLoans;
+    }
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    console.error('Error reading funeral inventory loans:', e);
+    return [];
+  }
+};
+
+export const saveFuneralInventoryLoans = (loans: FuneralInventoryLoan[]) => {
+  try {
+    localStorage.setItem(KEYS.FUNERAL_INVENTORY_LOANS, JSON.stringify(loans));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('adk_funeral_inventory_loans_updated', { detail: loans }));
+    }
+  } catch (e) {
+    console.warn('Storage quota warning when saving funeral inventory loans:', e);
+  }
+};
+
 export const getStoredSettings = (): SystemSettings => {
   try {
     const data = localStorage.getItem(KEYS.SETTINGS);
@@ -809,6 +929,10 @@ export const resetToDefaultData = () => {
   localStorage.setItem(KEYS.MEMBERS, JSON.stringify(sampleDemoMembers));
   localStorage.setItem(KEYS.PAYMENTS, JSON.stringify(sampleDemoPayments));
   localStorage.setItem(KEYS.CLAIMS, JSON.stringify(sampleDemoClaims));
+  localStorage.setItem(KEYS.AMBULANCE_ORDERS, JSON.stringify(sampleInitialAmbulanceOrders));
+  localStorage.setItem(KEYS.FUNERAL_SCHEDULES, JSON.stringify(sampleInitialFuneralSchedules));
+  localStorage.setItem(KEYS.FUNERAL_INVENTORY, JSON.stringify(sampleInitialInventoryItems));
+  localStorage.setItem(KEYS.FUNERAL_INVENTORY_LOANS, JSON.stringify(sampleInitialInventoryLoans));
   localStorage.setItem(KEYS.SETTINGS, JSON.stringify(initialSettings));
   localStorage.setItem(KEYS.CLUSTERS, JSON.stringify(DEFAULT_CLUSTERS));
   localStorage.setItem(KEYS.BENEFITS, JSON.stringify(DEFAULT_BENEFITS));
@@ -831,6 +955,10 @@ export const clearAllDemoDataLocally = () => {
   localStorage.setItem(KEYS.MEMBERS, JSON.stringify([]));
   localStorage.setItem(KEYS.PAYMENTS, JSON.stringify([]));
   localStorage.setItem(KEYS.CLAIMS, JSON.stringify([]));
+  localStorage.setItem(KEYS.AMBULANCE_ORDERS, JSON.stringify([]));
+  localStorage.setItem(KEYS.FUNERAL_SCHEDULES, JSON.stringify([]));
+  localStorage.setItem(KEYS.FUNERAL_INVENTORY, JSON.stringify([]));
+  localStorage.setItem(KEYS.FUNERAL_INVENTORY_LOANS, JSON.stringify([]));
   localStorage.setItem(KEYS.NOTIFICATIONS, JSON.stringify([]));
   localStorage.setItem(KEYS.BASE_BALANCE, '0');
   const adminUsers = initialUsers.filter((u) => u.authority !== 'Anggota');

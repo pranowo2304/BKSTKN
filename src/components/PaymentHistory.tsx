@@ -29,6 +29,7 @@ import {
   User,
   Sparkles,
   LayoutDashboard,
+  Printer,
 } from 'lucide-react';
 
 interface PaymentHistoryProps {
@@ -233,13 +234,25 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
             </button>
           )}
           {!isAnggota && (
-            <button
-              onClick={handleExportCSV}
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-950/20 transition-all flex items-center gap-1.5 hover:scale-[1.02] active:scale-[0.98]"
-            >
-              <Download className="w-4 h-4" />
-              <span>Unduh Laporan CSV</span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold transition-all inline-flex items-center gap-1.5 shadow-2xs hover:scale-[1.02] active:scale-95 cursor-pointer print:hidden"
+                title="Cetak laporan transaksi kas ke kertas atau simpan format PDF"
+              >
+                <Printer className="w-4 h-4 text-slate-600" />
+                <span>Cetak Laporan</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleExportCSV}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-950/20 transition-all flex items-center gap-1.5 hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Download className="w-4 h-4" />
+                <span>Unduh Laporan CSV</span>
+              </button>
+            </>
           )}
           <span className="px-3 py-2 bg-slate-100 text-slate-800 font-mono text-xs font-bold rounded-xl border border-slate-200">
             {filteredPayments.length} Transaksi {isAnggota ? 'Saya' : ''}
@@ -495,6 +508,34 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
         </div>
       </div>
 
+      {/* PRINT-ONLY OFFICIAL DOCUMENT HEADER */}
+      <div className="hidden print:block mb-4 pb-3 border-b-2 border-slate-900">
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-base font-black text-slate-950 uppercase tracking-wide">
+              {settings?.communityName || 'Paguyuban Warga'}
+            </h1>
+            <p className="text-xs font-bold text-slate-800 mt-0.5">
+              LAPORAN RIWAYAT TRANSAKSI KAS & PEMBAYARAN IURAN
+            </p>
+            {settings?.communityAddress && (
+              <p className="text-[10px] text-slate-600 mt-0.5">
+                {settings.communityAddress}
+              </p>
+            )}
+            <p className="text-[10px] text-slate-500 mt-1">
+              Filter: {statusFilter !== 'Semua' ? `Status: ${statusFilter}` : 'Semua Status'} • {clusterFilter !== 'Semua' ? `Cluster: ${clusterFilter}` : 'Semua Cluster'} • Periode: {dateFilter} • Dicetak pada: {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+          </div>
+          <div className="text-right text-[10px] text-slate-600 space-y-0.5">
+            <span className="font-mono font-bold text-slate-800 border border-slate-300 px-2 py-0.5 rounded">
+              Total: {filteredPayments.length} Transaksi ({formatIDR(totalFilteredAmount)})
+            </span>
+            <p className="text-[9px] text-slate-400 mt-1">Dokumen Rekapitulasi Kas Resmi</p>
+          </div>
+        </div>
+      </div>
+
       {/* HISTORY TABLE */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -641,6 +682,24 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* PRINT-ONLY OFFICIAL SIGNATURE FOOTER */}
+      <div className="hidden print:flex justify-between items-end mt-8 pt-4 text-xs text-slate-800 break-inside-avoid">
+        <div className="text-center w-52">
+          <p className="text-[11px] text-slate-600">Mengetahui,</p>
+          <p className="font-bold mt-0.5">Ketua Paguyuban</p>
+          <div className="h-16"></div>
+          <p className="font-bold underline text-slate-950">{settings?.contactPerson || '................................'}</p>
+        </div>
+        <div className="text-center w-52">
+          <p className="text-[11px] text-slate-600">
+            {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
+          <p className="font-bold mt-0.5">Bendahara Paguyuban</p>
+          <div className="h-16"></div>
+          <p className="font-bold underline text-slate-950">{settings?.treasurerName || activeUser?.name || '................................'}</p>
         </div>
       </div>
     </div>

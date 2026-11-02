@@ -560,7 +560,7 @@ export const CsvMemberImportModal: React.FC<CsvMemberImportModalProps> = ({
                                     <span>Error</span>
                                   </span>
                                   <p className="text-[10px] text-rose-600 font-semibold max-w-xs">
-                                    {row.errors.join(', ')}
+                                    {row.errors?.join(', ') || 'Validasi gagal'}
                                   </p>
                                 </div>
                               )}

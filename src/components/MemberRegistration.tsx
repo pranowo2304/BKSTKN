@@ -1919,6 +1919,17 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
               <span className="hidden sm:inline">Pindai QR KTA</span>
               <span className="sm:hidden">Scan QR</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold transition-all inline-flex items-center gap-1.5 shrink-0 shadow-2xs hover:scale-[1.02] active:scale-95 cursor-pointer print:hidden"
+              title="Cetak daftar anggota yang sedang ditampilkan ke kertas atau simpan sebagai PDF"
+            >
+              <Printer className="w-4 h-4 text-slate-600" />
+              <span className="hidden sm:inline">Cetak Daftar</span>
+              <span className="sm:hidden">Cetak</span>
+            </button>
           </div>
 
           {/* Filter and Sort Controls Group */}
@@ -2229,6 +2240,34 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
               )}
             </div>
           )}
+        </div>
+      </div>
+
+      {/* PRINT-ONLY OFFICIAL DOCUMENT HEADER */}
+      <div className="hidden print:block mb-4 pb-3 border-b-2 border-slate-900">
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-base font-black text-slate-950 uppercase tracking-wide">
+              {settings?.communityName || 'Paguyuban Warga'}
+            </h1>
+            <p className="text-xs font-bold text-slate-800 mt-0.5">
+              DAFTAR ANGGOTA & KEPALA KELUARGA PAGUYUBAN DANA KEMATIAN
+            </p>
+            {settings?.communityAddress && (
+              <p className="text-[10px] text-slate-600 mt-0.5">
+                {settings.communityAddress}
+              </p>
+            )}
+            <p className="text-[10px] text-slate-500 mt-1">
+              Filter: {statusFilter !== 'Semua' ? `Status: ${statusFilter}` : 'Semua Status'} • {clusterFilter !== 'Semua' ? `Cluster: ${clusterFilter}` : 'Semua Cluster'} • Dicetak pada: {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+          </div>
+          <div className="text-right text-[10px] text-slate-600 space-y-0.5">
+            <span className="font-mono font-bold text-slate-800 border border-slate-300 px-2 py-0.5 rounded">
+              Total: {filteredMembers.length} Anggota
+            </span>
+            <p className="text-[9px] text-slate-400 mt-1">Dokumen Resmi Paguyuban</p>
+          </div>
         </div>
       </div>
 
@@ -2648,7 +2687,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
 
                     {/* EXPANDABLE TIMELINE SECTION FOR MEMBER STATUS AUDIT */}
                     {isTimelineExpanded && (
-                      <tr key={`${member.id}-timeline-row`} className="bg-slate-50/70 border-b border-indigo-100">
+                      <tr key={`${member.id}-timeline-row`} className="bg-slate-50/70 border-b border-indigo-100 print:hidden">
                         <td colSpan={8} className="p-3 sm:p-5 bg-gradient-to-b from-indigo-50/40 via-slate-50 to-white border-y-2 border-indigo-200/90 shadow-inner">
                           <MemberStatusTimeline
                             member={member}
@@ -2667,6 +2706,24 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
             )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* PRINT-ONLY OFFICIAL SIGNATURE FOOTER */}
+      <div className="hidden print:flex justify-between items-end mt-8 pt-4 text-xs text-slate-800 break-inside-avoid">
+        <div className="text-center w-52">
+          <p className="text-[11px] text-slate-600">Mengetahui,</p>
+          <p className="font-bold mt-0.5">Ketua Paguyuban</p>
+          <div className="h-16"></div>
+          <p className="font-bold underline text-slate-950">{settings?.contactPerson || '................................'}</p>
+        </div>
+        <div className="text-center w-52">
+          <p className="text-[11px] text-slate-600">
+            {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
+          <p className="font-bold mt-0.5">Sekretaris / Pengurus Administrasi</p>
+          <div className="h-16"></div>
+          <p className="font-bold underline text-slate-950">{activeUser?.name || '................................'}</p>
         </div>
       </div>
     </div>
