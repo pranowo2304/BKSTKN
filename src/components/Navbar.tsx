@@ -476,15 +476,15 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Live Balance, Role Switcher & Actions */}
         <div className="flex items-center gap-2.5 sm:gap-3 ml-auto">
-          {/* Cloud Database Status Badge */}
+          {/* Cloud Database Status Badge (Non-clickable static indicator) */}
           <div 
-            className="flex items-center gap-1.5 sm:gap-2 bg-slate-800/90 border border-slate-700/80 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl shadow-inner text-xs"
+            className="flex items-center gap-1.5 sm:gap-2 bg-slate-800/90 border border-slate-700/80 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl shadow-inner text-xs select-none"
             title={
               cloudStatus === 'connected'
                 ? 'Database terhubung aktif & tersinkronisasi real-time'
                 : cloudStatus === 'connecting'
                 ? 'Sedang menghubungkan ke Database...'
-                : 'Penyimpanan lokal aktif'
+                : 'Mode Penyimpanan Lokal Aktif'
             }
           >
             {cloudStatus === 'connected' ? (
@@ -510,10 +510,13 @@ export const Navbar: React.FC<NavbarProps> = ({
               </>
             ) : (
               <>
-                <CloudOff className="w-4 h-4 text-slate-400" />
+                <CloudOff className="w-4 h-4 text-amber-400/90" />
                 <div className="leading-tight">
                   <p className="text-[9px] text-slate-400 uppercase tracking-wider font-semibold">Cloud DB</p>
-                  <p className="text-[11px] font-bold text-slate-300">Mode Lokal</p>
+                  <p className="text-[11px] font-bold text-amber-300 flex items-center gap-1">
+                    <span>Mode Lokal</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  </p>
                 </div>
               </>
             )}
@@ -1351,6 +1354,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           onClearClaims={onClearClaims}
         />
       )}
+
     </header>
   );
 };

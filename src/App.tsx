@@ -271,19 +271,15 @@ export default function App() {
             if (cloudMembers && Array.isArray(cloudMembers)) {
               setMembers((prevMembers) => {
                 const cloudMap = new Map(cloudMembers.map((m) => [m.id, m]));
-                const unsyncedPending = prevMembers.filter(
-                  (localM) =>
-                    !cloudMap.has(localM.id) &&
-                    (localM.status === 'Menunggu Verifikasi RT' || localM.verificationStatus === 'Pending')
-                );
-                const merged = unsyncedPending.length > 0 ? [...cloudMembers, ...unsyncedPending] : cloudMembers;
+                const unsyncedMembers = prevMembers.filter((localM) => !cloudMap.has(localM.id));
+                const merged = unsyncedMembers.length > 0 ? [...cloudMembers, ...unsyncedMembers] : cloudMembers;
                 saveMembers(merged);
 
-                // Auto-sync any unsynced pending members to Cloud Firestore
-                if (unsyncedPending.length > 0) {
-                  unsyncedPending.forEach((unsynced) => {
+                // Auto-sync any unsynced local members to Cloud Firestore upon reconnect
+                if (unsyncedMembers.length > 0) {
+                  unsyncedMembers.forEach((unsynced) => {
                     syncMemberToCloud(unsynced).catch((err) =>
-                      console.warn('Auto-resync pending member to Firestore error:', err)
+                      console.warn('Auto-resync member to Firestore error:', err)
                     );
                   });
                 }
@@ -308,9 +304,23 @@ export default function App() {
             setIsInitialLoading(false);
           },
           onPaymentsChange: (cloudPayments) => {
-            if (cloudPayments) {
-              setPayments(cloudPayments);
-              savePayments(cloudPayments);
+            if (cloudPayments && Array.isArray(cloudPayments)) {
+              setPayments((prevPayments) => {
+                const cloudMap = new Map(cloudPayments.map((p) => [p.id, p]));
+                const unsyncedPayments = prevPayments.filter((localP) => !cloudMap.has(localP.id));
+                const merged = unsyncedPayments.length > 0 ? [...cloudPayments, ...unsyncedPayments] : cloudPayments;
+                savePayments(merged);
+
+                // Auto-sync any unsynced local payments to Cloud Firestore upon reconnect
+                if (unsyncedPayments.length > 0) {
+                  unsyncedPayments.forEach((p) => {
+                    syncPaymentToCloud(p).catch((err) =>
+                      console.warn('Auto-resync payment to Firestore error:', err)
+                    );
+                  });
+                }
+                return merged;
+              });
             }
             setIsInitialLoading(false);
           },
@@ -318,8 +328,22 @@ export default function App() {
             if (cloudClaims && Array.isArray(cloudClaims)) {
               // Ensure legacy demo claims (claim-1, claim-2, claim-3) are stripped out
               const nonDemo = cloudClaims.filter((c) => c && c.id !== 'claim-1' && c.id !== 'claim-2' && c.id !== 'claim-3');
-              setClaims(nonDemo);
-              saveClaims(nonDemo);
+              setClaims((prevClaims) => {
+                const cloudMap = new Map(nonDemo.map((c) => [c.id, c]));
+                const unsyncedClaims = prevClaims.filter((localC) => !cloudMap.has(localC.id));
+                const merged = unsyncedClaims.length > 0 ? [...nonDemo, ...unsyncedClaims] : nonDemo;
+                saveClaims(merged);
+
+                // Auto-sync any unsynced local claims to Cloud Firestore upon reconnect
+                if (unsyncedClaims.length > 0) {
+                  unsyncedClaims.forEach((c) => {
+                    syncClaimToCloud(c).catch((err) =>
+                      console.warn('Auto-resync claim to Firestore error:', err)
+                    );
+                  });
+                }
+                return merged;
+              });
             }
             setIsInitialLoading(false);
           },

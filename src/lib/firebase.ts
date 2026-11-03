@@ -296,6 +296,9 @@ export function subscribeToFirestore(callbacks: {
     } else if (err?.code === 'unavailable' || err?.message?.includes('unavailable') || err?.message?.includes('Could not reach')) {
       console.warn(`Firestore [${collectionName}] notice: Backend connection waiting or offline. Operating in offline cache mode.`);
       callbacks.onStatusChange?.('offline', err.message);
+    } else if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+      console.warn(`Firestore [${collectionName}] notice: Kuota harian pembacaan gratis Firestore (50.000 read/hari) telah tercapai. Sistem otomatis beralih ke Mode Lokal agar aplikasi tetap dapat digunakan.`);
+      callbacks.onStatusChange?.('offline', 'Kuota harian gratis Firestore telah mencapai batas maksimal.');
     } else {
       console.warn(`Firestore [${collectionName}] subscribe notice:`, err?.message || err);
       callbacks.onStatusChange?.('offline', err?.message);

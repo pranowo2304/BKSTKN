@@ -2455,19 +2455,21 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
       )}
 
       {/* BESARAN IURAN RESMI MODAL */}
-      <BesaranIuranModal
-        isOpen={isBesaranIuranModalOpen}
-        onClose={() => setIsBesaranIuranModalOpen(false)}
-        settings={settings}
-        onOpenLoginModal={onOpenLoginModal}
-        onOpenRegister={() => {
-          if (onNavigateToTab) {
-            onNavigateToTab('registration');
-          } else {
-            setIsRegistering(true);
-          }
-        }}
-      />
+      {isBesaranIuranModalOpen && (
+        <BesaranIuranModal
+          isOpen={isBesaranIuranModalOpen}
+          onClose={() => setIsBesaranIuranModalOpen(false)}
+          settings={settings}
+          onOpenLoginModal={onOpenLoginModal}
+          onOpenRegister={() => {
+            if (onNavigateToTab) {
+              onNavigateToTab('registration');
+            } else {
+              setIsRegistering(true);
+            }
+          }}
+        />
+      )}
 
 
     </div>

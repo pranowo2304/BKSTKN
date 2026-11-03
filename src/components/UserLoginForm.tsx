@@ -510,30 +510,6 @@ export const UserLoginForm: React.FC<UserLoginFormProps> = ({
               </button>
             </div>
           </form>
-
-          {/* Quick Helper for Registered Member Emails */}
-          {members && members.length > 0 && (
-            <div className="pt-3 border-t border-slate-200">
-              <p className="text-[11px] font-bold text-slate-500 mb-2">
-                Contoh email anggota terdaftar yang dapat Anda coba:
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {members.slice(0, 3).map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => {
-                      setResetEmail(m.email || 'budi.santoso@danakematian.org');
-                      setResetError(null);
-                    }}
-                    className="text-[11px] px-2.5 py-1 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-700 border border-slate-200 rounded-lg font-mono text-slate-600 transition-colors cursor-pointer text-left"
-                  >
-                    {m.email || `${m.name.toLowerCase().replace(/\s+/g, '.')}@danakematian.org`} ({m.name})
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
 
