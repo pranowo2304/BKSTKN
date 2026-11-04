@@ -63,7 +63,9 @@ import {
   subscribeToFirestore,
   syncMemberToCloud,
   syncMembersBatchToCloud,
+  deleteMemberFromCloud,
   syncPaymentToCloud,
+  deletePaymentFromCloud,
   syncClaimToCloud,
   syncAmbulanceOrderToCloud,
   deleteAmbulanceOrderFromCloud,
@@ -156,6 +158,7 @@ export default function App() {
   const [selectedMemberForPayment, setSelectedMemberForPayment] = useState<Member | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
+  const [registeredMemberForLogin, setRegisteredMemberForLogin] = useState<Member | null>(null);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState<boolean>(false);
   const [verifiedKtaData, setVerifiedKtaData] = useState<{ npa: string; sig?: string } | null>(null);
   const [isKtaVerificationModalOpen, setIsKtaVerificationModalOpen] = useState<boolean>(false);
@@ -815,6 +818,12 @@ export default function App() {
       memberId: newMember.id,
       linkTab: 'rt-verification',
     });
+
+    // Arahkan calon anggota baru ke jendela Login agar dapat memonitor progres pendaftarannya
+    setRegisteredMemberForLogin(newMember);
+    if (!activeUser) {
+      setIsLoginModalOpen(true);
+    }
   };
 
   // ADD SINGLE MEMBER (Oleh Pengurus / Admin di Dashboard Registrasi Anggota)
@@ -869,6 +878,12 @@ export default function App() {
       memberId: newMember.id,
       linkTab: 'rt-verification',
     });
+
+    // Jika calon anggota baru mendaftar mandiri (belum login), arahkan langsung ke Login untuk monitor progres pendaftaran
+    if (!activeUser) {
+      setRegisteredMemberForLogin(newMember);
+      setIsLoginModalOpen(true);
+    }
   };
 
   // UPDATE EXISTING MEMBER BIODATA
@@ -945,6 +960,78 @@ export default function App() {
         settings,
       }).catch((e) => console.warn('WA status changed notification error:', e));
     }
+  };
+
+  // DELETE SINGLE MEMBER REGISTRATION RECORD (Khusus Admin)
+  const handleDeleteMember = (memberId: string) => {
+    const isAllowed = activeUser?.authority === 'Admin';
+    if (!isAllowed) {
+      alert(`Akses Ditolak: Hanya Admin yang memiliki wewenang menghapus data registrasi anggota.`);
+      return;
+    }
+
+    const targetMember = members.find((m) => m.id === memberId);
+    if (!targetMember) return;
+
+    const updatedMembers = members.filter((m) => m.id !== memberId);
+    setMembers(updatedMembers);
+    saveMembers(updatedMembers);
+    deleteMemberFromCloud(memberId).catch((e) => console.warn('Cloud delete member error:', e));
+
+    // Hapus akun login anggota terkait dari daftar users
+    setUsers((prevUsers) => {
+      const usersToRemove = prevUsers.filter(
+        (u) =>
+          u.id === `usr-mem-${memberId}` ||
+          u.memberId === memberId ||
+          (u.authority === 'Anggota' &&
+            targetMember.email &&
+            u.email &&
+            u.email.toLowerCase() === targetMember.email.toLowerCase())
+      );
+      if (usersToRemove.length === 0) return prevUsers;
+      const updatedUsersList = prevUsers.filter((u) => !usersToRemove.some((rem) => rem.id === u.id));
+      saveUsers(updatedUsersList);
+      usersToRemove.forEach((rem) => {
+        deleteUserFromCloud(rem.id).catch((e) => console.warn('Cloud delete user error:', e));
+      });
+      return updatedUsersList;
+    });
+
+    // Bersihkan pembayaran yang belum terverifikasi (Pending/Rejected) milik record yang dihapus
+    setPayments((prevPayments) => {
+      const unverifiedPayments = prevPayments.filter(
+        (p) =>
+          (p.memberId === memberId || p.memberNumber === targetMember.memberNumber) &&
+          p.status !== 'Verified' &&
+          p.status !== 'Lunas'
+      );
+      if (unverifiedPayments.length === 0) return prevPayments;
+      const remainingPayments = prevPayments.filter((p) => !unverifiedPayments.some((rem) => rem.id === p.id));
+      savePayments(remainingPayments);
+      unverifiedPayments.forEach((rem) => {
+        deletePaymentFromCloud(rem.id).catch((e) => console.warn('Cloud delete payment error:', e));
+      });
+      return remainingPayments;
+    });
+
+    if (selectedMemberForPayment?.id === memberId) {
+      setSelectedMemberForPayment(null);
+    }
+    if (selectedFullKtaMember?.id === memberId) {
+      setSelectedFullKtaMember(null);
+    }
+    if (registeredMemberForLogin?.id === memberId) {
+      setRegisteredMemberForLogin(null);
+    }
+
+    addNotification({
+      type: 'warning',
+      category: 'system',
+      title: 'Record Registrasi Anggota Dihapus',
+      message: `Data registrasi anggota "${targetMember.name}" (${targetMember.memberNumber} - ${targetMember.cluster || 'Cluster'}) telah dihapus oleh ${activeUser?.name || 'Admin'}.`,
+      cluster: targetMember.cluster,
+    });
   };
 
   // BATCH IMPORT MEMBERS FROM CSV
@@ -2297,6 +2384,7 @@ export default function App() {
     setActiveUser(user);
     saveStoredActiveUser(user);
     setIsAdmin(user.authority !== 'Anggota');
+    setRegisteredMemberForLogin(null);
     setIsLoginModalOpen(false);
     if (user.authority === 'Anggota') {
       setCurrentTab('member-portal');
@@ -2541,12 +2629,17 @@ export default function App() {
             benefits={benefits}
             users={users}
             activeUser={activeUser}
-            initialMode="directory"
+            initialMode={activeUser ? 'directory' : 'form'}
             onAddMember={handleAddMember}
             onUpdateMember={handleUpdateMember}
+            onDeleteMember={activeUser?.authority === 'Admin' ? handleDeleteMember : undefined}
             onImportBatchMembers={handleImportBatchMembers}
             onSelectMemberForPayment={handleSelectMemberForPayment}
             onViewReceipt={(p) => setSelectedReceiptPayment(p)}
+            onOpenLoginForMember={(m) => {
+              setRegisteredMemberForLogin(m);
+              setIsLoginModalOpen(true);
+            }}
             onNavigateToVerification={can(activeUser?.authority, 'verify_rt_members') ? () => setCurrentTab('rt-verification') : undefined}
             onNavigateToDashboard={() => {
               if (activeUser) {
@@ -2565,6 +2658,7 @@ export default function App() {
             claims={claims}
             onVerifyMember={handleVerifyMember}
             onRejectMember={handleRejectMember}
+            onDeleteMember={activeUser?.authority === 'Admin' ? handleDeleteMember : undefined}
             onUpdateMemberCluster={handleUpdateMemberCluster}
             onAddClaim={handleAddClaim}
             onNavigateToRealization={() => setCurrentTab('realization')}
@@ -2590,6 +2684,7 @@ export default function App() {
             activeUser={activeUser}
             onApproveMember={handleApproveByKetuaPaguyuban}
             onRejectMember={handleRejectByKetuaPaguyuban}
+            onDeleteMember={activeUser?.authority === 'Admin' ? handleDeleteMember : undefined}
             onViewReceipt={(p) => setSelectedReceiptPayment(p)}
             onAddClaim={handleAddClaim}
             onUpdateClaim={handleUpdateClaim}
@@ -2891,6 +2986,8 @@ export default function App() {
           setCurrentTab('dashboard');
           setIsLoginModalOpen(false);
         }}
+        registeredMemberNotice={registeredMemberForLogin}
+        onDismissRegisteredNotice={() => setRegisteredMemberForLogin(null)}
       />
 
       {/* User Logout Safety Confirmation Alert Modal */}

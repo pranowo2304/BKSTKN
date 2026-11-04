@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppUser, Member, UserAuthority } from '../types';
 import { createMemberUser, saveMembers, saveUsers, getStoredMembers, getStoredUsers } from '../lib/storage';
 import {
@@ -40,6 +40,8 @@ interface UserLoginFormProps {
   onCloseModal?: () => void;
   onUpdateMember?: (member: Member) => void;
   onUpdateUser?: (user: AppUser) => void;
+  registeredMemberNotice?: Member | null;
+  onDismissRegisteredNotice?: () => void;
 }
 
 export const UserLoginForm: React.FC<UserLoginFormProps> = ({
@@ -53,9 +55,19 @@ export const UserLoginForm: React.FC<UserLoginFormProps> = ({
   onCloseModal,
   onUpdateMember,
   onUpdateUser,
+  registeredMemberNotice,
+  onDismissRegisteredNotice,
 }) => {
-  const [identifier, setIdentifier] = useState('');
+  const [identifier, setIdentifier] = useState(() => registeredMemberNotice?.email || '');
   const [password, setPassword] = useState('');
+
+  useEffect(() => {
+    if (registeredMemberNotice?.email) {
+      setIdentifier(registeredMemberNotice.email);
+      setFormView('login');
+      setErrorMessage(null);
+    }
+  }, [registeredMemberNotice]);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -791,8 +803,66 @@ export const UserLoginForm: React.FC<UserLoginFormProps> = ({
           ) : (
             <div className="pb-1">
               <p className="text-xs text-slate-600">
-                Silakan masukkan alamat email dan kata sandi Anda untuk masuk ke sistem:
+                {registeredMemberNotice
+                  ? 'Pendaftaran Anda telah berhasil! Silakan login di bawah ini untuk memantau progres verifikasi pendaftaran Anda:'
+                  : 'Silakan masukkan alamat email dan kata sandi Anda untuk masuk ke sistem:'}
               </p>
+            </div>
+          )}
+
+          {/* BANNER KONFIRMASI SETELAH REGISTRASI CALON ANGGOTA BARU */}
+          {registeredMemberNotice && (
+            <div className="p-4 sm:p-5 bg-gradient-to-br from-emerald-50 via-teal-50/70 to-white border-2 border-emerald-400 rounded-2xl text-emerald-950 space-y-3 shadow-md animate-in zoom-in-95">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-emerald-600 text-white rounded-xl shadow-xs shrink-0 mt-0.5">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-600 text-white mb-1">
+                      Registrasi Berhasil Terkirim
+                    </span>
+                    <h4 className="text-sm sm:text-base font-black text-slate-900">
+                      Selamat Datang, {registeredMemberNotice.name}!
+                    </h4>
+                    <p className="text-xs text-emerald-800 mt-0.5 leading-relaxed">
+                      Silakan lakukan <strong>Login</strong> menggunakan akun yang baru Anda daftarkan agar dapat <strong>memonitor progres pendaftaran &amp; verifikasi RT</strong> secara langsung.
+                    </p>
+                  </div>
+                </div>
+                {onDismissRegisteredNotice && (
+                  <button
+                    type="button"
+                    onClick={onDismissRegisteredNotice}
+                    className="text-slate-400 hover:text-slate-700 text-xs font-bold p-1 rounded-lg hover:bg-white/80 cursor-pointer"
+                    title="Tutup info registrasi"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-white/90 p-3 rounded-xl border border-emerald-200 text-[11px]">
+                <div>
+                  <span className="text-slate-500 block">No. Registrasi / NPA:</span>
+                  <span className="font-mono font-black text-emerald-800">{registeredMemberNotice.memberNumber}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Wilayah / RT:</span>
+                  <span className="font-bold text-slate-900">{registeredMemberNotice.cluster}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Status Saat Ini:</span>
+                  <span className="font-bold text-amber-700">Menunggu Verifikasi RT</span>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-emerald-900 bg-emerald-100/70 px-3 py-2 rounded-xl border border-emerald-200 flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-emerald-700 shrink-0" />
+                <span>
+                  Email <strong>{registeredMemberNotice.email}</strong> sudah otomatis terisi. Cukup masukkan <strong>Kata Sandi</strong> Anda lalu klik tombol <strong>Masuk &amp; Monitor Progres</strong>.
+                </span>
+              </div>
             </div>
           )}
 
@@ -930,7 +1000,11 @@ export const UserLoginForm: React.FC<UserLoginFormProps> = ({
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3 sm:py-3.5 px-6 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-black text-sm rounded-xl shadow-lg shadow-indigo-600/25 transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                className={`w-full py-3 sm:py-3.5 px-6 text-white font-black text-sm rounded-xl shadow-lg transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer ${
+                  registeredMemberNotice
+                    ? 'bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 shadow-emerald-600/25'
+                    : 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 shadow-indigo-600/25'
+                }`}
               >
                 {isLoading ? (
                   <span className="inline-flex items-center gap-2">
@@ -940,7 +1014,7 @@ export const UserLoginForm: React.FC<UserLoginFormProps> = ({
                 ) : (
                   <>
                     <LogIn className="w-4 h-4" />
-                    <span>Masuk Sekarang</span>
+                    <span>{registeredMemberNotice ? 'Masuk & Monitor Progres Pendaftaran' : 'Masuk Sekarang'}</span>
                   </>
                 )}
               </button>

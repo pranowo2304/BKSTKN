@@ -36,6 +36,7 @@ import {
   Receipt,
   CreditCard,
   ArrowRight,
+  Trash2,
 } from 'lucide-react';
 import { FamilyCardModal } from './FamilyCardModal';
 import { RoleMobileAppMenu } from './RoleMobileAppMenu';
@@ -48,6 +49,7 @@ interface RtClusterVerificationProps {
   claims?: BenefitClaim[];
   onVerifyMember: (memberId: string, rtOfficerName: string, rtNotes?: string) => void;
   onRejectMember: (memberId: string, rejectionReason: string) => void;
+  onDeleteMember?: (memberId: string) => void;
   onUpdateMemberCluster?: (memberId: string, newCluster: ClusterType) => void;
   onViewMemberDetail?: (member: Member) => void;
   onAddClaim?: (newClaim: BenefitClaim) => void;
@@ -62,6 +64,7 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
   claims = [],
   onVerifyMember,
   onRejectMember,
+  onDeleteMember,
   onUpdateMemberCluster,
   onViewMemberDetail,
   onAddClaim,
@@ -72,6 +75,8 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
   // Granular permissions hook
   const { can } = useRolePermissions();
   const canVerifyRt = can(activeUser?.authority, 'verify_rt_members');
+  const canDeleteMember = Boolean(onDeleteMember) && activeUser?.authority === 'Admin';
+  const [deletingMember, setDeletingMember] = useState<Member | null>(null);
 
   // Initialize cluster according to logged-in user cluster
   const isRtRole =
@@ -1289,6 +1294,17 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
                         Detail Lengkap
                       </button>
                     )}
+                    {canDeleteMember && (
+                      <button
+                        type="button"
+                        onClick={() => setDeletingMember(member)}
+                        className="px-3 py-1.5 bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 hover:border-rose-600 text-xs font-bold rounded-xl transition-all inline-flex items-center gap-1 cursor-pointer"
+                        title={`Hapus record registrasi ${member.name} (${member.memberNumber})`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Hapus Record</span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -1761,6 +1777,78 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
                 className="px-4 py-2 bg-slate-900 text-white font-bold text-xs rounded-xl"
               >
                 Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE MEMBER RECORD CONFIRMATION MODAL */}
+      {deletingMember && (
+        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 space-y-5 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 border border-rose-200">
+                  <Trash2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900">
+                    Hapus Record Registrasi Anggota?
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Data registrasi yang tidak terpakai akan dihapus permanen
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeletingMember(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-2">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Nomor Anggota:</span>
+                <span className="font-mono font-black text-slate-900">{deletingMember.memberNumber}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Nama Calon Warga:</span>
+                <span className="font-extrabold text-slate-900">{deletingMember.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">NIK / No. KK:</span>
+                <span className="font-mono font-bold text-slate-800">{deletingMember.nik} / {deletingMember.familyCardNumber || '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Cluster & Status:</span>
+                <span className="font-bold text-slate-800">{deletingMember.cluster} • {deletingMember.status}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setDeletingMember(null)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteMember) {
+                    onDeleteMember(deletingMember.id);
+                    setDeletingMember(null);
+                  }
+                }}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold rounded-xl shadow-md shadow-rose-900/20 flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Ya, Hapus Record Registrasi</span>
               </button>
             </div>
           </div>

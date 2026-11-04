@@ -63,7 +63,8 @@ import {
   EyeOff,
   Camera,
   Upload,
-  Check
+  Check,
+  LogIn
 } from 'lucide-react';
 import { useRolePermissions } from '../lib/permissions';
 
@@ -78,11 +79,13 @@ interface MemberRegistrationProps {
   initialMode?: 'form' | 'directory';
   onAddMember: (newMember: Member) => void;
   onUpdateMember?: (updatedMember: Member) => void;
+  onDeleteMember?: (memberId: string) => void;
   onImportBatchMembers?: (newMembers: Member[]) => void;
   onSelectMemberForPayment?: (member: Member) => void;
   onViewReceipt?: (payment: Payment) => void;
   onNavigateToVerification?: () => void;
   onNavigateToDashboard?: () => void;
+  onOpenLoginForMember?: (member: Member) => void;
 }
 
 export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
@@ -109,16 +112,19 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
   initialMode = 'form',
   onAddMember,
   onUpdateMember,
+  onDeleteMember,
   onImportBatchMembers,
   onSelectMemberForPayment,
   onViewReceipt,
   onNavigateToVerification,
   onNavigateToDashboard,
+  onOpenLoginForMember,
 }) => {
   const { can } = useRolePermissions();
   const canRegisterMembers = can(activeUser?.authority, 'register_members');
   const canManageDependents = can(activeUser?.authority, 'manage_dependents');
   const canRecordPayments = can(activeUser?.authority, 'record_payments');
+  const canDeleteMember = Boolean(onDeleteMember) && activeUser?.authority === 'Admin';
   const isKetuaRt = activeUser?.authority === 'Ketua RT (Cluster)';
   const isReadOnlyRole = !canRegisterMembers;
   const userRtCluster = activeUser?.cluster;
@@ -126,15 +132,18 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
 
   // Active view: 'form' for dedicated full-page form, 'directory' for table
   const [activeView, setActiveView] = useState<'form' | 'directory'>(() => {
+    if (!activeUser) return 'form';
     if (isKetuaRt) return 'directory';
     return initialMode || 'directory';
   });
 
   useEffect(() => {
-    if (initialMode) {
+    if (!activeUser) {
+      setActiveView('form');
+    } else if (initialMode) {
       setActiveView(isKetuaRt ? 'directory' : initialMode);
     }
-  }, [initialMode, isKetuaRt]);
+  }, [initialMode, isKetuaRt, activeUser]);
   const [submittedMember, setSubmittedMember] = useState<Member | null>(null);
   const [showForm, setShowForm] = useState(true);
 
@@ -157,6 +166,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
   const [contactAdminRole, setContactAdminRole] = useState<'Admin' | 'Bendahara' | 'RT' | undefined>(undefined);
   const [contactTopic, setContactTopic] = useState<MessageTopic>('keluarga');
   const [memberToEdit, setMemberToEdit] = useState<Member | null>(null);
+  const [memberToDelete, setMemberToDelete] = useState<Member | null>(null);
   const [showInlineQuickAddDep, setShowInlineQuickAddDep] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('Semua');
@@ -1283,30 +1293,54 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                 </div>
               </div>
 
+              {/* Arahan Login untuk Monitor Progres Pendaftaran */}
+              <div className="p-4 sm:p-5 bg-emerald-50 border-2 border-emerald-400 rounded-2xl text-xs text-emerald-950 text-left max-w-lg mx-auto space-y-2.5 shadow-sm">
+                <p className="font-black text-sm flex items-center gap-2 text-emerald-900">
+                  <LogIn className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Silakan Login untuk Memonitor Progres Pendaftaran Anda</span>
+                </p>
+                <p className="text-emerald-800 leading-relaxed">
+                  Akun Portal Warga Anda (<span className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-emerald-300">{submittedMember.email}</span>) sudah aktif. Silakan masuk (login) untuk memantau status verifikasi Ketua RT, riwayat persetujuan, hingga penerbitan KTA Digital secara real-time.
+                </p>
+                {onOpenLoginForMember && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenLoginForMember(submittedMember)}
+                    className="w-full py-3 px-5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-black text-xs sm:text-sm rounded-xl transition-all shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer hover:scale-[1.01] active:scale-[0.99]"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    <span>Login Sekarang untuk Monitor Progres Pendaftaran</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 text-left max-w-lg mx-auto leading-relaxed">
                 <p className="font-bold mb-1 flex items-center gap-1.5">
                   <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Tahapan Selanjutnya:</span>
+                  <span>Tahapan Progres Pendaftaran:</span>
                 </p>
                 <ol className="list-decimal list-inside space-y-1 text-[11px] text-amber-800 pl-1">
-                  <li>Ketua RT {submittedMember.cluster} akan memverifikasi keabsahan data kependudukan & berkas KK Anda.</li>
+                  <li>Ketua RT {submittedMember.cluster} akan memverifikasi keabsahan data kependudukan &amp; berkas KK Anda.</li>
                   <li>Setelah diverifikasi RT, Anda dapat melakukan pembayaran iuran paguyuban melalui menu Pembayaran.</li>
                   <li>Setelah divalidasi bendahara, KTA Digital resmi Anda akan langsung aktif.</li>
                 </ol>
               </div>
 
               <div className="flex flex-wrap justify-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSubmittedMember(null);
-                    setShowForm(true);
-                  }}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md shadow-emerald-950/20 flex items-center gap-2 cursor-pointer"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  <span>+ Daftarkan Warga Lain</span>
-                </button>
+                {canRegisterMembers && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSubmittedMember(null);
+                      setShowForm(true);
+                    }}
+                    className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>+ Daftarkan Warga Lain</span>
+                  </button>
+                )}
 
                 {canRegisterMembers && (
                   <button
@@ -1325,7 +1359,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                     onClick={onNavigateToDashboard}
                     className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs sm:text-sm rounded-xl transition-all border border-slate-300 cursor-pointer"
                   >
-                    <span>{activeUser ? 'Kembali ke Dashboard' : '← Selesai / Ke Beranda'}</span>
+                    <span>{activeUser ? 'Kembali ke Dashboard' : '← Kembali ke Beranda'}</span>
                   </button>
                 )}
               </div>
@@ -2697,6 +2731,19 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                               <ArrowRight className="w-3 h-3 text-amber-700" />
                             </button>
                           )}
+
+                          {/* DELETE MEMBER RECORD BUTTON (Admin / Pengurus Berwenang) */}
+                          {canDeleteMember && (
+                            <button
+                              type="button"
+                              onClick={() => setMemberToDelete(member)}
+                              className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white font-bold rounded-lg border border-rose-200 hover:border-rose-600 transition-all text-xs inline-flex items-center gap-1 cursor-pointer shadow-2xs"
+                              title={`Hapus record registrasi anggota ${member.name} (${member.memberNumber})`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Hapus</span>
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -2877,6 +2924,129 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
         actionButtonText="Buka Detail Lengkap Anggota"
         helperText="Data warga teridentifikasi! Klik tombol di bawah untuk langsung membuka rincian identitas, tanggungan keluarga, dan riwayat status keanggotaan."
       />
+
+      {/* DELETE MEMBER REGISTRATION RECORD CONFIRMATION MODAL */}
+      {memberToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 space-y-5 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 border border-rose-200">
+                  <Trash2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900">
+                    Hapus Record Registrasi Anggota?
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Data registrasi yang tidak terpakai akan dihapus dari database lokal & Cloud
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMemberToDelete(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-2.5">
+              <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200/80">
+                <span className="text-slate-500">Nomor Anggota (NPA):</span>
+                <span className="font-mono font-black text-slate-900 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200">
+                  {memberToDelete.memberNumber}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500">Nama Lengkap:</span>
+                <span className="font-extrabold text-slate-900 text-right">{memberToDelete.name}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500">NIK / No. KK:</span>
+                <span className="font-mono font-bold text-slate-700 text-right">
+                  {memberToDelete.nik} / {memberToDelete.familyCardNumber || '-'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500">Cluster & Alamat:</span>
+                <span className="font-semibold text-slate-800 text-right">
+                  {memberToDelete.cluster || '-'} • {memberToDelete.address}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500">Status Saat Ini:</span>
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
+                  {memberToDelete.status}
+                </span>
+              </div>
+            </div>
+
+            {(() => {
+              const verifiedPaymentsCount = payments.filter(
+                (p) =>
+                  (p.memberId === memberToDelete.id || p.memberNumber === memberToDelete.memberNumber) &&
+                  (p.status === 'Verified' || p.status === 'Lunas')
+              ).length;
+              if (verifiedPaymentsCount > 0) {
+                return (
+                  <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-2xl flex items-start gap-2.5 text-amber-950 text-xs">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-extrabold">Perhatian: Anggota Memiliki Riwayat Pembayaran Sah</p>
+                      <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                        Terdapat <strong>{verifiedPaymentsCount} transaksi iuran terverifikasi</strong> atas nama anggota ini. Menghapus record registrasi akan menghapus profil anggota dan akun loginnya, namun catatan kas yang sudah sah tetap terjaga di buku kas.
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-2.5 text-rose-950 text-xs">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-extrabold">Tindakan Permanen</p>
+                    <p className="text-[11px] text-rose-800 mt-0.5 leading-relaxed">
+                      Data registrasi anggota ini beserta akun login warga terkait (<strong>{memberToDelete.email || 'tanpa email'}</strong>) akan dihapus secara permanen sehingga NIK/No. KK dapat didaftarkan ulang bila diperlukan.
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setMemberToDelete(null)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteMember) {
+                    const deletedName = memberToDelete.name;
+                    const deletedNpa = memberToDelete.memberNumber;
+                    onDeleteMember(memberToDelete.id);
+                    setMemberToDelete(null);
+                    if (selectedDetailMember?.id === memberToDelete.id) {
+                      setSelectedDetailMember(null);
+                    }
+                    setNotification(`Record registrasi anggota "${deletedName}" (${deletedNpa}) berhasil dihapus.`);
+                    setTimeout(() => setNotification(null), 5000);
+                  }
+                }}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold rounded-xl shadow-md shadow-rose-900/20 flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Ya, Hapus Record Registrasi</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

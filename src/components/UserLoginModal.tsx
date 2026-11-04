@@ -15,6 +15,8 @@ interface UserLoginModalProps {
   onNavigateToDashboard?: () => void;
   onUpdateMember?: (member: Member) => void;
   onUpdateUser?: (user: AppUser) => void;
+  registeredMemberNotice?: Member | null;
+  onDismissRegisteredNotice?: () => void;
 }
 
 export const UserLoginModal: React.FC<UserLoginModalProps> = ({
@@ -28,6 +30,8 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
   onNavigateToDashboard,
   onUpdateMember,
   onUpdateUser,
+  registeredMemberNotice,
+  onDismissRegisteredNotice,
 }) => {
   // Handle Escape key to close modal
   useEffect(() => {
@@ -64,10 +68,12 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
             <AppIcon size={34} className="rounded-xl shadow-md shadow-emerald-950/20 shrink-0" />
             <div>
               <h2 id="modal-login-title" className="font-black text-sm sm:text-base text-slate-900 leading-tight">
-                Masuk ke Akun Portal
+                {registeredMemberNotice ? 'Login & Monitor Progres Pendaftaran' : 'Masuk ke Akun Portal'}
               </h2>
               <p className="text-[11px] text-slate-500 font-medium">
-                Autentikasi warga & pengurus paguyuban
+                {registeredMemberNotice
+                  ? 'Registrasi berhasil! Masuk untuk memantau progres verifikasi RT Anda'
+                  : 'Autentikasi warga & pengurus paguyuban'}
               </p>
             </div>
           </div>
@@ -104,6 +110,8 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
             onCloseModal={onClose}
             onUpdateMember={onUpdateMember}
             onUpdateUser={onUpdateUser}
+            registeredMemberNotice={registeredMemberNotice}
+            onDismissRegisteredNotice={onDismissRegisteredNotice}
           />
         </div>
       </div>

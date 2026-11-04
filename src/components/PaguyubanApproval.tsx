@@ -69,6 +69,7 @@ interface PaguyubanApprovalProps {
   benefits?: BenefitMaster[];
   onApproveMember: (memberId: string, notes?: string, signature?: string) => void;
   onRejectMember: (memberId: string, reason: string) => void;
+  onDeleteMember?: (memberId: string) => void;
   onViewReceipt?: (payment: Payment) => void;
   onAddClaim?: (newClaim: BenefitClaim) => void;
   onUpdateClaim?: (updatedClaim: BenefitClaim) => void;
@@ -91,6 +92,7 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
   benefits = [],
   onApproveMember,
   onRejectMember,
+  onDeleteMember,
   onViewReceipt,
   onAddClaim,
   onUpdateClaim,
@@ -1504,6 +1506,7 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
                 settings={settings}
                 activeUser={activeUser || undefined}
                 onAddMember={() => {}}
+                onDeleteMember={onDeleteMember}
                 onViewReceipt={onViewReceipt}
               />
             </div>

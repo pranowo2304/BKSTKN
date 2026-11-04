@@ -1299,14 +1299,14 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                   <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-lg text-amber-950 text-[11px] space-y-1">
                     <p className="font-bold flex items-center gap-1.5 text-amber-900">
                       <Clock className="w-3.5 h-3.5 text-amber-700" />
-                      <span>Alur Pembayaran & Penerbitan KTA Digital:</span>
+                      <span>Alur Pembayaran &amp; Penerbitan KTA Digital:</span>
                     </p>
                     <p>• <strong>Pembayaran:</strong> Pendaftar baru bisa melakukan pembayaran setelah verifikasi dari RT disetujui.</p>
                     <p>• <strong>Penerbitan KTA Digital:</strong> KTA digital resmi aktif setelah pembayaran iuran divalidasi dan disetujui ketua paguyuban.</p>
                   </div>
                   {regSuccess.email && (
                     <span className="block mt-1 font-semibold text-emerald-950">
-                      Akun login Anda: <span className="font-mono bg-emerald-100 px-1.5 py-0.5 rounded text-emerald-900">{regSuccess.email}</span>. Gunakan email ini untuk login dan melihat riwayat pendaftaran, KTA, serta riwayat pembayaran.
+                      Akun login Anda: <span className="font-mono bg-emerald-100 px-1.5 py-0.5 rounded text-emerald-900">{regSuccess.email}</span>. Silakan <strong>Login</strong> untuk memonitor progres pendaftaran, status verifikasi RT, serta riwayat pembayaran Anda secara real-time.
                     </span>
                   )}
                 </div>
@@ -1319,10 +1319,10 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                         setIsRegistering(false);
                         onOpenLoginModal();
                       }}
-                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md inline-flex items-center gap-1.5 cursor-pointer"
+                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl shadow-md inline-flex items-center gap-1.5 cursor-pointer"
                     >
                       <LogIn className="w-4 h-4" />
-                      <span>Masuk ke Akun Portal Warga</span>
+                      <span>Login Sekarang untuk Monitor Progres Pendaftaran</span>
                     </button>
                   )}
                   <button
@@ -1331,7 +1331,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                       setRegSuccess(null);
                       setIsRegistering(false);
                     }}
-                    className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs rounded-xl"
+                    className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs rounded-xl cursor-pointer"
                   >
                     Tutup Notifikasi
                   </button>
