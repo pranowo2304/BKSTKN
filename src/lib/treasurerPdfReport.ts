@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { Member, Payment, SystemSettings } from '../types';
+import { getStoredUsers } from './storage';
 import { isPaymentMatchingPeriod } from './csvExport';
 
 export interface TreasurerReportRow {
@@ -23,6 +24,8 @@ export interface GenerateTreasurerPdfOptions {
   periodHeaderText?: string; // e.g. 'TGL. 01 NOVEMBER 2026 S/D 31 OKTOBER 2027'
   clusterFilter?: string; // e.g. 'Semua' or specific cluster
   includeActiveWithoutPayment?: boolean;
+  treasurerName?: string;
+  logoPngDataUrl?: string | null;
 }
 
 const INDONESIAN_MONTHS_UPPER = [
@@ -40,6 +43,21 @@ const INDONESIAN_MONTHS_UPPER = [
   'DESEMBER',
 ];
 
+const INDONESIAN_MONTHS_TITLE = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
+];
+
 export function formatDateToIndonesianUpper(dateStr?: string): string | null {
   if (!dateStr) return null;
   const match = dateStr.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -51,10 +69,85 @@ export function formatDateToIndonesianUpper(dateStr?: string): string | null {
   return `${day} ${INDONESIAN_MONTHS_UPPER[monthIdx]} ${year}`;
 }
 
+export function formatIndonesianPrintDate(date: Date = new Date()): {
+  dateOnly: string;
+  dateTime: string;
+} {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = INDONESIAN_MONTHS_TITLE[date.getMonth()] || '';
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const dateOnly = `${day} ${month} ${year}`;
+  const dateTime = `${dateOnly}, ${hours}:${minutes} WIB`;
+  return { dateOnly, dateTime };
+}
+
+export function resolveTreasurerName(settings?: SystemSettings, overrideName?: string): string {
+  if (overrideName && overrideName.trim()) {
+    return overrideName.trim();
+  }
+  try {
+    const users = getStoredUsers();
+    const bendaharaUser = users.find(
+      (u) => u && u.authority === 'Bendahara' && u.status !== 'Non-Aktif' && u.name?.trim()
+    );
+    if (bendaharaUser?.name?.trim()) {
+      return bendaharaUser.name.trim();
+    }
+  } catch {
+    // ignore storage errors
+  }
+  if (settings?.defaultAdminSignerName?.trim()) {
+    return settings.defaultAdminSignerName.trim();
+  }
+  if (settings?.treasurerName?.trim()) {
+    return settings.treasurerName.trim();
+  }
+  return 'Bendahara Paguyuban';
+}
+
+export async function loadLogoAsPngDataUrl(logoUrl?: string): Promise<string | null> {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return null;
+  const targetUrl = logoUrl?.trim() || '/app-icon.svg';
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const size = 256;
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(null);
+          return;
+        }
+        ctx.clearRect(0, 0, size, size);
+        // Preserve aspect ratio centered inside 256x256
+        const iw = img.naturalWidth || size;
+        const ih = img.naturalHeight || size;
+        const scale = Math.min(size / iw, size / ih);
+        const dw = iw * scale;
+        const dh = ih * scale;
+        const dx = (size - dw) / 2;
+        const dy = (size - dh) / 2;
+        ctx.drawImage(img, dx, dy, dw, dh);
+        resolve(canvas.toDataURL('image/png'));
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = targetUrl;
+  });
+}
+
 export function getDefaultPeriodHeaderText(settings?: SystemSettings): string {
   const mp = settings?.membershipPeriod;
   if (mp?.customStartDate && mp?.customEndDate) {
-    // Jika bukan default placeholder 2026-01-01 s/d 2026-12-31, gunakan tanggal kustom pengurus
     if (!(mp.customStartDate === '2026-01-01' && mp.customEndDate === '2026-12-31')) {
       const startFormatted = formatDateToIndonesianUpper(mp.customStartDate);
       const endFormatted = formatDateToIndonesianUpper(mp.customEndDate);
@@ -98,7 +191,6 @@ export function resolveBankTransferLabel(paymentMethod?: string, settings?: Syst
     return 'Transfer Bank Muamalat';
   }
 
-  // Jika metode bayar sudah tertulis spesifik, gunakan apa adanya
   return raw;
 }
 
@@ -116,7 +208,6 @@ export function buildTreasurerReportRows({
     periodFilter.toLowerCase() === 'semua' ||
     periodFilter.toLowerCase().includes('semua periode');
 
-  // Map member by ID, memberNumber, and lowercase name
   const memberById = new Map<string, Member>();
   const memberByNumber = new Map<string, Member>();
   const memberByName = new Map<string, Member>();
@@ -127,7 +218,6 @@ export function buildTreasurerReportRows({
     if (m.name) memberByName.set(m.name.trim().toLowerCase(), m);
   });
 
-  // 1. Collect verified payments
   const verifiedPayments = payments.filter((p) => {
     if (p.status !== 'Verified') return false;
     if (!isAllPeriod && !isPaymentMatchingPeriod(p, periodFilter)) return false;
@@ -173,7 +263,6 @@ export function buildTreasurerReportRows({
     });
   });
 
-  // 2. Optionally include active/verified members who don't have a separate payment record yet
   if (includeActiveWithoutPayment && isAllPeriod) {
     members.forEach((m) => {
       const isCovered =
@@ -201,7 +290,6 @@ export function buildTreasurerReportRows({
     });
   }
 
-  // Sort chronologically ascending (oldest first, matching the screenshot)
   rawEntries.sort((a, b) => {
     const timeA = a.timestamp || '';
     const timeB = b.timestamp || '';
@@ -220,6 +308,9 @@ export function buildTreasurerReportRows({
 export function generateTreasurerPdfDocument(options: GenerateTreasurerPdfOptions): jsPDF {
   const rows = buildTreasurerReportRows(options);
   const periodText = (options.periodHeaderText || getDefaultPeriodHeaderText(options.settings)).trim();
+  const orgName = (options.settings?.communityName || options.settings?.organizationName || 'PAGUYUBAN DANA KEMATIAN').trim();
+  const treasurerName = resolveTreasurerName(options.settings, options.treasurerName);
+  const { dateOnly, dateTime } = formatIndonesianPrintDate(new Date());
 
   const doc = new jsPDF({
     orientation: 'landscape',
@@ -230,7 +321,7 @@ export function generateTreasurerPdfDocument(options: GenerateTreasurerPdfOption
   const pageWidth = 297;
   const pageHeight = 210;
   const marginX = 18;
-  const marginTop = 18;
+  const marginTop = 15;
   const tableWidth = pageWidth - marginX * 2; // 261 mm
 
   // Column widths matching the uploaded image proportions
@@ -243,7 +334,6 @@ export function generateTreasurerPdfDocument(options: GenerateTreasurerPdfOption
   const x1 = x0 + col0Width;
   const x2 = x1 + col1Width;
   const x3 = x2 + col2Width;
-  const x4 = x3 + col3Width;
 
   let currentY = marginTop;
 
@@ -251,23 +341,62 @@ export function generateTreasurerPdfDocument(options: GenerateTreasurerPdfOption
     let y = startY;
 
     if (includeMainTitle) {
+      // Draw Organization Logo on the left of the header
+      const logoSize = 16;
+      const logoX = x0;
+      const logoY = y - 3;
+      let logoDrawn = false;
+
+      const candidateLogo = options.logoPngDataUrl || options.settings?.logoUrl;
+      if (candidateLogo && candidateLogo.startsWith('data:image/')) {
+        try {
+          const fmt =
+            candidateLogo.includes('image/jpeg') || candidateLogo.includes('image/jpg')
+              ? 'JPEG'
+              : 'PNG';
+          doc.addImage(candidateLogo, fmt, logoX, logoY, logoSize, logoSize);
+          logoDrawn = true;
+        } catch {
+          logoDrawn = false;
+        }
+      }
+
+      if (!logoDrawn) {
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.4);
+        doc.roundedRect(logoX, logoY, logoSize, logoSize, 2, 2, 'S');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(0, 0, 0);
+        doc.text('PDK', logoX + logoSize / 2, logoY + 7.5, { align: 'center' });
+        doc.setFontSize(4.5);
+        doc.text('LOGO', logoX + logoSize / 2, logoY + 11.5, { align: 'center' });
+      }
+
+      // Centered Title Block
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
+      doc.setFontSize(10);
       doc.setTextColor(0, 0, 0);
-      doc.text('DAFTAR ANGGOTA KEPESERTAAN DANA KEMATIAN', pageWidth / 2, y, {
+      doc.text(orgName.toUpperCase(), pageWidth / 2, y + 1, {
         align: 'center',
       });
-      y += 6;
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('DAFTAR ANGGOTA KEPESERTAAN DANA KEMATIAN', pageWidth / 2, y + 6.5, {
+        align: 'center',
+      });
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(10.5);
       const formattedPeriodLine = periodText.toUpperCase().startsWith('PERIODE')
         ? periodText.toUpperCase()
         : `PERIODE : ${periodText.toUpperCase()}`;
-      doc.text(formattedPeriodLine, pageWidth / 2, y, {
+      doc.text(formattedPeriodLine, pageWidth / 2, y + 12, {
         align: 'center',
       });
-      y += 4.5;
+
+      y += 17;
     }
 
     // Header Box (separated from body table by a small gap, matching screenshot)
@@ -313,13 +442,11 @@ export function generateTreasurerPdfDocument(options: GenerateTreasurerPdfOption
     currentY += rowHeight;
   } else {
     rows.forEach((row) => {
-      // Check page break
       if (currentY + rowHeight > pageHeight - 24) {
         doc.addPage();
         currentY = drawTitleAndTableHeader(marginTop, false);
       }
 
-      // Draw row outer border & internal vertical dividers
       doc.setDrawColor(0, 0, 0);
       doc.setLineWidth(0.35);
       doc.rect(x0, currentY, tableWidth, rowHeight);
@@ -335,7 +462,7 @@ export function generateTreasurerPdfDocument(options: GenerateTreasurerPdfOption
       const yLine2 = currentY + 10.5;
       const yLine3 = currentY + 15.8;
 
-      // Col 0: No (top-aligned with first line, centered horizontally)
+      // Col 0: No
       doc.text(String(row.no), x0 + col0Width / 2, yLine1, { align: 'center' });
 
       // Col 1: Nama Warga dan Nomor Anggota (3 lines)
@@ -343,11 +470,11 @@ export function generateTreasurerPdfDocument(options: GenerateTreasurerPdfOption
       doc.text(`${row.memberNumber || ''}${row.cluster || ''}`, x1 + 2.5, yLine2);
       doc.text(row.phone || '-', x1 + 2.5, yLine3);
 
-      // Col 2: Nominal (Rp on left, formatted amount with ,00 on right, vertically centered)
+      // Col 2: Nominal
       doc.text('Rp', x2 + 2.5, yLine2);
       doc.text(formatNominalIdrDecimal(row.amount), x3 - 2.5, yLine2, { align: 'right' });
 
-      // Col 3: Keterangan (centered both vertically and horizontally)
+      // Col 3: Keterangan
       doc.text(row.keterangan || '-', x3 + col3Width / 2, yLine2, { align: 'center' });
 
       currentY += rowHeight;
@@ -358,7 +485,7 @@ export function generateTreasurerPdfDocument(options: GenerateTreasurerPdfOption
   const totalAmount = rows.reduce((sum, r) => sum + (r.amount || 0), 0);
   currentY += 4.5;
 
-  if (currentY + 8 > pageHeight - 12) {
+  if (currentY + 36 > pageHeight - 10) {
     doc.addPage();
     currentY = marginTop;
   }
@@ -373,14 +500,59 @@ export function generateTreasurerPdfDocument(options: GenerateTreasurerPdfOption
   doc.text('Rp', x2 + 2.5, currentY + 5.2);
   doc.text(formatNominalIdrDecimal(totalAmount), x3 - 2.5, currentY + 5.2, { align: 'right' });
 
-  // Suppress unused variable warning for x4
-  void x4;
+  // FOOTER: Tanggal Cetak (kiri bawah) & Nama Bendahara (kanan bawah)
+  const footerStartY = currentY + totalBoxHeight + 6;
+
+  // Left: Tanggal Cetak
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(0, 0, 0);
+  doc.text(`Tanggal Cetak : ${dateTime}`, x0, footerStartY);
+
+  // Right: Signature block for Bendahara
+  const sigCenterX = x0 + tableWidth - 36;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  doc.text(`Dicetak tanggal, ${dateOnly}`, sigCenterX, footerStartY, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.text('Bendahara,', sigCenterX, footerStartY + 5, { align: 'center' });
+
+  let nameY = footerStartY + 21;
+  const sigDataUrl = options.settings?.defaultAdminSignature;
+  if (sigDataUrl && sigDataUrl.startsWith('data:image/')) {
+    try {
+      const sigFmt =
+        sigDataUrl.includes('image/jpeg') || sigDataUrl.includes('image/jpg') ? 'JPEG' : 'PNG';
+      doc.addImage(sigDataUrl, sigFmt, sigCenterX - 16, footerStartY + 6.5, 32, 12);
+    } catch {
+      // ignore signature image error
+    }
+  }
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  const displayTreasurer = `( ${treasurerName} )`;
+  doc.text(displayTreasurer, sigCenterX, nameY, { align: 'center' });
+
+  const nameWidth = doc.getTextWidth(displayTreasurer);
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.35);
+  doc.line(sigCenterX - nameWidth / 2, nameY + 1, sigCenterX + nameWidth / 2, nameY + 1);
 
   return doc;
 }
 
-export function downloadTreasurerPdfReport(options: GenerateTreasurerPdfOptions): string {
-  const doc = generateTreasurerPdfDocument(options);
+export async function downloadTreasurerPdfReport(options: GenerateTreasurerPdfOptions): Promise<string> {
+  const logoPngDataUrl =
+    options.logoPngDataUrl !== undefined
+      ? options.logoPngDataUrl
+      : await loadLogoAsPngDataUrl(options.settings?.logoUrl || '/app-icon.svg');
+
+  const doc = generateTreasurerPdfDocument({
+    ...options,
+    logoPngDataUrl,
+  });
+
   const now = new Date();
   const dateTag = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
   const filename = `Laporan_Bendahara_Kepesertaan_Dana_Kematian_${dateTag}.pdf`;

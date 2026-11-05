@@ -13,8 +13,10 @@ import {
 import {
   buildTreasurerReportRows,
   downloadTreasurerPdfReport,
+  formatIndonesianPrintDate,
   formatNominalIdrDecimal,
   getDefaultPeriodHeaderText,
+  resolveTreasurerName,
 } from '../lib/treasurerPdfReport';
 import {
   X,
@@ -68,9 +70,14 @@ export const FinancialReportModal: React.FC<FinancialReportModalProps> = ({
   const [periodHeaderText, setPeriodHeaderText] = useState<string>(() =>
     getDefaultPeriodHeaderText(settings)
   );
+  const [treasurerNameInput, setTreasurerNameInput] = useState<string>(() =>
+    resolveTreasurerName(settings)
+  );
   const [downloadSuccess, setDownloadSuccess] = useState(false);
   const [downloadedFileName, setDownloadedFileName] = useState<string>('');
   const [copiedSuccess, setCopiedSuccess] = useState(false);
+
+  const printDateInfo = useMemo(() => formatIndonesianPrintDate(new Date()), []);
 
   // Dynamic available years based on data + standard range
   const availableYears = useMemo(() => {
@@ -137,16 +144,16 @@ export const FinancialReportModal: React.FC<FinancialReportModalProps> = ({
       ? treasurerTotalNominal
       : previewPayments.reduce((sum, p) => sum + p.amount, 0);
   const periodExpense = previewClaims.reduce((sum, c) => sum + c.totalAmount, 0);
-  const periodNet = periodIncome - periodExpense;
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (reportType === 'treasurer_pdf') {
-      const fname = downloadTreasurerPdfReport({
+      const fname = await downloadTreasurerPdfReport({
         members,
         payments,
         settings,
         periodFilter: selectedPeriod,
         periodHeaderText,
+        treasurerName: treasurerNameInput,
         includeActiveWithoutPayment: true,
       });
       setDownloadedFileName(fname);
@@ -184,12 +191,13 @@ export const FinancialReportModal: React.FC<FinancialReportModalProps> = ({
   const handleCopySummary = () => {
     const summaryText = `DAFTAR ANGGOTA KEPESERTAAN DANA KEMATIAN
 PERIODE : ${periodHeaderText.toUpperCase()}
-Paguyuban: ${settings.communityName}
+Organisasi: ${settings.communityName}
 ----------------------------------------
 Jumlah Anggota Tercatat: ${treasurerRows.length} Warga
 Total Penerimaan Iuran: Rp ${formatNominalIdrDecimal(treasurerTotalNominal)}
 Pengeluaran Santunan: ${formatIDR(periodExpense)} (${previewClaims.length} klaim)
-Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}`;
+Tanggal Cetak: ${printDateInfo.dateTime}
+Bendahara: ${treasurerNameInput || resolveTreasurerName(settings)}`;
 
     navigator.clipboard.writeText(summaryText);
     setCopiedSuccess(true);
@@ -219,7 +227,7 @@ Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}`;
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-1">
-                Cetak Laporan Bendahara Daftar Anggota Kepesertaan Dana Kematian (.PDF) atau unduh rekapitulasi spreadsheet (.CSV).
+                Cetak Laporan Bendahara Daftar Anggota Kepesertaan Dana Kematian (.PDF) lengkap dengan logo organisasi, tanggal cetak, dan nama bendahara.
               </p>
             </div>
           </div>
@@ -272,7 +280,7 @@ Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}`;
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
-                      Tabel resmi berisi kolom <strong>No</strong>, <strong>Nama Warga dan Nomor Anggota</strong> (Nama, NPA + Cluster, No. HP), <strong>Nominal (Rp)</strong>, <strong>Keterangan</strong> (Metode Transfer & Waktu), serta <strong>Total Kas Berwarna Kuning</strong>.
+                      Tabel resmi dilengkapi <strong>Logo Organisasi</strong>, kolom <strong>No</strong>, <strong>Nama Warga dan Nomor Anggota</strong>, <strong>Nominal (Rp)</strong>, <strong>Keterangan</strong>, <strong>Total Kas Berwarna Kuning</strong>, serta <strong>Tanggal Cetak & Nama Bendahara</strong> di bagian bawah.
                     </p>
                   </div>
                 </div>
@@ -366,13 +374,13 @@ Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}`;
             </div>
           </div>
 
-          {/* STEP 2: Pilih Periode & Pengaturan Judul Periode PDF */}
+          {/* STEP 2: Pilih Periode & Pengaturan Judul Periode / Nama Bendahara */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
             <div className="lg:col-span-7 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
                   <Calendar className="w-4 h-4 text-emerald-600" />
-                  <span>2. Pengaturan Periode Laporan</span>
+                  <span>2. Pengaturan Periode & Penandatangan</span>
                 </label>
                 <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-[11px] font-mono font-bold shadow-xs">
                   {selectedPeriod}
@@ -380,17 +388,31 @@ Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}`;
               </div>
 
               {reportType === 'treasurer_pdf' && (
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Teks Sub-Judul Periode Kepesertaan pada Header PDF:
-                  </label>
-                  <input
-                    type="text"
-                    value={periodHeaderText}
-                    onChange={(e) => setPeriodHeaderText(e.target.value)}
-                    placeholder="TGL. 01 NOVEMBER 2026 S/D 31 OKTOBER 2027"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Teks Sub-Judul Periode pada Header PDF:
+                    </label>
+                    <input
+                      type="text"
+                      value={periodHeaderText}
+                      onChange={(e) => setPeriodHeaderText(e.target.value)}
+                      placeholder="TGL. 01 NOVEMBER 2026 S/D 31 OKTOBER 2027"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Nama Bendahara (Kanan Bawah PDF):
+                    </label>
+                    <input
+                      type="text"
+                      value={treasurerNameInput}
+                      onChange={(e) => setTreasurerNameInput(e.target.value)}
+                      placeholder="Nama Bendahara"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
                 </div>
               )}
 
@@ -503,18 +525,31 @@ Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}`;
             </div>
 
             {reportType === 'treasurer_pdf' ? (
-              /* EXACT PREVIEW OF THE UPLOADED IMAGE TABLE */
-              <div className="p-4 sm:p-6 bg-white overflow-x-auto max-h-80 overflow-y-auto">
+              /* EXACT PREVIEW OF THE PDF DOCUMENT WITH LOGO, TABLE, TOTAL, PRINT DATE & TREASURER */
+              <div className="p-4 sm:p-6 bg-white overflow-x-auto max-h-96 overflow-y-auto">
                 <div className="min-w-[640px] text-black font-sans">
-                  <div className="text-center mb-3">
-                    <h3 className="text-sm sm:text-base font-bold uppercase tracking-tight text-black">
-                      DAFTAR ANGGOTA KEPESERTAAN DANA KEMATIAN
-                    </h3>
-                    <p className="text-xs sm:text-sm font-bold uppercase text-black mt-0.5">
-                      {periodHeaderText.toUpperCase().startsWith('PERIODE')
-                        ? periodHeaderText.toUpperCase()
-                        : `PERIODE : ${periodHeaderText.toUpperCase()}`}
-                    </p>
+                  {/* Header with Organization Logo & Title */}
+                  <div className="relative flex items-center justify-center mb-3 min-h-[56px]">
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center">
+                      <img
+                        src={settings.logoUrl || '/app-icon.svg'}
+                        alt="Logo Organisasi"
+                        className="w-12 h-12 object-contain rounded-lg"
+                      />
+                    </div>
+                    <div className="text-center px-16">
+                      <p className="text-xs font-bold uppercase text-black">
+                        {settings.communityName || 'PAGUYUBAN DANA KEMATIAN'}
+                      </p>
+                      <h3 className="text-sm sm:text-base font-bold uppercase tracking-tight text-black">
+                        DAFTAR ANGGOTA KEPESERTAAN DANA KEMATIAN
+                      </h3>
+                      <p className="text-xs sm:text-sm font-bold uppercase text-black mt-0.5">
+                        {periodHeaderText.toUpperCase().startsWith('PERIODE')
+                          ? periodHeaderText.toUpperCase()
+                          : `PERIODE : ${periodHeaderText.toUpperCase()}`}
+                      </p>
+                    </div>
                   </div>
 
                   {/* Separated Header Box */}
@@ -586,6 +621,29 @@ Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}`;
                       <span>{formatNominalIdrDecimal(treasurerTotalNominal)}</span>
                     </div>
                     <div className="w-[38%]" />
+                  </div>
+
+                  {/* Bottom Footer: Tanggal Cetak (Left) & Bendahara Signature (Right) */}
+                  <div className="flex items-start justify-between mt-4 pt-2 text-xs text-black">
+                    <div>
+                      <p>Tanggal Cetak : {printDateInfo.dateTime}</p>
+                    </div>
+                    <div className="text-center min-w-[180px]">
+                      <p>Dicetak tanggal, {printDateInfo.dateOnly}</p>
+                      <p className="font-bold mt-0.5">Bendahara,</p>
+                      {settings.defaultAdminSignature ? (
+                        <img
+                          src={settings.defaultAdminSignature}
+                          alt="TTD Bendahara"
+                          className="h-10 mx-auto my-1 object-contain"
+                        />
+                      ) : (
+                        <div className="h-10" />
+                      )}
+                      <p className="font-bold underline">
+                        ( {treasurerNameInput || resolveTreasurerName(settings)} )
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
