@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Payment, Member, SystemSettings } from '../types';
 import { formatIDR } from '../lib/storage';
+import { downloadTreasurerPdfReport } from '../lib/treasurerPdfReport';
 import {
   findMemberForPayment,
   generateReceiptWhatsAppUrl,
@@ -375,8 +376,26 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
           </p>
         </div>
 
-        {/* Quick Stats Badges */}
+        {/* Quick Stats Badges & PDF Report Action */}
         <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() =>
+              downloadTreasurerPdfReport({
+                members,
+                payments,
+                settings,
+                periodFilter: 'Semua Periode',
+                includeActiveWithoutPayment: true,
+              })
+            }
+            className="px-4 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg transition-all flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95"
+            title="Unduh Laporan Bendahara Daftar Anggota Kepesertaan Dana Kematian (.PDF)"
+          >
+            <FileText className="w-4 h-4 text-slate-950 shrink-0" />
+            <span>Laporan Bendahara (PDF)</span>
+          </button>
+
           {graceSummary.hasOverdue && (
             <div className="flex items-center gap-3 bg-rose-950/80 px-4 py-3 rounded-xl border border-rose-600/80 shadow-lg shadow-rose-950/40 animate-pulse">
               <AlertTriangle className="w-6 h-6 text-rose-400 shrink-0" />

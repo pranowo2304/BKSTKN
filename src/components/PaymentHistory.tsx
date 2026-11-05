@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Payment, Member, SystemSettings, AppUser, CLUSTERS } from '../types';
 import { formatIDR, getMemberForUser } from '../lib/storage';
 import { exportDuesCollectionCSV } from '../lib/csvExport';
+import { downloadTreasurerPdfReport } from '../lib/treasurerPdfReport';
 import {
   findMemberForPayment,
   generateReceiptWhatsAppUrl,
@@ -203,6 +204,18 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
     }
   };
 
+  const handleDownloadTreasurerPdf = () => {
+    if (!settings) return;
+    downloadTreasurerPdfReport({
+      members,
+      payments: filteredPayments,
+      settings,
+      periodFilter: 'Semua Periode',
+      clusterFilter: clusterFilter !== 'Semua' ? clusterFilter : 'Semua',
+      includeActiveWithoutPayment: clusterFilter === 'Semua' && searchTerm === '',
+    });
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Title Card */}
@@ -237,20 +250,20 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
             <>
               <button
                 type="button"
-                onClick={() => window.print()}
-                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold transition-all inline-flex items-center gap-1.5 shadow-2xs hover:scale-[1.02] active:scale-95 cursor-pointer print:hidden"
-                title="Cetak laporan transaksi kas ke kertas atau simpan format PDF"
+                onClick={handleDownloadTreasurerPdf}
+                className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold rounded-xl shadow-md transition-all inline-flex items-center gap-1.5 hover:scale-[1.02] active:scale-95 cursor-pointer print:hidden"
+                title="Unduh Laporan Bendahara Daftar Anggota Kepesertaan Dana Kematian (.PDF)"
               >
-                <Printer className="w-4 h-4 text-slate-600" />
-                <span>Cetak Laporan</span>
+                <FileText className="w-4 h-4 text-slate-900" />
+                <span>Laporan Bendahara (PDF)</span>
               </button>
               <button
                 type="button"
                 onClick={handleExportCSV}
-                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-950/20 transition-all flex items-center gap-1.5 hover:scale-[1.02] active:scale-[0.98]"
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-950/20 transition-all flex items-center gap-1.5 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
               >
                 <Download className="w-4 h-4" />
-                <span>Unduh Laporan CSV</span>
+                <span>Pratinjau & Ekspor (PDF/CSV)</span>
               </button>
             </>
           )}
