@@ -77,6 +77,7 @@ import { DigitalKtaModal } from './DigitalKtaModal';
 import { KtaScannerModal } from './KtaScannerModal';
 import { MemberKtaQrGeneratorModal } from './MemberKtaQrGeneratorModal';
 import { BesaranIuranModal } from './BesaranIuranModal';
+import { RegistrationGuideModal } from './RegistrationGuideModal';
 import { AppIcon } from './AppIcon';
 
 interface PublicLandingPageProps {
@@ -267,6 +268,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
     }
   }, [isRegistering, onRegisterStateChange]);
   const [regSuccess, setRegSuccess] = useState<Member | null>(null);
+  const [isRegGuideModalOpen, setIsRegGuideModalOpen] = useState<boolean>(false);
   const [regForm, setRegForm] = useState(() => {
     try {
       const saved = sessionStorage.getItem(DRAFT_STORAGE_KEY) || localStorage.getItem(DRAFT_STORAGE_KEY);
@@ -1256,7 +1258,17 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                 </p>
               </div>
 
-              <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+              <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto justify-between sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsRegGuideModalOpen(true)}
+                  className="px-3.5 py-2.5 bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-200 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  title="Buka Panduan Cara Registrasi Anggota"
+                >
+                  <HelpCircle className="w-4 h-4 text-sky-600" />
+                  <span>Panduan Cara Registrasi</span>
+                </button>
+
                 <div className="p-2.5 bg-emerald-50/80 rounded-2xl border border-emerald-200 text-xs text-emerald-900 space-y-0.5 shrink-0">
                   <p className="font-bold flex items-center gap-1">
                     <Coins className="w-3.5 h-3.5 text-emerald-600" />
@@ -2471,7 +2483,19 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
         />
       )}
 
-
+      {/* PANDUAN CARA REGISTRASI ANGGOTA MODAL */}
+      <RegistrationGuideModal
+        isOpen={isRegGuideModalOpen}
+        onClose={() => setIsRegGuideModalOpen(false)}
+        settings={settings}
+        onStartRegistration={() => {
+          setIsRegistering(true);
+          setTimeout(() => {
+            const el = document.getElementById('section-daftar');
+            el?.scrollIntoView({ behavior: 'smooth' });
+          }, 100);
+        }}
+      />
     </div>
   );
 };

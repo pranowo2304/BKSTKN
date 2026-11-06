@@ -23,8 +23,10 @@ import {
   Landmark,
   Banknote,
   LayoutDashboard,
+  HelpCircle,
 } from 'lucide-react';
 import { KtaQrScannerModal } from './KtaQrScannerModal';
+import { PaymentConfirmationGuideModal } from './PaymentConfirmationGuideModal';
 
 interface PaymentFormProps {
   members: Member[];
@@ -196,6 +198,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
 
   // KTA QR Scanner State
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
+  const [isPaymentGuideOpen, setIsPaymentGuideOpen] = useState(false);
   const [scanToast, setScanToast] = useState<{ memberName: string; npa: string } | null>(null);
 
   const handleMemberIdentifiedFromQr = (member: Member) => {
@@ -319,16 +322,26 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
             Lakukan pembayaran iuran bulanan atau pendaftaran dan unggah bukti transfer untuk diverifikasi oleh admin/pengurus.
           </p>
         </div>
-        {onNavigateToDashboard && (
+        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-center">
           <button
             type="button"
-            onClick={onNavigateToDashboard}
-            className="self-start sm:self-center px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200 shadow-2xs"
+            onClick={() => setIsPaymentGuideOpen(true)}
+            className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-emerald-200 shadow-2xs"
           >
-            <LayoutDashboard className="w-4 h-4 text-emerald-600" />
-            <span>{activeUser ? (activeUser.authority === 'Anggota' ? 'Ke Portal Warga' : 'Ke Dashboard') : '← Kembali ke Beranda'}</span>
+            <HelpCircle className="w-4 h-4 text-emerald-600" />
+            <span>Panduan Konfirmasi Pembayaran</span>
           </button>
-        )}
+          {onNavigateToDashboard && (
+            <button
+              type="button"
+              onClick={onNavigateToDashboard}
+              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200 shadow-2xs"
+            >
+              <LayoutDashboard className="w-4 h-4 text-emerald-600" />
+              <span>{activeUser ? (activeUser.authority === 'Anggota' ? 'Ke Portal Warga' : 'Ke Dashboard') : '← Kembali ke Beranda'}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {isReadOnlyRole && (
@@ -916,6 +929,14 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                 <li><strong className="text-slate-900">Penerbitan KTA:</strong> KTA Digital resmi bertanda QR Code Paguyuban otomatis terbit.</li>
                 <li><strong className="text-slate-900">Kas Bertambah:</strong> Saldo uang kas masuk bertambah secara otomatis & tercatat di sistem.</li>
               </ol>
+              <button
+                type="button"
+                onClick={() => setIsPaymentGuideOpen(true)}
+                className="w-full mt-2 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              >
+                <HelpCircle className="w-4 h-4" />
+                <span>Buka Panduan Lengkap & Unduh PDF</span>
+              </button>
             </div>
           </div>
         </div>
@@ -928,6 +949,13 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
         members={members}
         settings={settings}
         onMemberIdentified={handleMemberIdentifiedFromQr}
+      />
+
+      {/* PAYMENT CONFIRMATION GUIDE MODAL */}
+      <PaymentConfirmationGuideModal
+        isOpen={isPaymentGuideOpen}
+        onClose={() => setIsPaymentGuideOpen(false)}
+        settings={settings}
       />
     </div>
   );
