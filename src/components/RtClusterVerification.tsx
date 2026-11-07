@@ -1140,31 +1140,43 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
                     <p className="font-mono text-xs text-slate-500">NIK: {member.nik}</p>
                   </div>
 
-                  <div>
-                    {isPending ? (
-                      <span className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-extrabold rounded-full inline-flex items-center gap-1 animate-pulse">
-                        <Clock className="w-3 h-3 text-amber-700" />
-                        <span>Menunggu RT</span>
+                  <div className="text-right">
+                    {isRejected ? (
+                      <span className="px-2.5 py-1 bg-rose-100 text-rose-800 border border-rose-300 text-[11px] font-extrabold rounded-full inline-flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-rose-600 shrink-0" />
+                        <XCircle className="w-3 h-3 text-rose-600 shrink-0" />
+                        <span>Ditolak</span>
                       </span>
-                    ) : isRejected ? (
-                      <span className="px-2.5 py-1 bg-rose-100 text-rose-800 border border-rose-200 text-[11px] font-bold rounded-full inline-flex items-center gap-1">
-                        <XCircle className="w-3 h-3 text-rose-600" />
-                        <span>Ditolak RT</span>
-                      </span>
-                    ) : member.status === 'Menunggu Pembayaran' ? (
-                      <span className="px-2.5 py-1 bg-amber-50 text-amber-900 border border-amber-300 text-[11px] font-extrabold rounded-full inline-flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3 text-amber-600" />
-                        <span>Disetujui RT (Siap Bayar)</span>
-                      </span>
-                    ) : member.status === 'Menunggu Validasi Bendahara' ? (
-                      <span className="px-2.5 py-1 bg-sky-100 text-sky-900 border border-sky-300 text-[11px] font-extrabold rounded-full inline-flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-sky-600" />
-                        <span>Menunggu Bendahara</span>
+                    ) : isPending ||
+                      member.status === 'Menunggu Pembayaran' ||
+                      member.status === 'Menunggu Validasi Bendahara' ||
+                      member.status === 'Menunggu Persetujuan Ketua Paguyuban' ? (
+                      <div className="space-y-0.5">
+                        <span className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-extrabold rounded-full inline-flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                          <Clock className="w-3 h-3 text-amber-700 shrink-0" />
+                          <span>Menunggu</span>
+                        </span>
+                        <p className="text-[10px] text-amber-800 font-bold">
+                          {member.status === 'Menunggu Pembayaran'
+                            ? 'Siap Bayar Iuran'
+                            : member.status === 'Menunggu Validasi Bendahara'
+                            ? 'Validasi Bendahara'
+                            : member.status === 'Menunggu Persetujuan Ketua Paguyuban'
+                            ? 'Persetujuan Ketua'
+                            : 'Verifikasi RT'}
+                        </p>
+                      </div>
+                    ) : member.status === 'Meninggal' ? (
+                      <span className="px-2.5 py-1 bg-slate-200 text-slate-800 border border-slate-300 text-[11px] font-bold rounded-full inline-flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-slate-600 shrink-0" />
+                        <span>Meninggal</span>
                       </span>
                     ) : (
-                      <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 text-[11px] font-extrabold rounded-full inline-flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3 text-emerald-600" />
-                        <span>Aktif & KTA Terbit</span>
+                      <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 text-[11px] font-extrabold rounded-full inline-flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                        <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
+                        <span>Aktif</span>
                       </span>
                     )}
                   </div>

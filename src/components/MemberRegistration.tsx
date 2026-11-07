@@ -537,7 +537,27 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
   });
 
   const activeMembers = React.useMemo(() => {
-    return accessibleMembers.filter((m) => m.status === 'Aktif' || m.verificationStatus === 'Verified');
+    return accessibleMembers.filter((m) => m.status === 'Aktif');
+  }, [accessibleMembers]);
+
+  const waitingMembers = React.useMemo(() => {
+    return accessibleMembers.filter(
+      (m) =>
+        m.status === 'Menunggu Verifikasi RT' ||
+        m.status === 'Menunggu Pembayaran' ||
+        m.status === 'Menunggu Validasi Bendahara' ||
+        m.status === 'Menunggu Persetujuan Ketua Paguyuban' ||
+        m.verificationStatus === 'Pending' ||
+        (!m.isPaguyubanApproved &&
+          m.verificationStatus === 'Verified' &&
+          m.status !== 'Aktif' &&
+          m.status !== 'Ditolak' &&
+          m.status !== 'Meninggal')
+    );
+  }, [accessibleMembers]);
+
+  const rejectedMembers = React.useMemo(() => {
+    return accessibleMembers.filter((m) => m.status === 'Ditolak' || m.verificationStatus === 'Rejected');
   }, [accessibleMembers]);
 
   const pendingRtMembers = React.useMemo(() => {
@@ -568,7 +588,21 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
       } else if (statusFilter === 'Kedaluwarsa') {
         matchesStatus = !!exp?.isExpired && m.status !== 'Meninggal' && m.status !== 'Menunggu Verifikasi RT';
       } else if (statusFilter === 'Aktif') {
-        matchesStatus = m.status === 'Aktif' || m.verificationStatus === 'Verified';
+        matchesStatus = m.status === 'Aktif';
+      } else if (statusFilter === 'Menunggu') {
+        matchesStatus =
+          m.status === 'Menunggu Verifikasi RT' ||
+          m.status === 'Menunggu Pembayaran' ||
+          m.status === 'Menunggu Validasi Bendahara' ||
+          m.status === 'Menunggu Persetujuan Ketua Paguyuban' ||
+          m.verificationStatus === 'Pending' ||
+          (!m.isPaguyubanApproved &&
+            m.verificationStatus === 'Verified' &&
+            m.status !== 'Aktif' &&
+            m.status !== 'Ditolak' &&
+            m.status !== 'Meninggal');
+      } else if (statusFilter === 'Ditolak') {
+        matchesStatus = m.status === 'Ditolak' || m.verificationStatus === 'Rejected';
       } else {
         matchesStatus = m.status === statusFilter;
       }
@@ -2057,7 +2091,10 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer w-full sm:w-auto"
               >
-                <option value="Semua">Semua Status ({members.length})</option>
+                <option value="Semua">Semua Status ({accessibleMembers.length})</option>
+                <option value="Aktif">🟢 Aktif ({activeMembers.length})</option>
+                <option value="Menunggu">🟡 Menunggu - Semua Tahap ({waitingMembers.length})</option>
+                <option value="Ditolak">🔴 Ditolak ({rejectedMembers.length})</option>
                 {expiringSoonMembers.length > 0 && (
                   <option value="Segera Habis" className="text-amber-700 font-bold">
                     ⚠️ Segera Habis ≤ 30 Hari ({expiringSoonMembers.length})
@@ -2068,12 +2105,12 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                     ⛔ Jatuh Tempo / Kedaluwarsa ({expiredMembers.length})
                   </option>
                 )}
-                <option value="Aktif">Aktif (Resmi & Terbit KTA)</option>
-                <option value="Menunggu Persetujuan Ketua Paguyuban">Menunggu Persetujuan Ketua Paguyuban</option>
-                <option value="Menunggu Verifikasi RT">Menunggu Verifikasi RT</option>
-                <option value="Ditolak">Ditolak</option>
-                <option value="Meninggal">Meninggal</option>
-                <option value="Non-Aktif">Non-Aktif</option>
+                <option value="Menunggu Verifikasi RT">↳ Menunggu Verifikasi RT</option>
+                <option value="Menunggu Pembayaran">↳ Menunggu Pembayaran</option>
+                <option value="Menunggu Validasi Bendahara">↳ Menunggu Validasi Bendahara</option>
+                <option value="Menunggu Persetujuan Ketua Paguyuban">↳ Menunggu Persetujuan Ketua Paguyuban</option>
+                <option value="Meninggal">⚫ Meninggal</option>
+                <option value="Non-Aktif">⚪ Non-Aktif</option>
               </select>
             </div>
 
@@ -2132,62 +2169,84 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
           </div>
         </div>
 
-        {/* Quick Status Filter Pills (especially for Bendahara to quickly filter 'Aktif' for valid beneficiaries) */}
+        {/* Dynamic Status Color Badges & Quick Filter Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs pt-1 border-t border-slate-100 no-scrollbar">
           <span className="text-[11px] font-bold text-slate-400 uppercase shrink-0 mr-1 flex items-center gap-1">
             <Filter className="w-3 h-3" />
-            <span>Filter Status:</span>
+            <span>Indikator Status:</span>
           </span>
           <button
             type="button"
             onClick={() => setStatusFilter('Semua')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
               statusFilter === 'Semua'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
             <span>Semua</span>
-            <span className="text-[10px] px-1.5 py-0.2 bg-black/20 rounded-full font-mono">{members.length}</span>
+            <span className="text-[10px] px-1.5 py-0.2 bg-black/20 rounded-full font-mono">{accessibleMembers.length}</span>
           </button>
 
-          {/* HANYA AKTIF - DEDICATED FOR BENDAHARA / ADMIN */}
+          {/* HIJAU: AKTIF */}
           <button
             type="button"
             onClick={() => setStatusFilter('Aktif')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1.5 ${
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
               statusFilter === 'Aktif'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/20 ring-2 ring-emerald-400'
-                : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200'
+                : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300'
             }`}
-            title="Filter hanya anggota aktif (penerima manfaat santunan yang valid)"
+            title="Hijau: Anggota dengan status pendaftaran 'Aktif' (Resmi & KTA Terbit)"
           >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Hanya Status 'Aktif' (Penerima Manfaat Sah)</span>
+            <span className={`w-2 h-2 rounded-full ${statusFilter === 'Aktif' ? 'bg-white' : 'bg-emerald-500'}`} />
+            <span>Aktif</span>
             <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${statusFilter === 'Aktif' ? 'bg-black/25 text-white' : 'bg-emerald-200 text-emerald-900'}`}>
               {activeMembers.length}
             </span>
           </button>
 
+          {/* KUNING: MENUNGGU */}
           <button
             type="button"
-            onClick={() => setStatusFilter('Menunggu Verifikasi RT')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
-              statusFilter === 'Menunggu Verifikasi RT'
-                ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            onClick={() => setStatusFilter('Menunggu')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
+              statusFilter === 'Menunggu' || statusFilter.startsWith('Menunggu')
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-900/15 ring-2 ring-amber-400'
+                : 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-300'
             }`}
+            title="Kuning: Anggota dengan status pendaftaran 'Menunggu' (Verifikasi RT / Pembayaran / Validasi Kas / Persetujuan Ketua)"
           >
-            <Clock className="w-3.5 h-3.5" />
-            <span>Menunggu RT</span>
-            <span className="text-[10px] px-1.5 py-0.2 bg-black/10 rounded-full font-mono">{pendingRtMembers.length}</span>
+            <span className={`w-2 h-2 rounded-full animate-pulse ${statusFilter === 'Menunggu' || statusFilter.startsWith('Menunggu') ? 'bg-slate-950' : 'bg-amber-500'}`} />
+            <span>Menunggu</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${statusFilter === 'Menunggu' || statusFilter.startsWith('Menunggu') ? 'bg-black/15 text-slate-950' : 'bg-amber-200 text-amber-950'}`}>
+              {waitingMembers.length}
+            </span>
+          </button>
+
+          {/* MERAH: DITOLAK */}
+          <button
+            type="button"
+            onClick={() => setStatusFilter('Ditolak')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
+              statusFilter === 'Ditolak'
+                ? 'bg-rose-600 text-white shadow-md shadow-rose-900/20 ring-2 ring-rose-400'
+                : 'bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-300'
+            }`}
+            title="Merah: Pendaftaran anggota yang berstatus 'Ditolak'"
+          >
+            <span className={`w-2 h-2 rounded-full ${statusFilter === 'Ditolak' ? 'bg-white' : 'bg-rose-500'}`} />
+            <span>Ditolak</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${statusFilter === 'Ditolak' ? 'bg-black/25 text-white' : 'bg-rose-200 text-rose-900'}`}>
+              {rejectedMembers.length}
+            </span>
           </button>
 
           {expiringSoonMembers.length > 0 && (
             <button
               type="button"
               onClick={() => setStatusFilter('Segera Habis')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
                 statusFilter === 'Segera Habis'
                   ? 'bg-amber-600 text-white shadow-xs'
                   : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200'
@@ -2203,7 +2262,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
             <button
               type="button"
               onClick={() => setStatusFilter('Kedaluwarsa')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
                 statusFilter === 'Kedaluwarsa'
                   ? 'bg-rose-600 text-white shadow-xs'
                   : 'bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-200'
@@ -2548,61 +2607,101 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                       </td>
                       <td className="py-3.5 px-4 whitespace-nowrap">
                         {member.status === 'Meninggal' ? (
-                          <span className="px-2.5 py-1 bg-slate-200 text-slate-800 font-bold text-[10px] rounded-full">
-                            Meninggal
+                          <span className="px-2.5 py-1 bg-slate-200 text-slate-800 border border-slate-300 font-bold text-[10px] rounded-full inline-flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-slate-600 shrink-0" />
+                            <span>Meninggal</span>
                           </span>
                         ) : member.status === 'Ditolak' || member.verificationStatus === 'Rejected' ? (
-                          <span className="px-2.5 py-1 bg-rose-100 text-rose-800 font-bold text-[10px] rounded-full" title={member.paguyubanRejectionReason || member.rtVerificationNotes || 'Ditolak'}>
-                            Ditolak
-                          </span>
-                        ) : member.status === 'Menunggu Persetujuan Ketua Paguyuban' ? (
-                          <span className="px-2.5 py-1 bg-purple-100 text-purple-900 border border-purple-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1 animate-pulse" title="Pembayaran telah divalidasi Bendahara, menunggu persetujuan akhir Ketua Paguyuban sebelum KTA terbit">
-                            <Clock className="w-3 h-3 text-purple-700" />
-                            <span>Menunggu Ketua Paguyuban</span>
-                          </span>
+                          <div className="space-y-0.5">
+                            <span
+                              className="px-2.5 py-1 bg-rose-100 text-rose-800 border border-rose-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs"
+                              title={member.paguyubanRejectionReason || member.rtVerificationNotes || 'Pendaftaran Ditolak'}
+                            >
+                              <span className="w-2 h-2 rounded-full bg-rose-600 shrink-0" />
+                              <XCircle className="w-3 h-3 text-rose-600 shrink-0" />
+                              <span>Ditolak</span>
+                            </span>
+                            {(member.paguyubanRejectionReason || member.rtVerificationNotes) && (
+                              <p className="text-[10px] text-rose-700 font-medium max-w-[160px] truncate">
+                                {member.paguyubanRejectionReason || member.rtVerificationNotes}
+                              </p>
+                            )}
+                          </div>
+                        ) : member.status === 'Menunggu Persetujuan Ketua Paguyuban' ||
+                          (!member.isPaguyubanApproved && member.verificationStatus === 'Verified' && member.status !== 'Aktif' && member.status !== 'Menunggu Pembayaran' && member.status !== 'Menunggu Validasi Bendahara') ? (
+                          <div className="space-y-0.5">
+                            <span
+                              className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs"
+                              title="Pembayaran telah divalidasi Bendahara, menunggu persetujuan akhir Ketua Paguyuban sebelum KTA terbit"
+                            >
+                              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                              <Clock className="w-3 h-3 text-amber-700 shrink-0" />
+                              <span>Menunggu</span>
+                            </span>
+                            <p className="text-[10px] text-amber-800 font-bold">Tahap: Persetujuan Ketua</p>
+                          </div>
                         ) : member.status === 'Menunggu Validasi Bendahara' ? (
-                          <span className="px-2.5 py-1 bg-sky-100 text-sky-900 border border-sky-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1 animate-pulse" title="Bukti pembayaran diunggah, menunggu validasi Bendahara">
-                            <Clock className="w-3 h-3 text-sky-700" />
-                            <span>Menunggu Validasi Kas</span>
-                          </span>
+                          <div className="space-y-0.5">
+                            <span
+                              className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs"
+                              title="Bukti pembayaran diunggah, menunggu validasi Bendahara"
+                            >
+                              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                              <Clock className="w-3 h-3 text-amber-700 shrink-0" />
+                              <span>Menunggu</span>
+                            </span>
+                            <p className="text-[10px] text-amber-800 font-bold">Tahap: Validasi Bendahara</p>
+                          </div>
                         ) : member.status === 'Menunggu Pembayaran' ? (
-                          <span className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1" title="Lolos verifikasi RT, menunggu pembayaran iuran oleh warga">
-                            <CreditCard className="w-3 h-3 text-amber-700" />
-                            <span>Menunggu Pembayaran</span>
-                          </span>
-                        ) : (!member.isPaguyubanApproved && member.verificationStatus === 'Verified') ? (
-                          <span className="px-2.5 py-1 bg-purple-100 text-purple-900 border border-purple-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1" title="Menunggu persetujuan pengesahan Ketua Paguyuban">
-                            <Clock className="w-3 h-3 text-purple-700" />
-                            <span>Menunggu Ketua Paguyuban</span>
-                          </span>
+                          <div className="space-y-0.5">
+                            <span
+                              className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs"
+                              title="Lolos verifikasi RT, menunggu pembayaran iuran oleh warga"
+                            >
+                              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                              <CreditCard className="w-3 h-3 text-amber-700 shrink-0" />
+                              <span>Menunggu</span>
+                            </span>
+                            <p className="text-[10px] text-amber-800 font-bold">Tahap: Pembayaran Iuran</p>
+                          </div>
                         ) : member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending' ? (
-                          <span className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1 animate-pulse">
-                            <Clock className="w-3 h-3 text-amber-700" />
-                            <span>Menunggu RT</span>
-                          </span>
+                          <div className="space-y-0.5">
+                            <span
+                              className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs"
+                              title="Menunggu verifikasi data warga oleh Ketua RT"
+                            >
+                              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                              <Clock className="w-3 h-3 text-amber-700 shrink-0" />
+                              <span>Menunggu</span>
+                            </span>
+                            <p className="text-[10px] text-amber-800 font-bold">Tahap: Verifikasi RT</p>
+                          </div>
                         ) : exp?.isExpiringSoon ? (
                           <div className="space-y-1">
-                            <span className="px-2.5 py-1 bg-amber-100 text-amber-950 border-2 border-amber-400 font-black text-[10px] rounded-full inline-flex items-center gap-1 shadow-sm animate-pulse">
-                              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                              <span>Habis dlm {exp.daysRemaining} hari</span>
+                            <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                              <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
+                              <span>Aktif</span>
                             </span>
                             <p className="text-[10px] text-amber-800 font-bold flex items-center gap-1">
-                              <Clock className="w-3 h-3 text-amber-600" />
-                              <span>Jatuh tempo: {exp.expiryDateFormatted}</span>
+                              <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                              <span>Habis dlm {exp.daysRemaining} hari</span>
                             </p>
                           </div>
                         ) : exp?.isExpired ? (
                           <div className="space-y-1">
-                            <span className="px-2.5 py-1 bg-rose-100 text-rose-900 border border-rose-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1">
+                            <span className="px-2.5 py-1 bg-rose-100 text-rose-900 border border-rose-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
                               <AlertCircle className="w-3 h-3 text-rose-600 shrink-0" />
                               <span>Jatuh Tempo</span>
                             </span>
                             <p className="text-[10px] text-rose-700 font-medium">Habis: {exp.expiryDateFormatted}</p>
                           </div>
-                        ) : member.status === 'Aktif' || member.verificationStatus === 'Verified' ? (
+                        ) : member.status === 'Aktif' ? (
                           <div className="space-y-0.5">
-                            <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1">
-                              <CheckCircle className="w-3 h-3 text-emerald-600" />
+                            <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                              <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
                               <span>Aktif</span>
                             </span>
                             {exp?.expiryDateFormatted && (
@@ -2610,8 +2709,9 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                             )}
                           </div>
                         ) : (
-                          <span className="px-2.5 py-1 bg-rose-100 text-rose-800 font-bold text-[10px] rounded-full">
-                            Non-Aktif
+                          <span className="px-2.5 py-1 bg-rose-100 text-rose-800 border border-rose-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+                            <span>Non-Aktif</span>
                           </span>
                         )}
                         <button

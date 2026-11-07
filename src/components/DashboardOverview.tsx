@@ -2174,19 +2174,42 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
                         {/* Status Keanggotaan */}
                         <td className="px-4 py-3.5">
-                          {isPending ? (
-                            <span className="px-2.5 py-1 bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-[11px] font-bold inline-flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              <span>Menunggu Verifikasi RT</span>
+                          {member.status === 'Ditolak' || member.verificationStatus === 'Rejected' ? (
+                            <span className="px-2.5 py-1 bg-rose-100 text-rose-800 border border-rose-300 rounded-full text-[11px] font-extrabold inline-flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-rose-600 shrink-0" />
+                              <XCircle className="w-3 h-3 text-rose-600 shrink-0" />
+                              <span>Ditolak</span>
                             </span>
                           ) : member.status === 'Aktif' ? (
-                            <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[11px] font-bold inline-flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                              <span>Terverifikasi RT</span>
+                            <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full text-[11px] font-extrabold inline-flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                              <span>Aktif</span>
                             </span>
+                          ) : isPending ||
+                            member.status === 'Menunggu Pembayaran' ||
+                            member.status === 'Menunggu Validasi Bendahara' ||
+                            member.status === 'Menunggu Persetujuan Ketua Paguyuban' ? (
+                            <div className="space-y-0.5">
+                              <span className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-[11px] font-extrabold inline-flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                                <Clock className="w-3 h-3 text-amber-700 shrink-0" />
+                                <span>Menunggu</span>
+                              </span>
+                              <div className="text-[10px] text-amber-800 font-bold">
+                                {member.status === 'Menunggu Pembayaran'
+                                  ? 'Tahap: Pembayaran'
+                                  : member.status === 'Menunggu Validasi Bendahara'
+                                  ? 'Tahap: Validasi Kas'
+                                  : member.status === 'Menunggu Persetujuan Ketua Paguyuban'
+                                  ? 'Tahap: Persetujuan Ketua'
+                                  : 'Tahap: Verifikasi RT'}
+                              </div>
+                            </div>
                           ) : (
-                            <span className="px-2.5 py-1 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-[11px] font-semibold">
-                              {member.status}
+                            <span className="px-2.5 py-1 bg-slate-200 text-slate-800 border border-slate-300 rounded-full text-[11px] font-bold inline-flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-slate-500 shrink-0" />
+                              <span>{member.status}</span>
                             </span>
                           )}
                         </td>

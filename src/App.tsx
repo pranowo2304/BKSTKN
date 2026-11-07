@@ -267,101 +267,49 @@ export default function App() {
     const setupCloud = async () => {
       try {
         setLoadingMessage('Mengakses database Cloud Firestore...');
-        await seedInitialFirestoreData();
-        await cleanupDemoClaimsFromCloud().catch(() => {});
+        const isAlreadyInit = typeof window !== 'undefined' && localStorage.getItem('dana_kematian_initialized_v1') === 'true';
+        if (!isAlreadyInit) {
+          await seedInitialFirestoreData();
+          await cleanupDemoClaimsFromCloud().catch(() => {});
+        }
         unsubscribeFirestore = subscribeToFirestore({
           onMembersChange: (cloudMembers) => {
             if (cloudMembers && Array.isArray(cloudMembers)) {
-              setMembers((prevMembers) => {
-                const normalizedCloudMembers = cloudMembers.map((m) => {
-                  // Jika status belum Aktif (mis. Menunggu Persetujuan Ketua Paguyuban), pastikan isPaguyubanApproved = false
-                  if (m && m.status !== 'Aktif' && m.isPaguyubanApproved === true) {
-                    const fixed: Member = {
-                      ...m,
-                      isPaguyubanApproved: false,
-                      isKtaIssued: false,
-                    };
-                    syncMemberToCloud(fixed).catch((err) =>
-                      console.warn('Auto-normalize pending paguyuban member error:', err)
-                    );
-                    return fixed;
-                  }
-                  return m;
-                });
-                const cloudMap = new Map(normalizedCloudMembers.map((m) => [m.id, m]));
-                const unsyncedMembers = prevMembers.filter((localM) => !cloudMap.has(localM.id));
-                const merged = unsyncedMembers.length > 0 ? [...normalizedCloudMembers, ...unsyncedMembers] : normalizedCloudMembers;
-                saveMembers(merged);
-
-                // Auto-sync any unsynced local members to Cloud Firestore upon reconnect
-                if (unsyncedMembers.length > 0) {
-                  unsyncedMembers.forEach((unsynced) => {
-                    syncMemberToCloud(unsynced).catch((err) =>
-                      console.warn('Auto-resync member to Firestore error:', err)
-                    );
-                  });
+              const normalizedCloudMembers = cloudMembers.map((m) => {
+                // Jika status belum Aktif (mis. Menunggu Persetujuan Ketua Paguyuban), pastikan isPaguyubanApproved = false
+                if (m && m.status !== 'Aktif' && m.isPaguyubanApproved === true) {
+                  return {
+                    ...m,
+                    isPaguyubanApproved: false,
+                    isKtaIssued: false,
+                  };
                 }
-                // Auto-sync user accounts for all members so every registered citizen has an active login user
-                setUsers((prevUsers) => {
-                  const syncedUsers = syncMembersToUsers(merged, prevUsers);
-                  saveUsers(syncedUsers);
-                  const newMemberUsers = syncedUsers.filter(
-                    (u) => u.authority === 'Anggota' && !prevUsers.some((pu) => pu.id === u.id)
-                  );
-                  if (newMemberUsers.length > 0) {
-                    syncUsersBatchToCloud(newMemberUsers).catch((err) =>
-                      console.warn('Auto-sync new member users error:', err)
-                    );
-                  }
-                  return syncedUsers;
-                });
+                return m;
+              });
 
-                return merged;
+              setMembers(normalizedCloudMembers);
+              saveMembers(normalizedCloudMembers);
+
+              setUsers((prevUsers) => {
+                const syncedUsers = syncMembersToUsers(normalizedCloudMembers, prevUsers);
+                saveUsers(syncedUsers);
+                return syncedUsers;
               });
             }
             setIsInitialLoading(false);
           },
           onPaymentsChange: (cloudPayments) => {
             if (cloudPayments && Array.isArray(cloudPayments)) {
-              setPayments((prevPayments) => {
-                const cloudMap = new Map(cloudPayments.map((p) => [p.id, p]));
-                const unsyncedPayments = prevPayments.filter((localP) => !cloudMap.has(localP.id));
-                const merged = unsyncedPayments.length > 0 ? [...cloudPayments, ...unsyncedPayments] : cloudPayments;
-                savePayments(merged);
-
-                // Auto-sync any unsynced local payments to Cloud Firestore upon reconnect
-                if (unsyncedPayments.length > 0) {
-                  unsyncedPayments.forEach((p) => {
-                    syncPaymentToCloud(p).catch((err) =>
-                      console.warn('Auto-resync payment to Firestore error:', err)
-                    );
-                  });
-                }
-                return merged;
-              });
+              setPayments(cloudPayments);
+              savePayments(cloudPayments);
             }
             setIsInitialLoading(false);
           },
           onClaimsChange: (cloudClaims) => {
             if (cloudClaims && Array.isArray(cloudClaims)) {
-              // Ensure legacy demo claims (claim-1, claim-2, claim-3) are stripped out
               const nonDemo = cloudClaims.filter((c) => c && c.id !== 'claim-1' && c.id !== 'claim-2' && c.id !== 'claim-3');
-              setClaims((prevClaims) => {
-                const cloudMap = new Map(nonDemo.map((c) => [c.id, c]));
-                const unsyncedClaims = prevClaims.filter((localC) => !cloudMap.has(localC.id));
-                const merged = unsyncedClaims.length > 0 ? [...nonDemo, ...unsyncedClaims] : nonDemo;
-                saveClaims(merged);
-
-                // Auto-sync any unsynced local claims to Cloud Firestore upon reconnect
-                if (unsyncedClaims.length > 0) {
-                  unsyncedClaims.forEach((c) => {
-                    syncClaimToCloud(c).catch((err) =>
-                      console.warn('Auto-resync claim to Firestore error:', err)
-                    );
-                  });
-                }
-                return merged;
-              });
+              setClaims(nonDemo);
+              saveClaims(nonDemo);
             }
             setIsInitialLoading(false);
           },
@@ -405,22 +353,11 @@ export default function App() {
               setClusters((currentClusters) => {
                 const effectiveClusters = currentClusters.length > 0 ? currentClusters : getStoredClusters();
                 const syncedRtUsers = syncClustersToRtUsers(effectiveClusters, cloudUsers);
-                const currentOrStoredMembers = members.length > 0 ? members : getStoredMembers();
+                const currentOrStoredMembers = getStoredMembers();
                 const fullySyncedUsers = syncMembersToUsers(currentOrStoredMembers, syncedRtUsers);
 
                 setUsers(fullySyncedUsers);
                 saveUsers(fullySyncedUsers);
-
-                const missingCloudUsers = fullySyncedUsers.filter(
-                  (u) =>
-                    u.authority === 'Anggota' &&
-                    !cloudUsers.some((cu) => cu.id === u.id || (cu.email && u.email && cu.email.toLowerCase() === u.email.toLowerCase()))
-                );
-                if (missingCloudUsers.length > 0) {
-                  syncUsersBatchToCloud(missingCloudUsers).catch((err) =>
-                    console.warn('Sync missing member users to cloud error:', err)
-                  );
-                }
 
                 const syncedClusters = syncRtUsersToClusters(effectiveClusters, syncedRtUsers);
                 saveStoredClusters(syncedClusters);
