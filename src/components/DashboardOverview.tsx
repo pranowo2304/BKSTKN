@@ -162,16 +162,24 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   const activeMembersCount = members.filter((m) => m.status === 'Aktif' || m.verificationStatus === 'Verified').length;
   const pendingRtMembersCount = members.filter((m) => m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending').length;
   const pendingPaguyubanApprovalCount = members.filter((m) => {
-    if (m.isPaguyubanApproved || m.status === 'Aktif' || m.status === 'Ditolak') {
+    const isFullyApproved = Boolean(m.status === 'Aktif' && (m.isPaguyubanApproved || m.isKtaIssued));
+    if (isFullyApproved || m.status === 'Aktif' || m.status === 'Ditolak' || m.status === 'Meninggal') {
       return false;
     }
-    if (m.status === 'Menunggu Verifikasi RT' || m.verificationStatus !== 'Verified') {
+    if (m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending' || m.verificationStatus === 'Rejected') {
       return false;
     }
-    // Hanya yang sudah divalidasi pembayaran oleh bendahara
-    return payments.some(
-      (p) => (p.memberId === m.id || p.memberNumber === m.memberNumber) && p.status === 'Verified'
+    const cleanNum = (m.memberNumber || '').trim().toLowerCase();
+    const cleanName = (m.name || '').trim().toLowerCase();
+    // Hanya yang sudah divalidasi pembayaran oleh bendahara (atau berstatus Menunggu Persetujuan Ketua Paguyuban)
+    const hasVerifiedPayment = payments.some(
+      (p) =>
+        p.status === 'Verified' &&
+        (p.memberId === m.id ||
+          (cleanNum && (p.memberNumber || '').trim().toLowerCase() === cleanNum) ||
+          (cleanName && (p.memberName || '').trim().toLowerCase() === cleanName))
     );
+    return hasVerifiedPayment || m.status === 'Menunggu Persetujuan Ketua Paguyuban';
   }).length;
   const pendingPayments = payments.filter((p) => p.status === 'Pending');
   const graceSummary = getGracePeriodSummary(payments);

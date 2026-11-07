@@ -82,9 +82,8 @@ export function getMemberKtaIssuanceInfo(
   if (hasPaidAndVerified) {
     // Check Ketua Paguyuban final approval
     const isApprovedByPaguyuban = Boolean(
-      member.isPaguyubanApproved ||
-      (member.approvedByPaguyuban && member.status === 'Aktif') ||
-      (member.isKtaIssued && member.status === 'Aktif')
+      member.status === 'Aktif' &&
+      (member.isPaguyubanApproved || member.approvedByPaguyuban || member.isKtaIssued)
     );
 
     // If waiting for Ketua Paguyuban approval

@@ -141,8 +141,26 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
   const primaryBenefitAmount = benefits.find((b) => b.isActive)?.amount || settings.benefitAmount || 2500000;
   const solvencyCoverageCount = primaryBenefitAmount > 0 ? Math.floor(financials.totalBalance / primaryBenefitAmount) : 0;
 
+  // Helper: member is only considered fully approved by Ketua Paguyuban when status is 'Aktif'
+  const isMemberFullyApprovedByKetua = (m: Member): boolean => {
+    return Boolean(m.status === 'Aktif' && (m.isPaguyubanApproved || m.isKtaIssued));
+  };
+
+  // Helper to find latest verified payment for a member
+  const getMemberVerifiedPayment = (member: Member): Payment | undefined => {
+    const cleanNum = (member.memberNumber || '').trim().toLowerCase();
+    const cleanName = (member.name || '').trim().toLowerCase();
+    return payments.find(
+      (p) =>
+        p.status === 'Verified' &&
+        (p.memberId === member.id ||
+          (cleanNum && (p.memberNumber || '').trim().toLowerCase() === cleanNum) ||
+          (cleanName && (p.memberName || '').trim().toLowerCase() === cleanName))
+    );
+  };
+
   // Rasio Kepatuhan Warga (Compliance Ratio)
-  const paidActiveMembers = members.filter((m) => m.status === 'Aktif' || m.isKtaIssued || m.isPaguyubanApproved);
+  const paidActiveMembers = members.filter((m) => isMemberFullyApprovedByKetua(m));
   const compliancePct = members.length > 0 ? Math.round((paidActiveMembers.length / members.length) * 100) : 0;
 
   // Breakdown Kepatuhan & Keuangan per Wilayah Cluster RT
@@ -158,10 +176,16 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
         clusterMap[c] = { name: c, total: 0, paid: 0, pendingApproval: 0, totalCollected: 0 };
       }
       clusterMap[c].total += 1;
-      if (m.status === 'Aktif' || m.isKtaIssued || m.isPaguyubanApproved) {
+      if (isMemberFullyApprovedByKetua(m)) {
         clusterMap[c].paid += 1;
-      }
-      if (!m.isPaguyubanApproved && (m.status === 'Menunggu Persetujuan Paguyuban' || m.approvalStatus === 'Pending')) {
+      } else if (
+        m.status !== 'Ditolak' &&
+        m.status !== 'Meninggal' &&
+        m.status !== 'Menunggu Verifikasi RT' &&
+        m.verificationStatus !== 'Pending' &&
+        m.verificationStatus !== 'Rejected' &&
+        (m.status === 'Menunggu Persetujuan Ketua Paguyuban' || Boolean(getMemberVerifiedPayment(m)))
+      ) {
         clusterMap[c].pendingApproval += 1;
       }
     });
@@ -192,29 +216,20 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
     });
   };
 
-  // Helper to find latest verified payment for a member
-  const getMemberVerifiedPayment = (member: Member): Payment | undefined => {
-    return payments.find(
-      (p) => (p.memberId === member.id || p.memberNumber === member.memberNumber) && p.status === 'Verified'
-    );
-  };
-
-  // Filter lists: HANYA YANG SUDAH DIVALIDASI PEMBAYARAN OLEH BENDAHARA
+  // Filter lists: HANYA YANG SUDAH DIVALIDASI PEMBAYARAN OLEH BENDAHARA & BELUM AKTIF
   const pendingMembers = useMemo(() => {
     return members.filter((m) => {
-      // 1. Belum disetujui Ketua Paguyuban dan bukan berstatus Aktif atau Ditolak
-      if (m.isPaguyubanApproved || m.status === 'Aktif' || m.status === 'Ditolak') {
+      // 1. Jika sudah disahkan Ketua Paguyuban & berstatus Aktif, atau Ditolak / Meninggal, bukan antrean
+      if (isMemberFullyApprovedByKetua(m) || m.status === 'Aktif' || m.status === 'Ditolak' || m.status === 'Meninggal') {
         return false;
       }
       // 2. Wajib sudah lolos verifikasi RT
-      if (m.status === 'Menunggu Verifikasi RT' || m.verificationStatus !== 'Verified') {
+      if (m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending' || m.verificationStatus === 'Rejected') {
         return false;
       }
-      // 3. SYARAT MUTLAK: Wajib sudah ada validasi pembayaran dari bendahara
-      const hasVerifiedPayment = payments.some(
-        (p) => (p.memberId === m.id || p.memberNumber === m.memberNumber) && p.status === 'Verified'
-      );
-      return hasVerifiedPayment;
+      // 3. SYARAT MUTLAK: Wajib sudah ada validasi pembayaran dari bendahara (atau berstatus Menunggu Persetujuan Ketua Paguyuban)
+      const hasVerifiedPayment = Boolean(getMemberVerifiedPayment(m));
+      return hasVerifiedPayment || m.status === 'Menunggu Persetujuan Ketua Paguyuban';
     });
   }, [members, payments]);
 
@@ -225,7 +240,7 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
   }, [members]);
 
   const approvedMembers = useMemo(() => {
-    return members.filter((m) => m.isPaguyubanApproved === true && m.status === 'Aktif');
+    return members.filter((m) => isMemberFullyApprovedByKetua(m));
   }, [members]);
 
   // Filtered by Search & Cluster
@@ -896,11 +911,16 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
           {displayedMembers.map((member) => {
             const verifiedPayment = getMemberVerifiedPayment(member);
             const isTimelineExpanded = expandedTimelineMemberIds.has(member.id);
+            const isFullyApproved = isMemberFullyApprovedByKetua(member);
             const isAwaitingApproval =
-              !member.isPaguyubanApproved &&
+              !isFullyApproved &&
               member.status !== 'Aktif' &&
               member.status !== 'Ditolak' &&
-              Boolean(verifiedPayment);
+              member.status !== 'Meninggal' &&
+              member.status !== 'Menunggu Verifikasi RT' &&
+              member.verificationStatus !== 'Pending' &&
+              member.verificationStatus !== 'Rejected' &&
+              Boolean(verifiedPayment || member.status === 'Menunggu Persetujuan Ketua Paguyuban');
 
             return (
               <div
@@ -955,7 +975,7 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
 
                   {/* STATUS BADGE & KTA ISSUANCE INDICATOR */}
                   <div className="flex items-center gap-2 shrink-0">
-                    {member.isPaguyubanApproved ? (
+                    {isFullyApproved ? (
                       <div className="text-right space-y-0.5">
                         <span className="px-3 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 font-black text-xs rounded-xl inline-flex items-center gap-1.5 shadow-2xs">
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -1161,7 +1181,7 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
                           <span>Menunggu Verifikasi Ketua RT {member.cluster || 'Cluster'}</span>
                         </span>
                       </div>
-                    ) : member.isPaguyubanApproved ? (
+                    ) : isFullyApproved ? (
                       <button
                         type="button"
                         onClick={() => setSelectedDigitalKtaMember(member)}

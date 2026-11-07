@@ -227,9 +227,8 @@ export const getMemberStatusTimeline = (
   // Stage 4: Persetujuan Akhir Ketua Paguyuban
   let paguyubanItem: MemberStatusHistoryItem;
   const isPaguyubanApproved = Boolean(
-    member.isPaguyubanApproved ||
-    (member.approvedByPaguyuban && member.status === 'Aktif') ||
-    (member.isKtaIssued && member.status === 'Aktif')
+    member.status === 'Aktif' &&
+    (member.isPaguyubanApproved || member.approvedByPaguyuban || member.isKtaIssued)
   );
 
   if (isPaguyubanApproved) {

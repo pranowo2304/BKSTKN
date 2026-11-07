@@ -273,9 +273,24 @@ export default function App() {
           onMembersChange: (cloudMembers) => {
             if (cloudMembers && Array.isArray(cloudMembers)) {
               setMembers((prevMembers) => {
-                const cloudMap = new Map(cloudMembers.map((m) => [m.id, m]));
+                const normalizedCloudMembers = cloudMembers.map((m) => {
+                  // Jika status belum Aktif (mis. Menunggu Persetujuan Ketua Paguyuban), pastikan isPaguyubanApproved = false
+                  if (m && m.status !== 'Aktif' && m.isPaguyubanApproved === true) {
+                    const fixed: Member = {
+                      ...m,
+                      isPaguyubanApproved: false,
+                      isKtaIssued: false,
+                    };
+                    syncMemberToCloud(fixed).catch((err) =>
+                      console.warn('Auto-normalize pending paguyuban member error:', err)
+                    );
+                    return fixed;
+                  }
+                  return m;
+                });
+                const cloudMap = new Map(normalizedCloudMembers.map((m) => [m.id, m]));
                 const unsyncedMembers = prevMembers.filter((localM) => !cloudMap.has(localM.id));
-                const merged = unsyncedMembers.length > 0 ? [...cloudMembers, ...unsyncedMembers] : cloudMembers;
+                const merged = unsyncedMembers.length > 0 ? [...normalizedCloudMembers, ...unsyncedMembers] : normalizedCloudMembers;
                 saveMembers(merged);
 
                 // Auto-sync any unsynced local members to Cloud Firestore upon reconnect
@@ -555,16 +570,24 @@ export default function App() {
   }).length;
 
   const pendingPaguyubanApprovalCount = members.filter((m) => {
-    if (m.isPaguyubanApproved || m.status === 'Aktif' || m.status === 'Ditolak') {
+    const isFullyApproved = Boolean(m.status === 'Aktif' && (m.isPaguyubanApproved || m.isKtaIssued));
+    if (isFullyApproved || m.status === 'Aktif' || m.status === 'Ditolak' || m.status === 'Meninggal') {
       return false;
     }
-    if (m.status === 'Menunggu Verifikasi RT' || m.verificationStatus !== 'Verified') {
+    if (m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending' || m.verificationStatus === 'Rejected') {
       return false;
     }
-    // Hanya yang sudah divalidasi pembayaran oleh bendahara
-    return payments.some(
-      (p) => (p.memberId === m.id || p.memberNumber === m.memberNumber) && p.status === 'Verified'
+    const cleanNum = (m.memberNumber || '').trim().toLowerCase();
+    const cleanName = (m.name || '').trim().toLowerCase();
+    // Hanya yang sudah divalidasi pembayaran oleh bendahara (atau berstatus Menunggu Persetujuan Ketua Paguyuban)
+    const hasVerifiedPayment = payments.some(
+      (p) =>
+        p.status === 'Verified' &&
+        (p.memberId === m.id ||
+          (cleanNum && (p.memberNumber || '').trim().toLowerCase() === cleanNum) ||
+          (cleanName && (p.memberName || '').trim().toLowerCase() === cleanName))
     );
+    return hasVerifiedPayment || m.status === 'Menunggu Persetujuan Ketua Paguyuban';
   }).length;
 
   const pendingAmbulanceCount = (() => {
@@ -1119,7 +1142,8 @@ export default function App() {
           rtVerifiedBy: rtOfficerName,
           rtVerifiedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
           rtNotes: rtNotes || m.rtNotes,
-          // KTA remains unissued until Bendahara verifies payment
+          // KTA & Paguyuban approval remain false until Bendahara verifies payment and Ketua Paguyuban approves
+          isPaguyubanApproved: false,
           isKtaIssued: false,
         };
         verifiedMemberObj = updated;
@@ -1356,7 +1380,7 @@ export default function App() {
       syncPaymentToCloud(pay).catch((e) => console.warn('Cloud sync payment error:', e));
 
       const targetMem = members.find((m) => m.id === pay.memberId || m.memberNumber === pay.memberNumber);
-      const isMemAlreadyApproved = targetMem?.isPaguyubanApproved === true;
+      const isMemAlreadyApproved = Boolean(targetMem?.isPaguyubanApproved === true && targetMem?.status === 'Aktif');
 
       // Alert in dashboard: Payment verified
       addNotification({
@@ -1382,7 +1406,7 @@ export default function App() {
       let updatedMemberObj: Member | null = null;
       const updatedMembers = members.map((m) => {
         if (m.id === targetMemberId || m.memberNumber === verifiedPaymentObj?.memberNumber) {
-          const isAlreadyApproved = m.isPaguyubanApproved === true;
+          const isAlreadyApproved = Boolean(m.isPaguyubanApproved === true && m.status === 'Aktif');
           const nextStatus = isAlreadyApproved ? ('Aktif' as const) : ('Menunggu Persetujuan Ketua Paguyuban' as const);
           const nextKtaIssued = isAlreadyApproved;
 
@@ -1390,6 +1414,7 @@ export default function App() {
             ...m,
             status: nextStatus,
             verificationStatus: 'Verified' as const,
+            isPaguyubanApproved: isAlreadyApproved,
             isKtaIssued: nextKtaIssued,
             ktaIssuedAt: nextKtaIssued ? (m.ktaIssuedAt || timestampNow) : undefined,
             ktaIssuedBy: nextKtaIssued ? (m.ktaIssuedBy || verifierName) : undefined,
