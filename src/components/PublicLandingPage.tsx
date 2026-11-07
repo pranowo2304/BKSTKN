@@ -376,36 +376,44 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
     setIsRegistering(false);
     setRegSuccess(null);
     setActiveMobileNav('beranda');
+    if (onRegisterStateChange) {
+      onRegisterStateChange(false);
+    }
+    if (typeof window !== 'undefined' && (window.location.hash === '#section-daftar' || window.location.hash === '#daftar')) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
     setTimeout(() => {
       const menuEl = document.getElementById('section-menu-mobile') || document.getElementById('top');
-      menuEl?.scrollIntoView({ behavior: 'smooth' });
+      if (menuEl) {
+        menuEl.scrollIntoView({ behavior: 'smooth' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     }, 60);
   };
 
   const handleResetDraft = () => {
-    if (window.confirm('Hapus draf formulir dan mulai dari awal?')) {
-      try {
-        sessionStorage.removeItem(DRAFT_STORAGE_KEY);
-        localStorage.removeItem(DRAFT_STORAGE_KEY);
-      } catch {
-        // ignore
-      }
-      setRegFamilyCardFile(null);
-      setRegForm({
-        name: '',
-        nik: '',
-        phone: '',
-        email: '',
-        password: '',
-        address: '',
-        cluster: clusters[0]?.name || 'Cluster Sanur',
-        dependents: [],
-        notes: '',
-        familyCardPhotoUrl: '',
-        familyCardFileName: '',
-        familyCardNumber: '',
-      });
+    try {
+      sessionStorage.removeItem(DRAFT_STORAGE_KEY);
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+    } catch {
+      // ignore
     }
+    setRegFamilyCardFile(null);
+    setRegForm({
+      name: '',
+      nik: '',
+      phone: '',
+      email: '',
+      password: '',
+      address: '',
+      cluster: clusters[0]?.name || 'Cluster Sanur',
+      dependents: [],
+      notes: '',
+      familyCardPhotoUrl: '',
+      familyCardFileName: '',
+      familyCardNumber: '',
+    });
   };
 
   // Dependent Form State for Registration

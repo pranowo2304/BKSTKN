@@ -331,29 +331,42 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
 
   const handleCloseForm = () => {
     setShowForm(false);
+    setSubmittedMember(null);
+    if (activeUser && activeUser.authority !== 'Anggota' && canRegisterMembers) {
+      setActiveView('directory');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (onNavigateToDashboard) {
+      onNavigateToDashboard();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      setActiveView('directory');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const handleResetAdminDraft = () => {
-    if (window.confirm('Hapus draf formulir dan mulai isian baru?')) {
-      try {
-        sessionStorage.removeItem(ADMIN_DRAFT_KEY);
-        localStorage.removeItem(ADMIN_DRAFT_KEY);
-      } catch {
-        // ignore
-      }
-      setName('');
-      setNik('');
-      setPhone('');
-      setEmail('');
-      setPassword('');
-      setAddress('');
-      setDependents([]);
-      setPhotoUrl('');
-      setFamilyCardFile(null);
-      setFamilyCardPhotoUrl('');
-      setFamilyCardFileName('');
-      setFamilyCardNumber('');
+    try {
+      sessionStorage.removeItem(ADMIN_DRAFT_KEY);
+      localStorage.removeItem(ADMIN_DRAFT_KEY);
+    } catch {
+      // ignore
     }
+    setName('');
+    setNik('');
+    setPhone('');
+    setEmail('');
+    setPassword('');
+    setAddress('');
+    setDependents([]);
+    setPhotoUrl('');
+    setFamilyCardFile(null);
+    setFamilyCardPhotoUrl('');
+    setFamilyCardFileName('');
+    setFamilyCardNumber('');
+    setNotification('Draf formulir pendaftaran telah dibersihkan.');
+    setTimeout(() => setNotification(null), 3500);
   };
 
   // Quick form for Anggota to add dependent inline
