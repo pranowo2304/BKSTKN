@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { SystemSettings, Payment, AppUser, UserAuthority, Member, AppNotification, AmbulanceOrder } from '../types';
 import { formatIDR } from '../lib/storage';
 import { calculatePendingGracePeriod, getGracePeriodSummary } from '../lib/gracePeriodUtils';
+import { isMemberAwaitingPaguyubanApproval } from '../lib/ktaUtils';
 import { useRolePermissions, isAuthorizedForFuneralInventory } from '../lib/permissions';
 import { 
   HeartHandshake, 
@@ -138,11 +139,10 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   // Tombol ganti peran hanya untuk Admin
   const canSwitchRole = authority === 'Admin';
-  // Tombol laporan di header untuk Admin, Bendahara, Ketua Paguyuban, dan Ketua DKM
+  // Tombol laporan di header untuk Admin, Bendahara, dan Ketua DKM
   const canAccessReport =
     authority === 'Admin' ||
     authority === 'Bendahara' ||
-    authority === 'Ketua Paguyuban' ||
     authority === 'Ketua DKM';
 
   const pendingPayments = useMemo(() => {
@@ -163,26 +163,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   }, [members, isKetuaRt, userCluster]);
 
   const pendingPaguyubanMembers = useMemo(() => {
-    return members.filter((m) => {
-      const isFullyApproved = Boolean(m.status === 'Aktif' && (m.isPaguyubanApproved || m.isKtaIssued));
-      if (isFullyApproved || m.status === 'Aktif' || m.status === 'Ditolak' || m.status === 'Meninggal') {
-        return false;
-      }
-      if (m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending' || m.verificationStatus === 'Rejected') {
-        return false;
-      }
-      const cleanNum = (m.memberNumber || '').trim().toLowerCase();
-      const cleanName = (m.name || '').trim().toLowerCase();
-      // Telah lunas / divalidasi kas atau berstatus Menunggu Persetujuan Ketua Paguyuban
-      const hasVerifiedPayment = payments.some(
-        (p) =>
-          p.status === 'Verified' &&
-          (p.memberId === m.id ||
-            (cleanNum && (p.memberNumber || '').trim().toLowerCase() === cleanNum) ||
-            (cleanName && (p.memberName || '').trim().toLowerCase() === cleanName))
-      );
-      return hasVerifiedPayment || m.status === 'Menunggu Persetujuan Ketua Paguyuban';
-    });
+    return members.filter((m) => isMemberAwaitingPaguyubanApproval(m, payments));
   }, [members, payments]);
 
   const pendingAmbulanceList = useMemo(() => {
@@ -1153,8 +1134,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
-      {/* 🧭 HORIZONTAL NAVIGATION BAR (MODUL OPERASIONAL UNTUK PENGURUS/ADMIN/BENDAHARA/STAF/DRIVER) */}
-      {activeUser && (isBendaharaOrAdmin || (authority !== 'Ketua RT (Cluster)' && (authority === 'Ketua RW' || authority === 'Ketua DKM' || authority === 'Ketua Paguyuban' || authority === 'Petugas Staf' || authority === 'Driver'))) && (
+      {/* 🧭 HORIZONTAL NAVIGATION BAR (MODUL OPERASIONAL UNTUK PENGURUS/ADMIN/BENDAHARA/STAF/DRIVER - TIDAK TAMPIL UNTUK KETUA PAGUYUBAN & KETUA RT) */}
+      {activeUser && !isKetuaPaguyuban && (isBendaharaOrAdmin || (authority !== 'Ketua RT (Cluster)' && (authority === 'Ketua RW' || authority === 'Ketua DKM' || authority === 'Petugas Staf' || authority === 'Driver'))) && (
         <div className="bg-slate-950/80 border-t border-slate-800/80 backdrop-blur-md">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-start gap-2 overflow-x-auto scrollbar-none py-1.5">
             <nav className="flex items-center gap-1 sm:gap-1.5 shrink-0" aria-label="Navigasi Menu Bar">
@@ -1196,7 +1177,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               )}
 
               {/* 3. REALISASI SANTUNAN */}
-              {(isBendaharaOrAdmin || authority === 'Ketua DKM' || authority === 'Ketua Paguyuban') && (
+              {(isBendaharaOrAdmin || authority === 'Ketua DKM') && (
                 <button
                   type="button"
                   onClick={() => setCurrentTab('realization')}

@@ -5,6 +5,7 @@ import { formatIDR, getBaseBalance, getMemberForUser, getStoredClusters } from '
 import { exportMonthlyFinancialStatementCSV } from '../lib/csvExport';
 import { calculateMemberExpiry, getExpiringWithin7DaysSummary } from '../lib/expiryUtils';
 import { getGracePeriodSummary } from '../lib/gracePeriodUtils';
+import { isMemberAwaitingPaguyubanApproval } from '../lib/ktaUtils';
 import { MemberDetailModal } from './MemberDetailModal';
 import { EarlyOutreachModal } from './EarlyOutreachModal';
 import { ContactAdminModal } from './ContactAdminModal';
@@ -159,28 +160,11 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   const [isDueReminderModalOpen, setIsDueReminderModalOpen] = useState<boolean>(false);
   const { permissions } = useRolePermissions();
 
-  const activeMembersCount = members.filter((m) => m.status === 'Aktif' || m.verificationStatus === 'Verified').length;
+  const activeMembersCount = members.filter((m) => m.status === 'Aktif').length;
   const pendingRtMembersCount = members.filter((m) => m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending').length;
-  const pendingPaguyubanApprovalCount = members.filter((m) => {
-    const isFullyApproved = Boolean(m.status === 'Aktif' && (m.isPaguyubanApproved || m.isKtaIssued));
-    if (isFullyApproved || m.status === 'Aktif' || m.status === 'Ditolak' || m.status === 'Meninggal') {
-      return false;
-    }
-    if (m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending' || m.verificationStatus === 'Rejected') {
-      return false;
-    }
-    const cleanNum = (m.memberNumber || '').trim().toLowerCase();
-    const cleanName = (m.name || '').trim().toLowerCase();
-    // Hanya yang sudah divalidasi pembayaran oleh bendahara (atau berstatus Menunggu Persetujuan Ketua Paguyuban)
-    const hasVerifiedPayment = payments.some(
-      (p) =>
-        p.status === 'Verified' &&
-        (p.memberId === m.id ||
-          (cleanNum && (p.memberNumber || '').trim().toLowerCase() === cleanNum) ||
-          (cleanName && (p.memberName || '').trim().toLowerCase() === cleanName))
-    );
-    return hasVerifiedPayment || m.status === 'Menunggu Persetujuan Ketua Paguyuban';
-  }).length;
+  const pendingPaguyubanApprovalCount = members.filter((m) =>
+    isMemberAwaitingPaguyubanApproval(m, payments)
+  ).length;
   const pendingPayments = payments.filter((p) => p.status === 'Pending');
   const graceSummary = getGracePeriodSummary(payments);
   const expiring7Summary = getExpiringWithin7DaysSummary(members, payments, new Date(), settings.annualFeeAmount);
@@ -2434,7 +2418,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           isBendahara
             ? `${pendingPayments.length} Transaksi`
             : isKetuaPaguyuban
-            ? `${members.filter(m => !m.isKtaIssued).length} Warga`
+            ? `${pendingPaguyubanApprovalCount} Warga`
             : isKetuaRW
             ? `${members.length} KK Terdaftar`
             : isKetuaDKM
@@ -2445,7 +2429,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           isBendahara
             ? pendingPayments.length > 0
             : isKetuaPaguyuban
-            ? members.filter(m => !m.isKtaIssued).length > 0
+            ? pendingPaguyubanApprovalCount > 0
             : isKetuaRW
             ? pendingRtMembersCount > 0
             : isKetuaDKM

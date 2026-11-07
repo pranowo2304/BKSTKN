@@ -94,6 +94,7 @@ import {
   restoreDemoDataToCloud,
 } from './lib/firebase';
 import { checkDuplicateMember } from './lib/duplicateValidator';
+import { isMemberAwaitingPaguyubanApproval } from './lib/ktaUtils';
 import { initialUsers } from './data/initialData';
 
 import { Navbar } from './components/Navbar';
@@ -506,26 +507,9 @@ export default function App() {
     return m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending';
   }).length;
 
-  const pendingPaguyubanApprovalCount = members.filter((m) => {
-    const isFullyApproved = Boolean(m.status === 'Aktif' && (m.isPaguyubanApproved || m.isKtaIssued));
-    if (isFullyApproved || m.status === 'Aktif' || m.status === 'Ditolak' || m.status === 'Meninggal') {
-      return false;
-    }
-    if (m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending' || m.verificationStatus === 'Rejected') {
-      return false;
-    }
-    const cleanNum = (m.memberNumber || '').trim().toLowerCase();
-    const cleanName = (m.name || '').trim().toLowerCase();
-    // Hanya yang sudah divalidasi pembayaran oleh bendahara (atau berstatus Menunggu Persetujuan Ketua Paguyuban)
-    const hasVerifiedPayment = payments.some(
-      (p) =>
-        p.status === 'Verified' &&
-        (p.memberId === m.id ||
-          (cleanNum && (p.memberNumber || '').trim().toLowerCase() === cleanNum) ||
-          (cleanName && (p.memberName || '').trim().toLowerCase() === cleanName))
-    );
-    return hasVerifiedPayment || m.status === 'Menunggu Persetujuan Ketua Paguyuban';
-  }).length;
+  const pendingPaguyubanApprovalCount = members.filter((m) =>
+    isMemberAwaitingPaguyubanApproval(m, payments)
+  ).length;
 
   const pendingAmbulanceCount = (() => {
     const auth = activeUser?.authority;

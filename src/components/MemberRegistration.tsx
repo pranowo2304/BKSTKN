@@ -16,7 +16,7 @@ import { calculateMemberExpiry, MemberAnnualExpiryInfo } from '../lib/expiryUtil
 import { checkDuplicateMember, findDuplicateNikMember, findDuplicateKkMember } from '../lib/duplicateValidator';
 import { formatIDR, getMemberForUser } from '../lib/storage';
 import { MessageTopic } from '../lib/contactAdminUtils';
-import { getMemberKtaIssuanceInfo } from '../lib/ktaUtils';
+import { getMemberKtaIssuanceInfo, isMemberAwaitingPaguyubanApproval } from '../lib/ktaUtils';
 import { MemberStatusTimeline } from './MemberStatusTimeline';
 import { KtaQrScannerModal } from './KtaQrScannerModal';
 import { RegistrationGuideModal } from './RegistrationGuideModal';
@@ -548,13 +548,9 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
         m.status === 'Menunggu Validasi Bendahara' ||
         m.status === 'Menunggu Persetujuan Ketua Paguyuban' ||
         m.verificationStatus === 'Pending' ||
-        (!m.isPaguyubanApproved &&
-          m.verificationStatus === 'Verified' &&
-          m.status !== 'Aktif' &&
-          m.status !== 'Ditolak' &&
-          m.status !== 'Meninggal')
+        isMemberAwaitingPaguyubanApproval(m, payments)
     );
-  }, [accessibleMembers]);
+  }, [accessibleMembers, payments]);
 
   const rejectedMembers = React.useMemo(() => {
     return accessibleMembers.filter((m) => m.status === 'Ditolak' || m.verificationStatus === 'Rejected');
@@ -596,11 +592,9 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
           m.status === 'Menunggu Validasi Bendahara' ||
           m.status === 'Menunggu Persetujuan Ketua Paguyuban' ||
           m.verificationStatus === 'Pending' ||
-          (!m.isPaguyubanApproved &&
-            m.verificationStatus === 'Verified' &&
-            m.status !== 'Aktif' &&
-            m.status !== 'Ditolak' &&
-            m.status !== 'Meninggal');
+          isMemberAwaitingPaguyubanApproval(m, payments);
+      } else if (statusFilter === 'Menunggu Persetujuan Ketua Paguyuban') {
+        matchesStatus = isMemberAwaitingPaguyubanApproval(m, payments);
       } else if (statusFilter === 'Ditolak') {
         matchesStatus = m.status === 'Ditolak' || m.verificationStatus === 'Rejected';
       } else {
@@ -2627,8 +2621,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                               </p>
                             )}
                           </div>
-                        ) : member.status === 'Menunggu Persetujuan Ketua Paguyuban' ||
-                          (!member.isPaguyubanApproved && member.verificationStatus === 'Verified' && member.status !== 'Aktif' && member.status !== 'Menunggu Pembayaran' && member.status !== 'Menunggu Validasi Bendahara') ? (
+                        ) : isMemberAwaitingPaguyubanApproval(member, payments) ? (
                           <div className="space-y-0.5">
                             <span
                               className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs"
@@ -2638,7 +2631,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                               <Clock className="w-3 h-3 text-amber-700 shrink-0" />
                               <span>Menunggu</span>
                             </span>
-                            <p className="text-[10px] text-amber-800 font-bold">Tahap: Persetujuan Ketua</p>
+                            <p className="text-[10px] text-amber-800 font-bold">Tahap: Pengesahan Ketua</p>
                           </div>
                         ) : member.status === 'Menunggu Validasi Bendahara' ? (
                           <div className="space-y-0.5">

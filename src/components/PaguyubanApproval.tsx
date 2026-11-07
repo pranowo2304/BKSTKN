@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Member, Payment, SystemSettings, AppUser } from '../types';
 import { formatIDR } from '../lib/storage';
+import { doesPaymentBelongToMember, isMemberAwaitingPaguyubanApproval } from '../lib/ktaUtils';
 import {
   Crown,
   ShieldCheck,
@@ -148,15 +149,7 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
 
   // Helper to find latest verified payment for a member
   const getMemberVerifiedPayment = (member: Member): Payment | undefined => {
-    const cleanNum = (member.memberNumber || '').trim().toLowerCase();
-    const cleanName = (member.name || '').trim().toLowerCase();
-    return payments.find(
-      (p) =>
-        p.status === 'Verified' &&
-        (p.memberId === member.id ||
-          (cleanNum && (p.memberNumber || '').trim().toLowerCase() === cleanNum) ||
-          (cleanName && (p.memberName || '').trim().toLowerCase() === cleanName))
-    );
+    return payments.find((p) => p.status === 'Verified' && doesPaymentBelongToMember(p, member));
   };
 
   // Rasio Kepatuhan Warga (Compliance Ratio)
@@ -178,21 +171,14 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
       clusterMap[c].total += 1;
       if (isMemberFullyApprovedByKetua(m)) {
         clusterMap[c].paid += 1;
-      } else if (
-        m.status !== 'Ditolak' &&
-        m.status !== 'Meninggal' &&
-        m.status !== 'Menunggu Verifikasi RT' &&
-        m.verificationStatus !== 'Pending' &&
-        m.verificationStatus !== 'Rejected' &&
-        (m.status === 'Menunggu Persetujuan Ketua Paguyuban' || Boolean(getMemberVerifiedPayment(m)))
-      ) {
+      } else if (isMemberAwaitingPaguyubanApproval(m, payments)) {
         clusterMap[c].pendingApproval += 1;
       }
     });
 
     payments.forEach((p) => {
       if (p.status === 'Verified') {
-        const mem = members.find((m) => m.id === p.memberId || m.memberNumber === p.memberNumber);
+        const mem = members.find((m) => doesPaymentBelongToMember(p, m));
         const c = mem?.cluster || 'Cluster Lainnya';
         if (clusterMap[c]) {
           clusterMap[c].totalCollected += p.amount;
@@ -218,19 +204,7 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
 
   // Filter lists: HANYA YANG SUDAH DIVALIDASI PEMBAYARAN OLEH BENDAHARA & BELUM AKTIF
   const pendingMembers = useMemo(() => {
-    return members.filter((m) => {
-      // 1. Jika sudah disahkan Ketua Paguyuban & berstatus Aktif, atau Ditolak / Meninggal, bukan antrean
-      if (isMemberFullyApprovedByKetua(m) || m.status === 'Aktif' || m.status === 'Ditolak' || m.status === 'Meninggal') {
-        return false;
-      }
-      // 2. Wajib sudah lolos verifikasi RT
-      if (m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending' || m.verificationStatus === 'Rejected') {
-        return false;
-      }
-      // 3. SYARAT MUTLAK: Wajib sudah ada validasi pembayaran dari bendahara (atau berstatus Menunggu Persetujuan Ketua Paguyuban)
-      const hasVerifiedPayment = Boolean(getMemberVerifiedPayment(m));
-      return hasVerifiedPayment || m.status === 'Menunggu Persetujuan Ketua Paguyuban';
-    });
+    return members.filter((m) => isMemberAwaitingPaguyubanApproval(m, payments));
   }, [members, payments]);
 
   const pendingRtMembers = useMemo(() => {

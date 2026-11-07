@@ -24,6 +24,63 @@ export interface KtaIssuanceInfo {
   lastPaymentAmount?: number;
 }
 
+export function doesPaymentBelongToMember(p: Payment | null | undefined, m: Member | null | undefined): boolean {
+  if (!p || !m) return false;
+  if (p.memberId && m.id && p.memberId === m.id) {
+    return true;
+  }
+  const pName = (p.memberName || '').trim().toLowerCase();
+  const mName = (m.name || '').trim().toLowerCase();
+  if (pName && mName) {
+    return pName === mName;
+  }
+  const pNum = (p.memberNumber || '').trim().toLowerCase();
+  const mNum = (m.memberNumber || '').trim().toLowerCase();
+  return Boolean(pNum && mNum && pNum === mNum);
+}
+
+/**
+ * Single source of truth for whether a member is waiting for Ketua Paguyuban final approval.
+ * Used across DashboardOverview, PaguyubanApproval, Navbar, App, and MemberRegistration (Data Warga).
+ */
+export function isMemberAwaitingPaguyubanApproval(
+  member: Member | null | undefined,
+  payments: Payment[] = []
+): boolean {
+  if (!member) return false;
+
+  // 1. Jika sudah Aktif, Ditolak, Meninggal, atau Non-Aktif -> tidak perlu pengesahan Ketua
+  if (
+    member.status === 'Aktif' ||
+    member.status === 'Ditolak' ||
+    member.status === 'Meninggal' ||
+    member.status === 'Non-Aktif'
+  ) {
+    return false;
+  }
+
+  // 2. Jika masih Menunggu Verifikasi RT atau status verifikasi RT masih Pending/Rejected -> belum tahap Ketua
+  if (
+    member.status === 'Menunggu Verifikasi RT' ||
+    member.verificationStatus === 'Pending' ||
+    member.verificationStatus === 'Rejected'
+  ) {
+    return false;
+  }
+
+  // 3. Jika status eksplisit adalah 'Menunggu Persetujuan Ketua Paguyuban'
+  if (member.status === 'Menunggu Persetujuan Ketua Paguyuban') {
+    return true;
+  }
+
+  // 4. Jika pembayaran milik warga ini sudah divalidasi (Verified) oleh Bendahara namun belum disahkan Ketua
+  const hasVerifiedPayment = payments.some(
+    (p) => p.status === 'Verified' && doesPaymentBelongToMember(p, member)
+  );
+
+  return hasVerifiedPayment;
+}
+
 /**
  * STRICT RULE FOR KTA ISSUANCE:
  * 1. Must be verified by RT (member.verificationStatus === 'Verified' && member.status !== 'Menunggu Verifikasi RT')
@@ -66,9 +123,7 @@ export function getMemberKtaIssuanceInfo(
   }
 
   // Find member's verified payment (Bendahara approval)
-  const memberPayments = payments.filter(
-    (p) => p.memberId === member.id || p.memberNumber === member.memberNumber
-  );
+  const memberPayments = payments.filter((p) => doesPaymentBelongToMember(p, member));
 
   const verifiedPayment = memberPayments
     .filter((p) => p.status === 'Verified')

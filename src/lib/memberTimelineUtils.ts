@@ -1,5 +1,6 @@
 import { Member, Payment, MemberStatusHistoryItem, MemberStatus } from '../types';
 import { formatIDR } from './storage';
+import { doesPaymentBelongToMember } from './ktaUtils';
 
 /**
  * Returns the standard progression index of a member's status for auditing.
@@ -41,9 +42,7 @@ export const getMemberStatusTimeline = (
   if (!member) return [];
 
   // Filter payments associated with this member
-  const memberPayments = payments.filter(
-    (p) => p.memberId === member.id || p.memberNumber === member.memberNumber
-  );
+  const memberPayments = payments.filter((p) => doesPaymentBelongToMember(p, member));
   const verifiedPayment = memberPayments.find((p) => p.status === 'Verified');
   const pendingPayment = memberPayments.find((p) => p.status === 'Pending');
 
