@@ -7,6 +7,8 @@ import {
   findMemberForPayment,
   generateReceiptWhatsAppUrl,
   formatPhoneDisplay,
+  getPaymentTimestamp,
+  getPaymentDisplayDate,
 } from '../lib/receiptUtils';
 import {
   Receipt,
@@ -116,7 +118,7 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
           (p.paymentType && p.paymentType.toLowerCase().includes(query)) ||
           (p.periodMonth && p.periodMonth.toLowerCase().includes(query)) ||
           (p.paymentMethod && p.paymentMethod.toLowerCase().includes(query)) ||
-          (p.notes && p.notes.toLowerCase().includes(query)) ||
+          (p.adminNotes && p.adminNotes.toLowerCase().includes(query)) ||
           memberCluster.toLowerCase().includes(query) ||
           memberPhone.includes(query) ||
           memberNik.includes(query);
@@ -132,7 +134,7 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
 
         // Date / Period Filter
         let matchesDate = true;
-        const pDate = p.date || p.paymentDate || '';
+        const pDate = getPaymentDisplayDate(p);
         if (dateFilter === '2026') {
           matchesDate = pDate.startsWith('2026') || p.periodMonth.includes('2026');
         } else if (dateFilter === '2025') {
@@ -147,14 +149,10 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
       })
       .sort((a, b) => {
         if (sortBy === 'date-desc') {
-          const dateA = new Date(a.date || a.paymentDate || 0).getTime();
-          const dateB = new Date(b.date || b.paymentDate || 0).getTime();
-          return dateB - dateA;
+          return getPaymentTimestamp(b) - getPaymentTimestamp(a);
         }
         if (sortBy === 'date-asc') {
-          const dateA = new Date(a.date || a.paymentDate || 0).getTime();
-          const dateB = new Date(b.date || b.paymentDate || 0).getTime();
-          return dateA - dateB;
+          return getPaymentTimestamp(a) - getPaymentTimestamp(b);
         }
         if (sortBy === 'amount-desc') {
           return b.amount - a.amount;
@@ -599,14 +597,14 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
                           <span className="text-slate-900">{pay.receiptNumber}</span>
                         </div>
                         <span className="text-[10px] text-slate-400 font-normal block mt-0.5">
-                          {pay.date || pay.paymentDate || '-'}
+                          {getPaymentDisplayDate(pay)}
                         </span>
                       </td>
                       <td className="py-3.5 px-4">
-                        <p className="font-extrabold text-slate-900">{pay.memberName}</p>
+                        <p className="font-extrabold text-slate-900">{targetMember?.name || pay.memberName}</p>
                         <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-mono flex-wrap mt-0.5">
                           <span className="bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200 text-slate-700 font-bold">
-                            {pay.memberNumber}
+                            {targetMember?.memberNumber || pay.memberNumber}
                           </span>
                           {memberCluster && (
                             <span className="text-emerald-800 font-bold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">

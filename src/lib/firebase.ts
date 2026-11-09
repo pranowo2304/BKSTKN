@@ -21,6 +21,7 @@ setLogLevel('silent');
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Member, Payment, BenefitClaim, SystemSettings, AppUser, ClusterMaster, DEFAULT_CLUSTERS, BenefitMaster, DEFAULT_BENEFITS, AmbulanceOrder, FuneralSchedule, FuneralInventoryItem, FuneralInventoryLoan } from '../types';
 import { recordFirebaseRead, recordFirebaseWrite } from './firebaseTelemetry';
+import { sortPaymentsByNewest } from './receiptUtils';
 import {
   initialMembers,
   initialPayments,
@@ -350,7 +351,7 @@ export function subscribeToFirestore(callbacks: {
         snapshot.forEach((d) => {
           paymentsList.push({ ...d.data(), id: d.id } as Payment);
         });
-        callbacks.onPaymentsChange?.(paymentsList);
+        callbacks.onPaymentsChange?.(sortPaymentsByNewest(paymentsList));
         callbacks.onStatusChange?.('connected');
       },
       (err) => handleListenerError(err, COLLECTIONS.PAYMENTS)

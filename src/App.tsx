@@ -95,6 +95,7 @@ import {
 } from './lib/firebase';
 import { checkDuplicateMember } from './lib/duplicateValidator';
 import { isMemberAwaitingPaguyubanApproval } from './lib/ktaUtils';
+import { syncAndFilterPaymentsWithMembers } from './lib/receiptUtils';
 import { recordAppVisit } from './lib/firebaseTelemetry';
 import { initialUsers } from './data/initialData';
 
@@ -506,8 +507,14 @@ export default function App() {
   const userRtCluster = activeUser?.cluster;
   const isAdminRole = activeUser ? activeUser.authority === 'Admin' : isAdmin;
 
-  const financials = calculateCurrentBalance(baseFundBalance, payments, claims);
-  const pendingCount = payments.filter((p) => p.status === 'Pending').length;
+  // Synchronize payments with registered members (filters out orphaned payments & sorts newest first)
+  const synchronizedPayments = React.useMemo(
+    () => syncAndFilterPaymentsWithMembers(payments, members),
+    [payments, members]
+  );
+
+  const financials = calculateCurrentBalance(baseFundBalance, synchronizedPayments, claims);
+  const pendingCount = synchronizedPayments.filter((p) => p.status === 'Pending').length;
   
   const pendingRtVerificationCount = members.filter((m) => {
     if (isKetuaRtUser && userRtCluster && m.cluster !== userRtCluster) {
@@ -517,7 +524,7 @@ export default function App() {
   }).length;
 
   const pendingPaguyubanApprovalCount = members.filter((m) =>
-    isMemberAwaitingPaguyubanApproval(m, payments)
+    isMemberAwaitingPaguyubanApproval(m, synchronizedPayments)
   ).length;
 
   const pendingAmbulanceCount = (() => {
@@ -855,6 +862,35 @@ export default function App() {
     saveMembers(updatedMembers);
     syncMemberToCloud(updatedMember).catch((e) => console.warn('Cloud sync updated member error:', e));
 
+    // Sinkronkan nama & NPA pada riwayat pembayaran milik anggota ini jika berubah
+    if (oldMember && (oldMember.name !== updatedMember.name || oldMember.memberNumber !== updatedMember.memberNumber)) {
+      setPayments((prevPayments) => {
+        let changed = false;
+        const nextPayments = prevPayments.map((p) => {
+          if (
+            p.memberId === updatedMember.id ||
+            (oldMember.memberNumber && p.memberNumber === oldMember.memberNumber)
+          ) {
+            changed = true;
+            const updatedPay: Payment = {
+              ...p,
+              memberId: updatedMember.id,
+              memberName: updatedMember.name,
+              memberNumber: updatedMember.memberNumber,
+            };
+            syncPaymentToCloud(updatedPay).catch(() => {});
+            return updatedPay;
+          }
+          return p;
+        });
+        if (changed) {
+          savePayments(nextPayments);
+          return nextPayments;
+        }
+        return prevPayments;
+      });
+    }
+
     // Sinkronkan nama dan profil pengguna aktif jika anggota sedang login
     if (
       activeUser &&
@@ -951,18 +987,18 @@ export default function App() {
       return updatedUsersList;
     });
 
-    // Bersihkan pembayaran yang belum terverifikasi (Pending/Rejected) milik record yang dihapus
+    // Bersihkan seluruh pembayaran milik record anggota yang dihapus agar tidak tertinggal sebagai data yatim
     setPayments((prevPayments) => {
-      const unverifiedPayments = prevPayments.filter(
+      const memberPaymentsToRemove = prevPayments.filter(
         (p) =>
-          (p.memberId === memberId || p.memberNumber === targetMember.memberNumber) &&
-          p.status !== 'Verified' &&
-          p.status !== 'Lunas'
+          p.memberId === memberId ||
+          (targetMember.memberNumber && p.memberNumber === targetMember.memberNumber) ||
+          (targetMember.name && p.memberName && p.memberName.toLowerCase().trim() === targetMember.name.toLowerCase().trim())
       );
-      if (unverifiedPayments.length === 0) return prevPayments;
-      const remainingPayments = prevPayments.filter((p) => !unverifiedPayments.some((rem) => rem.id === p.id));
+      if (memberPaymentsToRemove.length === 0) return prevPayments;
+      const remainingPayments = prevPayments.filter((p) => !memberPaymentsToRemove.some((rem) => rem.id === p.id));
       savePayments(remainingPayments);
-      unverifiedPayments.forEach((rem) => {
+      memberPaymentsToRemove.forEach((rem) => {
         deletePaymentFromCloud(rem.id).catch((e) => console.warn('Cloud delete payment error:', e));
       });
       return remainingPayments;
@@ -2486,7 +2522,7 @@ export default function App() {
           activeLoanCount={inventoryLoans.filter((l) => l.status === 'DIPINJAM').length}
           totalBalance={financials.totalBalance}
           settings={settings}
-          payments={payments}
+          payments={synchronizedPayments}
           members={members}
           notifications={notifications}
           ambulanceOrders={ambulanceOrders}
@@ -2514,7 +2550,7 @@ export default function App() {
         {currentTab === 'public' && (
           <PublicLandingPage
             members={members}
-            payments={payments}
+            payments={synchronizedPayments}
             claims={claims}
             settings={settings}
             clusters={clusters}
@@ -2542,7 +2578,7 @@ export default function App() {
           <MemberPortal
             activeUser={activeUser}
             members={members}
-            payments={payments}
+            payments={synchronizedPayments}
             claims={claims}
             settings={settings}
             benefits={benefits}
@@ -2558,7 +2594,7 @@ export default function App() {
           <DashboardOverview
             currentTab={currentTab}
             members={members}
-            payments={payments}
+            payments={synchronizedPayments}
             claims={claims}
             settings={settings}
             clusters={clusters}
@@ -2589,7 +2625,7 @@ export default function App() {
           >
             <LazyMemberRegistration
               members={members}
-              payments={payments}
+              payments={synchronizedPayments}
               claims={claims}
               settings={settings}
               benefits={benefits}
@@ -2647,7 +2683,7 @@ export default function App() {
         {currentTab === 'paguyuban-approval' && (
           <PaguyubanApproval
             members={members}
-            payments={payments}
+            payments={synchronizedPayments}
             claims={claims}
             financials={financials}
             benefits={benefits}
@@ -2685,7 +2721,7 @@ export default function App() {
 
         {currentTab === 'validation' && (
           <AdminValidation
-            payments={payments}
+            payments={synchronizedPayments}
             members={members}
             settings={settings}
             activeUser={activeUser}
@@ -2824,7 +2860,7 @@ export default function App() {
 
         {currentTab === 'history' && (
           <PaymentHistory
-            payments={payments}
+            payments={synchronizedPayments}
             members={members}
             settings={settings}
             activeUser={activeUser}
@@ -2857,7 +2893,7 @@ export default function App() {
             clusters={clusters}
             benefits={benefits}
             memberCount={members.length}
-            paymentCount={payments.length}
+            paymentCount={synchronizedPayments.length}
             claimCount={claims.length}
             activeUser={activeUser}
             onSaveSettings={handleSaveSettings}
@@ -2919,7 +2955,7 @@ export default function App() {
         <ReceiptModal
           payment={selectedReceiptPayment}
           members={members}
-          payments={payments}
+          payments={synchronizedPayments}
           settings={settings}
           activeUser={activeUser}
           onClose={() => setSelectedReceiptPayment(null)}
@@ -2936,7 +2972,7 @@ export default function App() {
       <FinancialReportModal
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
-        payments={payments}
+        payments={synchronizedPayments}
         claims={claims}
         members={members}
         settings={settings}
@@ -2987,7 +3023,7 @@ export default function App() {
           npaQuery={verifiedKtaData?.npa}
           securityToken={verifiedKtaData?.sig}
           members={members}
-          payments={payments}
+          payments={synchronizedPayments}
           settings={settings}
           onOpenFullKtaModal={(mem) => {
             setSelectedFullKtaMember(mem);
@@ -3000,7 +3036,7 @@ export default function App() {
         <ReceiptAuthenticityVerificationModal
           isOpen={isReceiptVerificationModalOpen}
           receiptNumberQuery={verifiedReceiptNumber || ''}
-          payments={payments}
+          payments={synchronizedPayments}
           members={members}
           settings={settings}
           onClose={() => {
@@ -3027,7 +3063,7 @@ export default function App() {
         <DigitalKtaModal
           isOpen={Boolean(selectedFullKtaMember)}
           member={selectedFullKtaMember}
-          payments={payments}
+          payments={synchronizedPayments}
           settings={settings}
           onClose={() => setSelectedFullKtaMember(null)}
           onSelectMemberForPayment={(mem) => {

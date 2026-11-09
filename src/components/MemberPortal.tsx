@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Member, Payment, SystemSettings, AppUser, BenefitClaim, ClusterType, BenefitMaster, DEFAULT_BENEFITS } from '../types';
 import { calculateMemberExpiry } from '../lib/expiryUtils';
 import { getMemberKtaIssuanceInfo, generateKtaQrPayload } from '../lib/ktaUtils';
+import { getPaymentTimestamp, getPaymentDisplayDate } from '../lib/receiptUtils';
 import { formatIDR, getMemberForUser } from '../lib/storage';
 import { MemberStatusTimeline } from './MemberStatusTimeline';
 import { DigitalKtaModal } from './DigitalKtaModal';
@@ -117,7 +118,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
         const matchName = p.memberName && member.name && p.memberName.toLowerCase() === member.name.toLowerCase();
         return matchId || matchNo || matchName;
       })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      .sort((a, b) => getPaymentTimestamp(b) - getPaymentTimestamp(a));
   }, [member, payments]);
 
   // Payment filter within member portal
@@ -1452,10 +1453,10 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
               <span className="text-[11px] font-bold text-slate-600 block">Status Pembayaran Terakhir</span>
               <span className="text-base sm:text-lg font-black text-slate-900 block">
-                {memberPayments.length > 0 ? memberPayments[0].type || 'Iuran Tahunan' : 'Belum Ada'}
+                {memberPayments.length > 0 ? memberPayments[0].paymentType || 'Iuran Tahunan' : 'Belum Ada'}
               </span>
               <span className="text-[10px] text-slate-500 block">
-                {memberPayments.length > 0 ? `Tanggal: ${memberPayments[0].date}` : 'Belum ada transaksi'}
+                {memberPayments.length > 0 ? `Tanggal: ${getPaymentDisplayDate(memberPayments[0])}` : 'Belum ada transaksi'}
               </span>
             </div>
 
@@ -1521,7 +1522,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
                   >
                     <div className="space-y-1.5">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold text-slate-900 text-sm">{payment.type}</span>
+                        <span className="font-bold text-slate-900 text-sm">{payment.paymentType || 'Iuran Tahunan'}</span>
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border ${
                             isVerified
@@ -1533,17 +1534,17 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
                         >
                           {isVerified ? 'Lunas / Terverifikasi' : isPending ? 'Menunggu Validasi' : 'Ditolak'}
                         </span>
-                        {payment.period && (
+                        {payment.periodMonth && (
                           <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-700">
-                            Periode {payment.period}
+                            Periode {payment.periodMonth}
                           </span>
                         )}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
-                        <span>Tanggal: <strong className="text-slate-700">{payment.date}</strong></span>
+                        <span>Tanggal: <strong className="text-slate-700">{getPaymentDisplayDate(payment)}</strong></span>
                         <span>•</span>
-                        <span>Metode: <strong className="text-slate-700">{payment.method}</strong></span>
+                        <span>Metode: <strong className="text-slate-700">{payment.paymentMethod}</strong></span>
                         {payment.receiptNumber && (
                           <>
                             <span>•</span>
@@ -1552,9 +1553,9 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
                         )}
                       </div>
 
-                      {payment.notes && (
+                      {payment.adminNotes && (
                         <p className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-200 max-w-xl">
-                          Catatan: {payment.notes}
+                          Catatan: {payment.adminNotes}
                         </p>
                       )}
                     </div>

@@ -62,6 +62,103 @@ export const findMemberForPayment = (
 };
 
 /**
+ * Extracts a reliable numeric timestamp (ms) from a Payment object for chronological sorting.
+ */
+export const getPaymentTimestamp = (payment?: Payment | null): number => {
+  if (!payment) return 0;
+
+  const rawDateStr =
+    payment.verifiedAt ||
+    payment.createdAt ||
+    (payment as any).date ||
+    (payment as any).paymentDate ||
+    '';
+
+  if (rawDateStr && typeof rawDateStr === 'string') {
+    const clean = rawDateStr.trim().replace(' ', 'T');
+    const parsed = new Date(clean).getTime();
+    if (!isNaN(parsed) && parsed > 0) {
+      return parsed;
+    }
+    const fallbackParsed = new Date(rawDateStr).getTime();
+    if (!isNaN(fallbackParsed) && fallbackParsed > 0) {
+      return fallbackParsed;
+    }
+  }
+
+  // Fallback: extract millisecond timestamp from ID if formatted like "pay-177..."
+  if (payment.id && typeof payment.id === 'string') {
+    const idMatch = payment.id.match(/pay-(\d{10,})/);
+    if (idMatch) {
+      return parseInt(idMatch[1], 10);
+    }
+  }
+
+  return 0;
+};
+
+/**
+ * Returns a clean, user-friendly date string for a Payment object.
+ */
+export const getPaymentDisplayDate = (payment?: Payment | null): string => {
+  if (!payment) return '-';
+  const raw =
+    payment.verifiedAt ||
+    payment.createdAt ||
+    (payment as any).date ||
+    (payment as any).paymentDate ||
+    '';
+  if (!raw || typeof raw !== 'string') return '-';
+  return raw.trim();
+};
+
+/**
+ * Sorts an array of payments from newest to oldest.
+ */
+export const sortPaymentsByNewest = (payments: Payment[] = []): Payment[] => {
+  if (!Array.isArray(payments)) return [];
+  return [...payments].sort((a, b) => {
+    const timeDiff = getPaymentTimestamp(b) - getPaymentTimestamp(a);
+    if (timeDiff !== 0) return timeDiff;
+    return (b.id || '').localeCompare(a.id || '');
+  });
+};
+
+/**
+ * Synchronizes payments with the current registered members list:
+ * - Filters out orphaned payments whose member no longer exists in `members` (when `members.length > 0`).
+ * - Updates `memberId`, `memberName`, and `memberNumber` to match the member's latest master record.
+ * - Sorts the result chronologically from newest to oldest.
+ */
+export const syncAndFilterPaymentsWithMembers = (
+  payments: Payment[] = [],
+  members: Member[] = []
+): Payment[] => {
+  if (!Array.isArray(payments)) return [];
+  if (!Array.isArray(members) || members.length === 0) {
+    return sortPaymentsByNewest(payments);
+  }
+
+  const synced: Payment[] = [];
+  for (const pay of payments) {
+    if (!pay) continue;
+    const matchedMember = findMemberForPayment(pay, members);
+    if (!matchedMember) {
+      // Skip orphaned payment that does not belong to any registered member
+      continue;
+    }
+    synced.push({
+      ...pay,
+      memberId: matchedMember.id || pay.memberId,
+      memberName: matchedMember.name || pay.memberName,
+      memberNumber: matchedMember.memberNumber || pay.memberNumber,
+    });
+  }
+
+  return sortPaymentsByNewest(synced);
+};
+
+/**
  * Resolves the official membership/payment period determined in System Settings.
  * Evaluates:
  * 1. Fixed Period Mode:
