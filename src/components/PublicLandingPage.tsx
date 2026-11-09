@@ -483,9 +483,9 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
     return Math.max(...effectiveLandingBenefits.map((b) => b.maxCashAmount || 0), 5000000);
   }, [effectiveLandingBenefits]);
 
-  // Statistics calculation
+  // Statistics calculation (strictly synchronized with active members in database)
   const totalVerifiedMembers = members.filter(
-    (m) => m.status === 'Aktif' || m.verificationStatus === 'Verified'
+    (m) => m.status === 'Aktif'
   ).length;
   const totalClaimsPaid = claims.reduce((acc, c) => acc + (c.amount || 0), 0);
 

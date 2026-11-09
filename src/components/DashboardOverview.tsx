@@ -21,6 +21,7 @@ import { ExpiringDueReminderModal } from './ExpiringDueReminderModal';
 import { DashboardNotifications } from './DashboardNotifications';
 import { RoleMobileAppMenu } from './RoleMobileAppMenu';
 import { AdminFirebaseStatsPanel } from './AdminFirebaseStatsPanel';
+import { ClusterD3DistributionChart } from './ClusterD3DistributionChart';
 import { useRolePermissions } from '../lib/permissions';
 import { getAllNavigationActionsForUser } from '../lib/navigationMenu';
 import {
@@ -180,123 +181,260 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   const graceSummary = getGracePeriodSummary(sortedRecentPayments);
   const expiring7Summary = getExpiringWithin7DaysSummary(members, payments, new Date(), settings.annualFeeAmount);
 
-  // 1. Synchronize Master Clusters list with Master Cluster Manager & Storage
-  const masterClustersList = useMemo(() => {
+  // 1. Synchronize Master Clusters list with Database (clusters collection + any custom cluster names on members in database)
+  const baseMasterClustersList = useMemo(() => {
     const list = (clusters && clusters.length > 0) ? clusters : getStoredClusters();
     return [...list]
       .filter((c) => c && c.isActive !== false)
       .sort((a, b) => (a.orderIndex || 99) - (b.orderIndex || 99));
   }, [clusters]);
 
-  // 2. Accurate matching function to associate members with their official Master Cluster
-  const isMemberInCluster = useCallback((m: Member, cls: ClusterMaster): boolean => {
-    if (!m) return false;
+  // Helper to match a member to one official ClusterMaster deterministically (1-to-1 mapping, no multi-cluster double-counting)
+  const matchMemberToClusterList = useCallback((m: Member, clusterList: ClusterMaster[]): ClusterMaster | undefined => {
+    if (!m || clusterList.length === 0) return undefined;
     const mCls = (m.cluster || '').trim();
-    const clsName = cls.name.trim();
 
-    // Direct match (case-insensitive)
-    if (mCls.toLowerCase() === clsName.toLowerCase()) return true;
+    if (mCls.length > 0) {
+      const mClsLower = mCls.toLowerCase();
+      const cleanM = mCls.replace(/^cluster\s+/i, '').trim().toLowerCase();
 
-    // Direct match ignoring "Cluster " prefix
-    const cleanM = mCls.replace(/^cluster\s+/i, '').trim().toLowerCase();
-    const cleanCls = clsName.replace(/^cluster\s+/i, '').trim().toLowerCase();
-    if (cleanM === cleanCls && cleanM.length > 0) return true;
+      // 1a. Exact name match or match without "Cluster " prefix
+      const exact = clusterList.find((cls) => {
+        const clsName = (cls.name || '').trim().toLowerCase();
+        const cleanCls = clsName.replace(/^cluster\s+/i, '').trim().toLowerCase();
+        return clsName === mClsLower || (cleanM.length > 0 && cleanM === cleanCls);
+      });
+      if (exact) return exact;
 
-    // Cluster Ranah Melayu: match historical aliases (Ranah Minang, Tanah Minang, or Blok TM / RM)
-    if (clsName.toLowerCase().includes('ranah melayu') || cls.id === 'cls-6' || (cls.code && cls.code.toUpperCase() === 'RNM')) {
-      if (/ranah\s+minang/i.test(mCls) || /tanah\s+minang/i.test(mCls) || /ranah\s+melayu/i.test(mCls)) return true;
-      if (m.address && (/blok\s+tm/i.test(m.address) || /blok\s+rm/i.test(m.address))) return true;
+      // 1b. Code or RT number match against m.cluster
+      const codeMatch = clusterList.find((cls) => {
+        if (cls.code && mCls.toUpperCase() === cls.code.trim().toUpperCase()) return true;
+        if (cls.rtNumber && mCls.toUpperCase() === cls.rtNumber.trim().toUpperCase()) return true;
+        return false;
+      });
+      if (codeMatch) return codeMatch;
+
+      // 1c. Historical alias match strictly on m.cluster (not m.address when m.cluster is already specified)
+      if (/ranah\s+minang|tanah\s+minang|ranah\s+melayu/i.test(mCls)) {
+        const rnm = clusterList.find(
+          (cls) => cls.name.toLowerCase().includes('ranah melayu') || cls.id === 'cls-6' || cls.code?.toUpperCase() === 'RNM'
+        );
+        if (rnm) return rnm;
+      }
+      if (/pasundan\s+rt\s*0?5|pasundan\s+rt\s*0?2|psd-?0?2|psd-?0?5/i.test(mCls)) {
+        const psd5 = clusterList.find(
+          (cls) => cls.name.toLowerCase().includes('pasundan rt 05') || cls.id === 'cls-4' || cls.code?.toUpperCase() === 'PSD-02'
+        );
+        if (psd5) return psd5;
+      }
+      if (/pasundan\s+rt\s*0?6|pasundan\s+rt\s*0?3|psd-?0?6|psd-?0?3/i.test(mCls)) {
+        const psd6 = clusterList.find(
+          (cls) => cls.name.toLowerCase().includes('pasundan rt 06') || cls.id === 'cls-5' || cls.code?.toUpperCase() === 'PSD-06'
+        );
+        if (psd6) return psd6;
+      }
+      if (/pasundan\s+rt\s*0?1|psd-?0?1/i.test(mCls)) {
+        const psd1 = clusterList.find(
+          (cls) => cls.name.toLowerCase().includes('pasundan rt 01') || cls.id === 'cls-3' || cls.code?.toUpperCase() === 'PSD-01'
+        );
+        if (psd1) return psd1;
+      }
+      if (cleanM === 'pasundan') {
+        const addr = (m.address || '').toLowerCase();
+        if (/rt\s*0?5|rt\s*0?2|blok\s+p-?0?2/i.test(addr)) {
+          const psd5 = clusterList.find((cls) => cls.name.toLowerCase().includes('pasundan rt 05') || cls.id === 'cls-4');
+          if (psd5) return psd5;
+        }
+        if (/rt\s*0?6|rt\s*0?3|blok\s+p-?0?3|blok\s+p-?0?6/i.test(addr)) {
+          const psd6 = clusterList.find((cls) => cls.name.toLowerCase().includes('pasundan rt 06') || cls.id === 'cls-5');
+          if (psd6) return psd6;
+        }
+        const psd1 = clusterList.find((cls) => cls.name.toLowerCase().includes('pasundan rt 01') || cls.id === 'cls-3');
+        if (psd1) return psd1;
+      }
+      if (/sanur/i.test(mCls)) {
+        const snr = clusterList.find((cls) => cls.name.toLowerCase().includes('sanur') || cls.id === 'cls-1' || cls.code?.toUpperCase() === 'SNR');
+        if (snr) return snr;
+      }
+      if (/mataram/i.test(mCls)) {
+        const mtr = clusterList.find((cls) => cls.name.toLowerCase().includes('mataram') || cls.id === 'cls-2' || cls.code?.toUpperCase() === 'MTR');
+        if (mtr) return mtr;
+      }
+
+      return undefined;
     }
 
-    // Cluster Pasundan RT 05: match aliases (Pasundan RT 02, PSD-02, Blok P-02)
-    if (clsName.toLowerCase().includes('pasundan rt 05') || cls.id === 'cls-4' || (cls.code && cls.code.toUpperCase() === 'PSD-02')) {
-      if (/pasundan\s+rt\s*0?5/i.test(mCls) || /pasundan\s+rt\s*0?2/i.test(mCls) || mCls.toUpperCase() === 'PSD-02') return true;
-      if (m.address && (/blok\s+p-?0?2/i.test(m.address) || /blok\s+p\s*\(no\.\s*26/i.test(m.address) || /rt\s*0?5/i.test(m.address))) return true;
+    // 2. Fallback to m.address ONLY when m.cluster is empty in database
+    const addr = (m.address || '').trim();
+    if (!addr) return undefined;
+
+    if (/blok\s+tm|blok\s+rm|ranah\s+melayu|ranah\s+minang/i.test(addr)) {
+      return clusterList.find((cls) => cls.name.toLowerCase().includes('ranah melayu') || cls.id === 'cls-6');
+    }
+    if (/blok\s+p-?0?2|pasundan\s+rt\s*0?5/i.test(addr)) {
+      return clusterList.find((cls) => cls.name.toLowerCase().includes('pasundan rt 05') || cls.id === 'cls-4');
+    }
+    if (/blok\s+p-?0?3|blok\s+p-?0?6|pasundan\s+rt\s*0?6/i.test(addr)) {
+      return clusterList.find((cls) => cls.name.toLowerCase().includes('pasundan rt 06') || cls.id === 'cls-5');
+    }
+    if (/blok\s+p-?0?1|blok\s+p-?0?8|pasundan\s+rt\s*0?1/i.test(addr)) {
+      return clusterList.find((cls) => cls.name.toLowerCase().includes('pasundan rt 01') || cls.id === 'cls-3');
+    }
+    if (/blok\s+s|sanur/i.test(addr)) {
+      return clusterList.find((cls) => cls.name.toLowerCase().includes('sanur') || cls.id === 'cls-1');
+    }
+    if (/blok\s+m|mataram/i.test(addr)) {
+      return clusterList.find((cls) => cls.name.toLowerCase().includes('mataram') || cls.id === 'cls-2');
     }
 
-    // Cluster Pasundan RT 06: match aliases (Pasundan RT 03, PSD-06, Blok P-03)
-    if (clsName.toLowerCase().includes('pasundan rt 06') || cls.id === 'cls-5' || (cls.code && cls.code.toUpperCase() === 'PSD-06')) {
-      if (/pasundan\s+rt\s*0?6/i.test(mCls) || /pasundan\s+rt\s*0?3/i.test(mCls) || mCls.toUpperCase() === 'PSD-06') return true;
-      if (m.address && (/blok\s+p-?0?3/i.test(m.address) || /blok\s+p-?0?6/i.test(m.address) || /blok\s+p\s*\(no\.\s*51/i.test(m.address) || /rt\s*0?6/i.test(m.address))) return true;
-    }
-
-    // Cluster Pasundan RT 01: match Cluster Pasundan, Pasundan RT 01, PSD-01, Blok P-01
-    if (clsName.toLowerCase().includes('pasundan rt 01') || cls.id === 'cls-3' || (cls.code && cls.code.toUpperCase() === 'PSD-01')) {
-      if (cleanM === 'pasundan' || /pasundan\s+rt\s*0?1/i.test(mCls) || mCls.toUpperCase() === 'PSD-01') return true;
-      if (m.address && (/blok\s+p-?0?1/i.test(m.address) || /blok\s+p-?0?8/i.test(m.address) || /blok\s+p\s*\(no\.\s*0?1/i.test(m.address) || /rt\s*0?1/i.test(m.address))) return true;
-    }
-
-    // Cluster Sanur: match Sanur, SNR, Blok S
-    if (clsName.toLowerCase().includes('sanur') || cls.id === 'cls-1' || (cls.code && cls.code.toUpperCase() === 'SNR')) {
-      if (/sanur/i.test(mCls) || mCls.toUpperCase() === 'SNR') return true;
-      if (m.address && (/blok\s+s/i.test(m.address) || /sanur/i.test(m.address))) return true;
-    }
-
-    // Cluster Mataram: match Mataram, MTR, Blok M
-    if (clsName.toLowerCase().includes('mataram') || cls.id === 'cls-2' || (cls.code && cls.code.toUpperCase() === 'MTR')) {
-      if (/mataram/i.test(mCls) || mCls.toUpperCase() === 'MTR') return true;
-      if (m.address && (/blok\s+m/i.test(m.address) || /mataram/i.test(m.address))) return true;
-    }
-
-    // Code & RT match
-    if (cls.code && mCls.toUpperCase() === cls.code.toUpperCase()) return true;
-    if (cls.rtNumber && mCls.toUpperCase() === cls.rtNumber.toUpperCase()) return true;
-
-    return false;
+    return undefined;
   }, []);
 
-  // 3. Active Members per Master Cluster Statistics
+  // Include any additional cluster names present on members in the database so 100% of database records are represented
+  const masterClustersList = useMemo(() => {
+    const combined = [...baseMasterClustersList];
+    members.forEach((m) => {
+      if (!m) return;
+      const matched = matchMemberToClusterList(m, combined);
+      if (!matched && m.cluster && m.cluster.trim().length > 0) {
+        const customName = m.cluster.trim();
+        combined.push({
+          id: `cls-db-${customName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+          name: customName,
+          code: customName.replace(/^Cluster\s+/i, '').slice(0, 6).toUpperCase(),
+          rtNumber: '',
+          leaderName: '',
+          leaderPhone: '',
+          leaderEmail: '',
+          addressCoverage: '',
+          isActive: true,
+          orderIndex: combined.length + 1,
+        });
+      }
+    });
+    return combined;
+  }, [baseMasterClustersList, members, matchMemberToClusterList]);
+
+  // 2. Accurate 1-to-1 matching function to associate each database member with their official Master Cluster
+  const isMemberInCluster = useCallback(
+    (m: Member, cls: ClusterMaster): boolean => {
+      if (!m || !cls) return false;
+      const resolved = matchMemberToClusterList(m, masterClustersList);
+      if (resolved) {
+        return resolved.id === cls.id || resolved.name.toLowerCase() === cls.name.toLowerCase();
+      }
+      return false;
+    },
+    [masterClustersList, matchMemberToClusterList]
+  );
+
+  // 3. Active Members per Master Cluster Statistics (Strictly synchronized with database)
   const clusterStats = useMemo(() => {
-    return masterClustersList.map((cls) => {
+    const getDependentsCount = (m: Member): number => {
+      if (Array.isArray(m.dependentsList)) return m.dependentsList.length;
+      return Number(m.dependentsCount) || 0;
+    };
+
+    const rawStats = masterClustersList.map((cls) => {
       const clusterMembers = members.filter((m) => isMemberInCluster(m, cls));
-      const activeCount = clusterMembers.filter(
-        (m) => m.status === 'Aktif' || m.verificationStatus === 'Verified'
-      ).length;
+      // Strictly count members whose database status is 'Aktif'
+      const activeMembers = clusterMembers.filter((m) => m.status === 'Aktif');
+      const activeCount = activeMembers.length;
+
+      // Members waiting for RT verification
       const pendingCount = clusterMembers.filter(
-        (m) => m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending'
+        (m) =>
+          m.status === 'Menunggu Verifikasi RT' ||
+          (m.verificationStatus === 'Pending' && m.status !== 'Aktif' && m.status !== 'Ditolak')
       ).length;
+
+      // Members verified by RT and currently in payment / treasurer / ketua approval process
+      const inProcessCount = clusterMembers.filter(
+        (m) =>
+          m.status === 'Menunggu Pembayaran' ||
+          m.status === 'Menunggu Validasi Bendahara' ||
+          m.status === 'Menunggu Persetujuan Ketua Paguyuban'
+      ).length;
+
       const totalCount = clusterMembers.length;
-      const totalDependents = clusterMembers.reduce(
-        (sum, m) => sum + (m.dependentsCount || (m.dependentsList ? m.dependentsList.length : 0)),
-        0
-      );
-      const totalSouls = activeCount + totalDependents;
+      const activeDependents = activeMembers.reduce((sum, m) => sum + getDependentsCount(m), 0);
+      const activeSouls = activeCount + activeDependents;
+
+      const totalDependents = clusterMembers.reduce((sum, m) => sum + getDependentsCount(m), 0);
+      const totalSouls = totalCount + totalDependents;
 
       const clusterPayments = payments.filter((p) => {
         if (p.status !== 'Verified') return false;
-        const mem = members.find((m) => m.id === p.memberId || m.memberNumber === p.memberNumber);
-        if (mem && isMemberInCluster(mem, cls)) return true;
-        return false;
+        const mem = findMemberForPayment(p, members);
+        return Boolean(mem && isMemberInCluster(mem, cls));
       });
-      const totalCollected = clusterPayments.reduce((sum, p) => sum + p.amount, 0);
+      const totalCollected = clusterPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
       const percentage = activeMembersCount > 0
         ? Math.round((activeCount / activeMembersCount) * 100)
         : 0;
+      const registeredPercentage = members.length > 0
+        ? Math.round((totalCount / members.length) * 100)
+        : 0;
+
+      // Synchronize RT Leader info from users database if available
+      const rtUser = users.find(
+        (u) =>
+          u &&
+          u.authority === 'Ketua RT (Cluster)' &&
+          u.cluster &&
+          u.cluster.trim().toLowerCase() === cls.name.trim().toLowerCase()
+      );
 
       return {
         id: cls.id,
         cluster: cls.name,
         code: cls.code || '',
         rtNumber: cls.rtNumber || '',
-        leaderName: cls.leaderName || '',
-        leaderPhone: cls.leaderPhone || '',
-        leaderEmail: cls.leaderEmail || '',
+        leaderName: rtUser?.name?.trim() || cls.leaderName || '',
+        leaderPhone: rtUser?.phone?.trim() || cls.leaderPhone || '',
+        leaderEmail: rtUser?.email?.trim() || cls.leaderEmail || '',
         addressCoverage: cls.addressCoverage || '',
         activeCount,
         pendingCount,
+        inProcessCount,
         totalCount,
+        activeDependents,
+        activeSouls,
         totalDependents,
         totalSouls,
         totalCollected,
         percentage,
+        registeredPercentage,
+        rank: 0,
       };
     });
-  }, [masterClustersList, members, payments, activeMembersCount, isMemberInCluster]);
 
-  // Determine which cluster has the most registered/active users
+    // Compute accurate rank by activeCount (and totalCount as tie-breaker)
+    const rankedOrder = [...rawStats].sort(
+      (a, b) => b.activeCount - a.activeCount || b.totalCount - a.totalCount
+    );
+    const rankMap = new Map<string, number>();
+    rankedOrder.forEach((item, index) => {
+      rankMap.set(item.cluster, index + 1);
+    });
+
+    return rawStats.map((stat) => ({
+      ...stat,
+      rank: rankMap.get(stat.cluster) || 0,
+    }));
+  }, [masterClustersList, members, payments, users, activeMembersCount, isMemberInCluster]);
+
+  // Determine which cluster has the most active/registered members in the database
   const topCluster = useMemo(() => {
-    return [...clusterStats].sort((a, b) => b.activeCount - a.activeCount)[0] || clusterStats[0];
+    const sorted = [...clusterStats].sort(
+      (a, b) => b.activeCount - a.activeCount || b.totalCount - a.totalCount
+    );
+    const first = sorted[0];
+    if (!first || (first.activeCount === 0 && first.totalCount === 0)) {
+      return null;
+    }
+    return first;
   }, [clusterStats]);
 
   const [trendViewMode, setTrendViewMode] = useState<'amount' | 'compliance'>('amount');
@@ -624,10 +762,10 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     ];
   }, [trendPeriod, INDO_MONTHS]);
 
-  const activeCount = activeMembersCount || members.filter((m) => m.status === 'Aktif' || m.verificationStatus === 'Verified').length || 1;
-  const expectedMonthlyTarget = activeCount * (settings.monthlyFeeAmount || 25000);
+  const activeCount = activeMembersCount || 1;
+  const expectedMonthlyTarget = activeMembersCount * (settings.monthlyFeeAmount || 25000);
   const activeMembersList = useMemo(() => {
-    return members.filter((m) => m.status === 'Aktif' || m.verificationStatus === 'Verified');
+    return members.filter((m) => m.status === 'Aktif');
   }, [members]);
 
   const paymentTrendData = useMemo(() => {
@@ -1620,19 +1758,31 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   const rtCluster = (activeUser?.cluster as ClusterType) || 'Cluster Sanur';
 
   if (isKetuaRT) {
-    const rtMembers = members.filter((m) => m.cluster === rtCluster);
-    const rtActiveMembers = rtMembers.filter(
-      (m) => m.status === 'Aktif' || m.verificationStatus === 'Verified'
+    const rtClusterMaster = masterClustersList.find(
+      (c) => c.name.trim().toLowerCase() === rtCluster.trim().toLowerCase()
     );
+    const rtMembers = members.filter((m) =>
+      rtClusterMaster ? isMemberInCluster(m, rtClusterMaster) : m.cluster === rtCluster
+    );
+    const rtActiveMembers = rtMembers.filter((m) => m.status === 'Aktif');
     const rtPendingMembers = rtMembers.filter(
       (m) => m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending'
     );
-    const rtTotalDependents = rtMembers.reduce((sum, m) => sum + (m.dependentsCount || 0), 0);
-    const rtTotalSouls = rtActiveMembers.length + rtActiveMembers.reduce((sum, m) => sum + (m.dependentsCount || 0), 0);
+    const rtTotalDependents = rtMembers.reduce(
+      (sum, m) => sum + (Array.isArray(m.dependentsList) ? m.dependentsList.length : (Number(m.dependentsCount) || 0)),
+      0
+    );
+    const rtTotalSouls =
+      rtActiveMembers.length +
+      rtActiveMembers.reduce(
+        (sum, m) => sum + (Array.isArray(m.dependentsList) ? m.dependentsList.length : (Number(m.dependentsCount) || 0)),
+        0
+      );
 
     const rtPayments = payments.filter((p) => {
-      const mem = members.find((m) => m.id === p.memberId || m.memberNumber === p.memberNumber);
-      return mem?.cluster === rtCluster;
+      const mem = findMemberForPayment(p, members);
+      if (!mem) return false;
+      return rtClusterMaster ? isMemberInCluster(mem, rtClusterMaster) : mem.cluster === rtCluster;
     });
     const rtVerifiedPayments = rtPayments.filter((p) => p.status === 'Verified');
     const rtTotalCollected = rtVerifiedPayments.reduce((sum, p) => sum + p.amount, 0);
@@ -3204,14 +3354,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <Building2 className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-extrabold text-slate-900 text-base sm:text-lg flex items-center gap-2">
+              <h3 className="font-extrabold text-slate-900 text-base sm:text-lg flex flex-wrap items-center gap-2">
                 <span>Sebaran Anggota Aktif per Cluster</span>
-                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-md">
-                  {masterClustersList.length} Cluster Wilayah (Master)
+                <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold rounded-md border border-slate-200">
+                  {masterClustersList.length} Cluster Wilayah • {activeMembersCount} Aktif / {members.length} Terdaftar (DB)
                 </span>
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Monitoring jumlah warga aktif terverifikasi dan cakupan jiwa tertanggung di masing-masing RT Cluster.
+                Data real-time dari database untuk jumlah warga berstatus Aktif, total pendaftar, dan cakupan jiwa tertanggung di masing-masing RT Cluster.
               </p>
             </div>
           </div>
@@ -3224,10 +3374,12 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               </div>
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 block">
-                  Cluster Terbanyak:
+                  {topCluster.activeCount > 0 ? 'Cluster Aktif Terbanyak:' : 'Cluster Pendaftar Terbanyak:'}
                 </span>
                 <span className="font-extrabold text-amber-950">
-                  {topCluster.cluster} ({topCluster.activeCount} Anggota • {topCluster.percentage}%)
+                  {topCluster.activeCount > 0
+                    ? `${topCluster.cluster} (${topCluster.activeCount} Warga Aktif • ${topCluster.percentage}%)`
+                    : `${topCluster.cluster} (${topCluster.totalCount} Terdaftar • ${topCluster.registeredPercentage}%)`}
                 </span>
               </div>
             </div>
@@ -3235,60 +3387,72 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         </div>
 
         {/* Cluster Distribution Visual Bar */}
-        {activeMembersCount > 0 && (
-          <div className="space-y-1.5 bg-slate-50 p-3 rounded-xl border border-slate-100">
-            <div className="flex justify-between items-center text-[11px] font-semibold text-slate-600">
-              <span>Proporsi Anggota Aktif Antar Cluster:</span>
-              <span className="font-mono font-bold text-slate-800">{activeMembersCount} Total Warga Terdaftar</span>
-            </div>
-            <div className="h-3 w-full bg-slate-200 rounded-full overflow-hidden flex shadow-inner">
-              {clusterStats.map((item, idx) => {
-                const colors = [
-                  'bg-teal-500',
-                  'bg-amber-500',
-                  'bg-blue-500',
-                  'bg-cyan-500',
-                  'bg-sky-500',
-                  'bg-orange-500',
-                ];
-                const color = colors[idx % colors.length];
-                if (item.percentage === 0) return null;
-                return (
-                  <div
-                    key={item.cluster}
-                    style={{ width: `${item.percentage}%` }}
-                    className={`${color} h-full transition-all duration-500 relative group cursor-pointer`}
-                    title={`${item.cluster}: ${item.activeCount} Anggota (${item.percentage}%)`}
-                  />
-                );
-              })}
-            </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 text-[10px] text-slate-500">
-              {clusterStats.map((item, idx) => {
-                const dotColors = [
-                  'bg-teal-500',
-                  'bg-amber-500',
-                  'bg-blue-500',
-                  'bg-cyan-500',
-                  'bg-sky-500',
-                  'bg-orange-500',
-                ];
-                return (
-                  <div key={item.cluster} className="flex items-center gap-1.5">
-                    <span className={`w-2 h-2 rounded-full ${dotColors[idx % dotColors.length]}`} />
-                    <span className="font-medium text-slate-700">{item.cluster}:</span>
-                    <span className="font-bold text-slate-900 font-mono">{item.activeCount} ({item.percentage}%)</span>
-                  </div>
-                );
-              })}
-            </div>
+        <div className="space-y-1.5 bg-slate-50 p-3 rounded-xl border border-slate-100">
+          <div className="flex flex-wrap justify-between items-center gap-2 text-[11px] font-semibold text-slate-600">
+            <span>Proporsi Sebaran Anggota Aktif Antar Cluster (Database):</span>
+            <span className="font-mono font-bold text-slate-800">
+              {activeMembersCount} Anggota Aktif <span className="text-slate-400 font-normal">({members.length} Total KK di Database)</span>
+            </span>
           </div>
-        )}
+          <div className="h-3 w-full bg-slate-200 rounded-full overflow-hidden flex shadow-inner">
+            {clusterStats.map((item, idx) => {
+              const colors = [
+                'bg-teal-500',
+                'bg-amber-500',
+                'bg-blue-500',
+                'bg-cyan-500',
+                'bg-sky-500',
+                'bg-orange-500',
+              ];
+              const color = colors[idx % colors.length];
+              const barPct = activeMembersCount > 0 ? item.percentage : item.registeredPercentage;
+              if (barPct === 0) return null;
+              return (
+                <div
+                  key={item.cluster}
+                  style={{ width: `${barPct}%` }}
+                  className={`${color} h-full transition-all duration-500 relative group cursor-pointer`}
+                  title={`${item.cluster}: ${item.activeCount} Warga Aktif (${item.percentage}%) • ${item.totalCount} Total Terdaftar`}
+                />
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 text-[10px] text-slate-500">
+            {clusterStats.map((item, idx) => {
+              const dotColors = [
+                'bg-teal-500',
+                'bg-amber-500',
+                'bg-blue-500',
+                'bg-cyan-500',
+                'bg-sky-500',
+                'bg-orange-500',
+              ];
+              return (
+                <div key={item.cluster} className="flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${dotColors[idx % dotColors.length]}`} />
+                  <span className="font-medium text-slate-700">{item.cluster}:</span>
+                  <span className="font-bold text-slate-900 font-mono">
+                    {item.activeCount} Aktif ({item.percentage}%)
+                    {item.totalCount > item.activeCount ? ` • ${item.totalCount} KK` : ''}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* D3.js Interactive Heatmap & Dynamic Bar Chart Visualization */}
+        <ClusterD3DistributionChart
+          clusterStats={clusterStats}
+          activeMembersCount={activeMembersCount}
+          totalMembersCount={members.length}
+          onNavigateToMembers={() => setCurrentTab('registration')}
+        />
 
         {/* 6-Card Responsive Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           {clusterStats.map((stat, idx) => {
-            const isTop = stat.cluster === topCluster?.cluster && stat.activeCount > 0;
+            const isTop = Boolean(topCluster && stat.cluster === topCluster.cluster && stat.activeCount > 0);
             const themeConfigs = [
               {
                 border: isTop ? 'border-teal-400 ring-2 ring-teal-400/20' : 'border-teal-200/80',
@@ -3354,11 +3518,11 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                           <Crown className="w-3 h-3" />
                           <span>#1</span>
                         </span>
-                      ) : (
+                      ) : stat.activeCount > 0 || stat.totalCount > 0 ? (
                         <span className="text-[10px] font-semibold text-slate-400">
-                          #{idx + 1}
+                          #{stat.rank}
                         </span>
-                      )}
+                      ) : null}
                     </div>
                   </div>
 
@@ -3386,19 +3550,28 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
                 {/* Sub-Metrics details */}
                 <div className="space-y-2 pt-2 border-t border-slate-100 text-xs text-slate-600">
-                  {stat.totalCount > stat.activeCount && (
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-slate-500">Total Terdaftar:</span>
-                      <span className="font-bold text-slate-800 font-mono">
-                        {stat.totalCount} Warga
-                      </span>
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-500">Total di Database:</span>
+                    <span className="font-bold text-slate-800 font-mono">
+                      {stat.totalCount} KK
+                      {stat.totalCount > stat.activeCount && (
+                        <span className="text-amber-700 font-normal"> ({stat.totalCount - stat.activeCount} proses)</span>
+                      )}
+                    </span>
+                  </div>
 
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-slate-500">Jiwa Tertanggung:</span>
                     <span className="font-bold text-slate-800 font-mono">
-                      {stat.totalSouls} Jiwa <span className="text-slate-400 font-normal">({stat.totalDependents} tanggungan)</span>
+                      {stat.activeCount > 0 ? (
+                        <>
+                          {stat.activeSouls} Jiwa <span className="text-slate-400 font-normal">({stat.activeDependents} tanggungan)</span>
+                        </>
+                      ) : (
+                        <>
+                          {stat.totalSouls} Jiwa <span className="text-slate-400 font-normal">({stat.totalDependents} tanggungan)</span>
+                        </>
+                      )}
                     </span>
                   </div>
 
@@ -3419,7 +3592,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                   )}
 
                   <div className="flex items-center justify-between text-[11px] pt-1">
-                    <span className="text-slate-500">Antrean RT:</span>
+                    <span className="text-slate-500">Status Cluster:</span>
                     {stat.pendingCount > 0 ? (
                       isBendahara || isKetuaPaguyuban ? (
                         <span className="px-2 py-0.5 bg-amber-50 text-amber-800 font-bold text-[10px] rounded-md inline-flex items-center gap-1 border border-amber-200">
@@ -3429,17 +3602,26 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                       ) : (
                         <button
                           onClick={() => setCurrentTab('rt-verification')}
-                          className="px-2 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[10px] rounded-md inline-flex items-center gap-1 transition-colors"
+                          className="px-2 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[10px] rounded-md inline-flex items-center gap-1 transition-colors cursor-pointer"
                           title="Buka Menu Verifikasi RT"
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                           <span>{stat.pendingCount} Butuh Verifikasi</span>
                         </button>
                       )
-                    ) : (
+                    ) : stat.inProcessCount > 0 ? (
+                      <span className="px-2 py-0.5 bg-sky-50 text-sky-800 font-bold text-[10px] rounded-md inline-flex items-center gap-1 border border-sky-200">
+                        <Clock className="w-3 h-3 text-sky-600" />
+                        <span>{stat.inProcessCount} Proses Aktifasi</span>
+                      </span>
+                    ) : stat.activeCount > 0 ? (
                       <span className="text-emerald-600 font-medium text-[10px] inline-flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3 text-emerald-500" />
                         <span>Lengkap Terverifikasi</span>
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 font-medium text-[10px]">
+                        Belum Ada Warga
                       </span>
                     )}
                   </div>
@@ -3449,7 +3631,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 <button
                   type="button"
                   onClick={() => setCurrentTab('registration')}
-                  className="w-full py-1.5 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 font-bold text-[11px] rounded-xl border border-slate-200 transition-colors flex items-center justify-center gap-1 group/btn"
+                  className="w-full py-1.5 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 font-bold text-[11px] rounded-xl border border-slate-200 transition-colors flex items-center justify-center gap-1 group/btn cursor-pointer"
                 >
                   <span>Lihat Warga {stat.cluster.replace('Cluster ', '')}</span>
                   <ArrowRight className="w-3 h-3 text-slate-400 group-hover/btn:translate-x-0.5 transition-transform" />

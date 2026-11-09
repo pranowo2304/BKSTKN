@@ -287,15 +287,57 @@ export default function App() {
           onMembersChange: (cloudMembers) => {
             if (cloudMembers && Array.isArray(cloudMembers)) {
               const normalizedCloudMembers = cloudMembers.map((m) => {
+                if (!m) return m;
+                let cluster = (m.cluster || '').trim();
+                if (
+                  cluster === 'Cluster Tanah Minang' ||
+                  cluster === 'Cluster Ranah Minang' ||
+                  cluster === 'Ranah Minang' ||
+                  cluster === 'Tanah Minang'
+                ) {
+                  cluster = 'Cluster Ranah Melayu';
+                } else if (cluster === 'Cluster Pasundan RT 02') {
+                  cluster = 'Cluster Pasundan RT 05';
+                } else if (cluster === 'Cluster Pasundan RT 03') {
+                  cluster = 'Cluster Pasundan RT 06';
+                } else if (cluster === 'Cluster Pasundan') {
+                  const addr = (m.address || '').toLowerCase();
+                  if (
+                    addr.includes('rt 05') ||
+                    addr.includes('rt 5') ||
+                    addr.includes('rt 02') ||
+                    addr.includes('rt 2') ||
+                    addr.includes('blok p-02') ||
+                    addr.includes('blok p (no. 26')
+                  ) {
+                    cluster = 'Cluster Pasundan RT 05';
+                  } else if (
+                    addr.includes('rt 06') ||
+                    addr.includes('rt 6') ||
+                    addr.includes('rt 03') ||
+                    addr.includes('rt 3') ||
+                    addr.includes('blok p-03') ||
+                    addr.includes('blok p (no. 51')
+                  ) {
+                    cluster = 'Cluster Pasundan RT 06';
+                  } else {
+                    cluster = 'Cluster Pasundan RT 01';
+                  }
+                }
+
                 // Jika status belum Aktif (mis. Menunggu Persetujuan Ketua Paguyuban), pastikan isPaguyubanApproved = false
-                if (m && m.status !== 'Aktif' && m.isPaguyubanApproved === true) {
+                if (m.status !== 'Aktif' && m.isPaguyubanApproved === true) {
                   return {
                     ...m,
+                    cluster,
                     isPaguyubanApproved: false,
                     isKtaIssued: false,
                   };
                 }
-                return m;
+                return {
+                  ...m,
+                  cluster,
+                };
               });
 
               setMembers(normalizedCloudMembers);
@@ -399,10 +441,39 @@ export default function App() {
           },
           onClustersChange: (cloudClusters) => {
             if (cloudClusters && cloudClusters.length > 0) {
+              const normalizedClusters = cloudClusters.map((c) => {
+                if (!c) return c;
+                if (c.name === 'Cluster Ranah Minang' || c.name === 'Cluster Tanah Minang') {
+                  return {
+                    ...c,
+                    name: 'Cluster Ranah Melayu',
+                    code: c.code || 'RNM',
+                    rtNumber: c.rtNumber || 'RT 02',
+                  };
+                }
+                if (c.name === 'Cluster Pasundan RT 02') {
+                  return {
+                    ...c,
+                    name: 'Cluster Pasundan RT 05',
+                    rtNumber: 'RT 05',
+                    code: 'PSD-02',
+                  };
+                }
+                if (c.name === 'Cluster Pasundan RT 03') {
+                  return {
+                    ...c,
+                    name: 'Cluster Pasundan RT 06',
+                    rtNumber: 'RT 06',
+                    code: 'PSD-06',
+                  };
+                }
+                return c;
+              });
+
               setUsers((prevUsers) => {
-                const syncedUsers = syncClustersToRtUsers(cloudClusters, prevUsers);
+                const syncedUsers = syncClustersToRtUsers(normalizedClusters, prevUsers);
                 saveUsers(syncedUsers);
-                const syncedClusters = syncRtUsersToClusters(cloudClusters, syncedUsers);
+                const syncedClusters = syncRtUsersToClusters(normalizedClusters, syncedUsers);
                 setClusters(syncedClusters);
                 saveStoredClusters(syncedClusters);
                 return syncedUsers;

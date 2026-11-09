@@ -142,9 +142,9 @@ export const PaguyubanApproval: React.FC<PaguyubanApprovalProps> = ({
   const primaryBenefitAmount = benefits.find((b) => b.isActive)?.amount || settings.benefitAmount || 2500000;
   const solvencyCoverageCount = primaryBenefitAmount > 0 ? Math.floor(financials.totalBalance / primaryBenefitAmount) : 0;
 
-  // Helper: member is only considered fully approved by Ketua Paguyuban when status is 'Aktif'
+  // Helper: member is considered active/approved when status in database is 'Aktif'
   const isMemberFullyApprovedByKetua = (m: Member): boolean => {
-    return Boolean(m.status === 'Aktif' && (m.isPaguyubanApproved || m.isKtaIssued));
+    return Boolean(m && m.status === 'Aktif');
   };
 
   // Helper to find latest verified payment for a member
