@@ -15,6 +15,7 @@ import { KtaScannerModal } from './KtaScannerModal';
 import { ExpiringDueReminderModal } from './ExpiringDueReminderModal';
 import { DashboardNotifications } from './DashboardNotifications';
 import { RoleMobileAppMenu } from './RoleMobileAppMenu';
+import { AdminFirebaseStatsPanel } from './AdminFirebaseStatsPanel';
 import { useRolePermissions } from '../lib/permissions';
 import { getAllNavigationActionsForUser } from '../lib/navigationMenu';
 import {
@@ -82,6 +83,7 @@ import {
   Smartphone,
   UserCog,
   Settings as SettingsIcon,
+  Database,
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -2637,6 +2639,15 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 ...(isAdmin
                   ? [
                       {
+                        id: 'pill-statistik-firebase',
+                        label: 'Statistik Kunjungan & Firebase',
+                        icon: Database,
+                        onClick: () => {
+                          const el = document.getElementById('section-admin-firebase-stats');
+                          el?.scrollIntoView({ behavior: 'smooth' });
+                        },
+                      },
+                      {
                         id: 'pill-pengaturan-sistem',
                         label: 'Pengaturan Sistem',
                         icon: SettingsIcon,
@@ -2833,6 +2844,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         onClearAllNotifications={onClearAllNotifications || (() => {})}
         onNavigateTab={setCurrentTab}
       />
+
+      {/* 📊 STATISTIK KUNJUNGAN APLIKASI & READ/WRITE FIREBASE HARIAN (KHUSUS ADMIN) */}
+      {isAdmin && <AdminFirebaseStatsPanel />}
 
       {/* 🚨 BENDAHARA / ADMIN GRACE PERIOD OVERDUE NOTIFICATION BANNER */}
       {graceSummary.hasOverdue && (

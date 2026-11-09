@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Member, Dependent, Payment, BenefitClaim, SystemSettings, ClusterType, CLUSTERS, AppUser, BenefitMaster, DEFAULT_BENEFITS } from '../types';
 import { DocumentQualityReport } from '../lib/documentQualityValidator';
 import { MemberDetailModal } from './MemberDetailModal';
@@ -60,6 +60,11 @@ import {
   FileText,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Layers,
   Mail,
   EyeOff,
   Camera,
@@ -79,6 +84,10 @@ interface MemberRegistrationProps {
   users?: AppUser[];
   activeUser?: AppUser;
   initialMode?: 'form' | 'directory';
+  initialPageSize?: number;
+  paginationMode?: 'pagination' | 'lazy';
+  onPageSizeChange?: (size: number) => void;
+  onPaginationModeChange?: (mode: 'pagination' | 'lazy') => void;
   onAddMember: (newMember: Member) => void;
   onUpdateMember?: (updatedMember: Member) => void;
   onDeleteMember?: (memberId: string) => void;
@@ -112,6 +121,10 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
   users = [],
   activeUser,
   initialMode = 'form',
+  initialPageSize = 10,
+  paginationMode: externalPaginationMode,
+  onPageSizeChange,
+  onPaginationModeChange,
   onAddMember,
   onUpdateMember,
   onDeleteMember,
@@ -634,6 +647,69 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
       }
       return 0;
     });
+
+  // --- PAGINATION & LAZY LOADING STATE ---
+  const [internalListMode, setInternalListMode] = useState<'pagination' | 'lazy'>(
+    externalPaginationMode || 'pagination'
+  );
+  const listMode = externalPaginationMode ?? internalListMode;
+  const [pageSize, setPageSize] = useState<number>(initialPageSize || 10);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [lazyVisibleCount, setLazyVisibleCount] = useState<number>(initialPageSize || 10);
+  const lazySentinelRef = useRef<HTMLDivElement | null>(null);
+
+  const handleSetListMode = (mode: 'pagination' | 'lazy') => {
+    setInternalListMode(mode);
+    if (onPaginationModeChange) onPaginationModeChange(mode);
+    setCurrentPage(1);
+    setLazyVisibleCount(pageSize);
+  };
+
+  const handleSetPageSize = (newSize: number) => {
+    setPageSize(newSize);
+    if (onPageSizeChange) onPageSizeChange(newSize);
+    setCurrentPage(1);
+    setLazyVisibleCount(newSize);
+  };
+
+  // Reset pagination / lazy count when filters or sort change
+  useEffect(() => {
+    setCurrentPage(1);
+    setLazyVisibleCount(pageSize);
+  }, [searchTerm, statusFilter, clusterFilter, dateFilter, sortBy, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredMembers.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+
+  // Slice members according to active mode (Pagination vs Lazy Load)
+  const paginatedMembers = useMemo(() => {
+    if (listMode === 'lazy') {
+      return filteredMembers.slice(0, lazyVisibleCount);
+    }
+    const startIdx = (safeCurrentPage - 1) * pageSize;
+    return filteredMembers.slice(startIdx, startIdx + pageSize);
+  }, [filteredMembers, listMode, lazyVisibleCount, safeCurrentPage, pageSize]);
+
+  const hasMoreLazyItems = listMode === 'lazy' && lazyVisibleCount < filteredMembers.length;
+
+  // IntersectionObserver for automatic lazy loading on scroll
+  useEffect(() => {
+    if (listMode !== 'lazy' || !hasMoreLazyItems) return;
+    const node = lazySentinelRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setLazyVisibleCount((prev) => Math.min(filteredMembers.length, prev + pageSize));
+        }
+      },
+      { rootMargin: '200px' }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [listMode, hasMoreLazyItems, filteredMembers.length, pageSize]);
 
   const handleBatchImport = (newMembers: Member[]) => {
     if (onImportBatchMembers) {
@@ -2303,11 +2379,19 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
           </div>
         )}
 
-        {/* Filter Summary & Count Header */}
+        {/* Filter Summary, Pagination Mode Switcher & Count Header */}
         <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100 gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold text-slate-700">
-              Menampilkan <span className="font-bold text-emerald-700">{filteredMembers.length}</span> dari {isKetuaRt ? accessibleMembers.length : members.length} Anggota {isKetuaRt && userRtCluster ? `(${userRtCluster})` : ''}
+              Menampilkan{' '}
+              <span className="font-bold text-emerald-700">
+                {filteredMembers.length === 0
+                  ? 0
+                  : listMode === 'pagination'
+                  ? `${(safeCurrentPage - 1) * pageSize + 1}–${Math.min(safeCurrentPage * pageSize, filteredMembers.length)}`
+                  : `1–${Math.min(lazyVisibleCount, filteredMembers.length)}`}
+              </span>{' '}
+              dari <span className="font-bold text-slate-900">{filteredMembers.length}</span> Anggota Terfilter (Total: {isKetuaRt ? accessibleMembers.length : members.length})
             </span>
             {statusFilter === 'Aktif' && (
               <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-900 font-extrabold text-[10px] rounded-full border border-emerald-300 inline-flex items-center gap-1">
@@ -2340,6 +2424,53 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                 </span>
               </button>
             )}
+          </div>
+
+          {/* Pagination Mode & Page Size Controls */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => handleSetListMode('pagination')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  listMode === 'pagination'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Tampilkan daftar warga per halaman (Pagination)"
+              >
+                <Layers className="w-3 h-3 text-emerald-600" />
+                <span>Halaman</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetListMode('lazy')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  listMode === 'lazy'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Muat bertahap saat digulir ke bawah (Lazy Loading)"
+              >
+                <ArrowUpDown className="w-3 h-3 text-indigo-600" />
+                <span>Lazy Scroll</span>
+              </button>
+            </div>
+
+            <div className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Per Halaman:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => handleSetPageSize(Number(e.target.value))}
+                className="bg-transparent text-xs font-extrabold text-slate-800 focus:outline-none cursor-pointer"
+                aria-label="Jumlah warga per halaman"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
           </div>
 
           {hasActiveFilters && (
@@ -2462,7 +2593,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredMembers.map((member) => {
+                paginatedMembers.map((member) => {
                   let clusterBadgeClass = 'bg-slate-100 text-slate-700 border-slate-200';
                   if (member.cluster?.includes('Sanur')) {
                     clusterBadgeClass = 'bg-teal-50 text-teal-800 border-teal-200';
@@ -2513,6 +2644,8 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                             <img
                               src={member.photoUrl}
                               alt={member.name}
+                              loading="lazy"
+                              decoding="async"
                               className="w-10 h-10 rounded-xl object-cover border border-emerald-300 shadow-xs shrink-0 bg-slate-100"
                             />
                           ) : (
@@ -2890,6 +3023,133 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
             </tbody>
           </table>
         </div>
+
+        {/* PAGINATION & LAZY LOADING FOOTER BAR */}
+        {filteredMembers.length > 0 && (
+          <div className="px-4 py-3.5 bg-slate-50 border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 print:hidden">
+            {listMode === 'pagination' ? (
+              <>
+                <div className="text-xs text-slate-600 font-medium">
+                  Halaman <span className="font-extrabold text-slate-900">{safeCurrentPage}</span> dari{' '}
+                  <span className="font-extrabold text-slate-900">{totalPages}</span> • Menampilkan{' '}
+                  <span className="font-bold text-emerald-700">
+                    {(safeCurrentPage - 1) * pageSize + 1}–{Math.min(safeCurrentPage * pageSize, filteredMembers.length)}
+                  </span>{' '}
+                  dari <span className="font-bold text-slate-900">{filteredMembers.length}</span> warga
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(1)}
+                    disabled={safeCurrentPage <= 1}
+                    className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer"
+                    title="Halaman Pertama"
+                  >
+                    <ChevronsLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={safeCurrentPage <= 1}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span className="hidden xs:inline">Sebelumnya</span>
+                  </button>
+
+                  {/* Page Numbers */}
+                  <div className="flex items-center gap-1 px-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(
+                        (page) =>
+                          page === 1 ||
+                          page === totalPages ||
+                          Math.abs(page - safeCurrentPage) <= 1
+                      )
+                      .reduce<Array<number | 'ellipsis'>>((acc, page, idx, arr) => {
+                        if (idx > 0 && page - (arr[idx - 1] as number) > 1) {
+                          acc.push('ellipsis');
+                        }
+                        acc.push(page);
+                        return acc;
+                      }, [])
+                      .map((item, idx) =>
+                        item === 'ellipsis' ? (
+                          <span key={`el-${idx}`} className="px-1.5 text-xs text-slate-400 font-bold">
+                            ...
+                          </span>
+                        ) : (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => setCurrentPage(item)}
+                            className={`min-w-[30px] h-7 px-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                              safeCurrentPage === item
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        )
+                      )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={safeCurrentPage >= totalPages}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <span className="hidden xs:inline">Berikutnya</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={safeCurrentPage >= totalPages}
+                    className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer"
+                    title="Halaman Terakhir"
+                  >
+                    <ChevronsRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="text-xs text-slate-600 font-medium">
+                  Mode Lazy Load: Menampilkan <span className="font-extrabold text-emerald-700">{paginatedMembers.length}</span> dari{' '}
+                  <span className="font-extrabold text-slate-900">{filteredMembers.length}</span> warga
+                </div>
+
+                {hasMoreLazyItems ? (
+                  <div ref={lazySentinelRef} className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setLazyVisibleCount((prev) => Math.min(filteredMembers.length, prev + pageSize))}
+                      className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold rounded-xl shadow-xs transition-all cursor-pointer"
+                    >
+                      Muat Lebih Banyak (+{Math.min(pageSize, filteredMembers.length - lazyVisibleCount)} Warga)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLazyVisibleCount(filteredMembers.length)}
+                      className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                    >
+                      Tampilkan Semua
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-xs font-bold text-emerald-700 flex items-center gap-1">
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Seluruh {filteredMembers.length} data warga telah dimuat</span>
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* PRINT-ONLY OFFICIAL SIGNATURE FOOTER */}

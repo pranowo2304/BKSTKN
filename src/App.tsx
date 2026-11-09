@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import {
   Member,
   Payment,
@@ -95,13 +95,19 @@ import {
 } from './lib/firebase';
 import { checkDuplicateMember } from './lib/duplicateValidator';
 import { isMemberAwaitingPaguyubanApproval } from './lib/ktaUtils';
+import { recordAppVisit } from './lib/firebaseTelemetry';
 import { initialUsers } from './data/initialData';
 
 import { Navbar } from './components/Navbar';
 import { PublicLandingPage } from './components/PublicLandingPage';
 import { DashboardOverview } from './components/DashboardOverview';
-import { MemberRegistration } from './components/MemberRegistration';
 import { RtClusterVerification } from './components/RtClusterVerification';
+
+const LazyMemberRegistration = lazy(() =>
+  import('./components/MemberRegistration').then((module) => ({
+    default: module.MemberRegistration,
+  }))
+);
 import { PaguyubanApproval } from './components/PaguyubanApproval';
 import { PaymentForm } from './components/PaymentForm';
 import { AdminValidation } from './components/AdminValidation';
@@ -168,6 +174,8 @@ export default function App() {
   const [selectedFullKtaMember, setSelectedFullKtaMember] = useState<Member | null>(null);
   const [isPublicRegisterOpen, setIsPublicRegisterOpen] = useState<boolean>(false);
   const [isPWAInstallModalOpen, setIsPWAInstallModalOpen] = useState<boolean>(false);
+  const [memberPageSize, setMemberPageSize] = useState<number>(10);
+  const [memberPaginationMode, setMemberPaginationMode] = useState<'pagination' | 'lazy'>('pagination');
 
   useEffect(() => {
     const handleOpenPWA = () => setIsPWAInstallModalOpen(true);
@@ -230,6 +238,7 @@ export default function App() {
 
     setActiveUser(validActiveUser);
     setIsAdmin(validActiveUser ? validActiveUser.authority !== 'Anggota' : false);
+    recordAppVisit(validActiveUser?.authority || 'Publik / Tamu');
     if (!validActiveUser) {
       setCurrentTab('public');
     } else if (validActiveUser.authority === 'Anggota') {
@@ -2319,6 +2328,7 @@ export default function App() {
     setActiveUser(newUser);
     saveStoredActiveUser(newUser);
     setIsAdmin(newUser.authority !== 'Anggota');
+    recordAppVisit(newUser.authority);
     if (newUser.authority === 'Anggota') {
       setCurrentTab('member-portal');
     } else if (currentTab === 'public' || currentTab === 'member-portal') {
@@ -2330,6 +2340,7 @@ export default function App() {
     setActiveUser(user);
     saveStoredActiveUser(user);
     setIsAdmin(user.authority !== 'Anggota');
+    recordAppVisit(user.authority);
     setRegisteredMemberForLogin(null);
     setIsLoginModalOpen(false);
     if (user.authority === 'Anggota') {
@@ -2567,34 +2578,48 @@ export default function App() {
         )}
 
         {currentTab === 'registration' && (
-          <MemberRegistration
-            members={members}
-            payments={payments}
-            claims={claims}
-            settings={settings}
-            benefits={benefits}
-            users={users}
-            activeUser={activeUser}
-            initialMode={activeUser ? 'directory' : 'form'}
-            onAddMember={handleAddMember}
-            onUpdateMember={handleUpdateMember}
-            onDeleteMember={activeUser?.authority === 'Admin' ? handleDeleteMember : undefined}
-            onImportBatchMembers={handleImportBatchMembers}
-            onSelectMemberForPayment={handleSelectMemberForPayment}
-            onViewReceipt={(p) => setSelectedReceiptPayment(p)}
-            onOpenLoginForMember={(m) => {
-              setRegisteredMemberForLogin(m);
-              setIsLoginModalOpen(true);
-            }}
-            onNavigateToVerification={can(activeUser?.authority, 'verify_rt_members') ? () => setCurrentTab('rt-verification') : undefined}
-            onNavigateToDashboard={() => {
-              if (activeUser) {
-                setCurrentTab(activeUser.authority === 'Anggota' ? 'member-portal' : 'dashboard');
-              } else {
-                setCurrentTab('public');
-              }
-            }}
-          />
+          <Suspense
+            fallback={
+              <div className="bg-white rounded-3xl border border-slate-200/80 p-8 sm:p-12 shadow-sm text-center space-y-3 animate-pulse">
+                <Loader2 className="w-8 h-8 text-emerald-600 animate-spin mx-auto" />
+                <p className="text-sm font-extrabold text-slate-800">Memuat Direktori & Modul Daftar Warga...</p>
+                <p className="text-xs text-slate-500">Menyiapkan sistem paginasi dan pemuatan bertahap (lazy loading) data anggota.</p>
+              </div>
+            }
+          >
+            <LazyMemberRegistration
+              members={members}
+              payments={payments}
+              claims={claims}
+              settings={settings}
+              benefits={benefits}
+              users={users}
+              activeUser={activeUser}
+              initialMode={activeUser ? 'directory' : 'form'}
+              initialPageSize={memberPageSize}
+              paginationMode={memberPaginationMode}
+              onPageSizeChange={setMemberPageSize}
+              onPaginationModeChange={setMemberPaginationMode}
+              onAddMember={handleAddMember}
+              onUpdateMember={handleUpdateMember}
+              onDeleteMember={activeUser?.authority === 'Admin' ? handleDeleteMember : undefined}
+              onImportBatchMembers={handleImportBatchMembers}
+              onSelectMemberForPayment={handleSelectMemberForPayment}
+              onViewReceipt={(p) => setSelectedReceiptPayment(p)}
+              onOpenLoginForMember={(m) => {
+                setRegisteredMemberForLogin(m);
+                setIsLoginModalOpen(true);
+              }}
+              onNavigateToVerification={can(activeUser?.authority, 'verify_rt_members') ? () => setCurrentTab('rt-verification') : undefined}
+              onNavigateToDashboard={() => {
+                if (activeUser) {
+                  setCurrentTab(activeUser.authority === 'Anggota' ? 'member-portal' : 'dashboard');
+                } else {
+                  setCurrentTab('public');
+                }
+              }}
+            />
+          </Suspense>
         )}
 
         {currentTab === 'rt-verification' && (

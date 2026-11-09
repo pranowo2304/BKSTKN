@@ -20,6 +20,7 @@ import {
 setLogLevel('silent');
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Member, Payment, BenefitClaim, SystemSettings, AppUser, ClusterMaster, DEFAULT_CLUSTERS, BenefitMaster, DEFAULT_BENEFITS, AmbulanceOrder, FuneralSchedule, FuneralInventoryItem, FuneralInventoryLoan } from '../types';
+import { recordFirebaseRead, recordFirebaseWrite } from './firebaseTelemetry';
 import {
   initialMembers,
   initialPayments,
@@ -74,6 +75,7 @@ export const db = firestoreInstance;
 export async function testConnection(): Promise<boolean> {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
+    recordFirebaseRead('meta', 1);
     return true;
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
@@ -192,6 +194,10 @@ export async function seedInitialFirestoreData(): Promise<void> {
       return null;
     });
 
+    if (initSnap) {
+      recordFirebaseRead(COLLECTIONS.META, 1);
+    }
+
     // If init record exists, respect its state
     if (initSnap && initSnap.exists()) {
       return;
@@ -208,8 +214,13 @@ export async function seedInitialFirestoreData(): Promise<void> {
       new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
     ]).catch(() => null);
 
+    if (membersSnap) {
+      recordFirebaseRead(COLLECTIONS.MEMBERS, Math.max(1, membersSnap.size));
+    }
+
     if (membersSnap && !membersSnap.empty) {
       await setDoc(metaInitRef, { initialized: true, initializedAt: new Date().toISOString() }).catch(() => {});
+      recordFirebaseWrite(COLLECTIONS.META, 1);
       return;
     }
 
@@ -263,6 +274,14 @@ export async function seedInitialFirestoreData(): Promise<void> {
     batch.set(metaInitRef, { initialized: true, initializedAt: new Date().toISOString() });
 
     await batch.commit();
+    recordFirebaseWrite(COLLECTIONS.MEMBERS, initialMembers.length);
+    recordFirebaseWrite(COLLECTIONS.PAYMENTS, initialPayments.length);
+    recordFirebaseWrite(COLLECTIONS.CLAIMS, initialClaims.length);
+    recordFirebaseWrite(COLLECTIONS.USERS, initialUsers.length);
+    recordFirebaseWrite(COLLECTIONS.SETTINGS, 1);
+    recordFirebaseWrite(COLLECTIONS.CLUSTERS, DEFAULT_CLUSTERS.length);
+    recordFirebaseWrite(COLLECTIONS.BENEFITS, DEFAULT_BENEFITS.length);
+    recordFirebaseWrite(COLLECTIONS.META, 2);
     console.log('Firebase Firestore successfully initialized with starting records.');
   } catch (error) {
     console.warn('Notice on seeding initial Firestore data (client operating with local cache fallback):', error);
@@ -310,6 +329,7 @@ export function subscribeToFirestore(callbacks: {
     const unsubMembers = onSnapshot(
       collection(db, COLLECTIONS.MEMBERS),
       (snapshot) => {
+        recordFirebaseRead(COLLECTIONS.MEMBERS, Math.max(1, snapshot.docChanges().length));
         const membersList: Member[] = [];
         snapshot.forEach((d) => {
           membersList.push({ ...d.data(), id: d.id } as Member);
@@ -325,6 +345,7 @@ export function subscribeToFirestore(callbacks: {
     const unsubPayments = onSnapshot(
       collection(db, COLLECTIONS.PAYMENTS),
       (snapshot) => {
+        recordFirebaseRead(COLLECTIONS.PAYMENTS, Math.max(1, snapshot.docChanges().length));
         const paymentsList: Payment[] = [];
         snapshot.forEach((d) => {
           paymentsList.push({ ...d.data(), id: d.id } as Payment);
@@ -340,6 +361,7 @@ export function subscribeToFirestore(callbacks: {
     const unsubClaims = onSnapshot(
       collection(db, COLLECTIONS.CLAIMS),
       (snapshot) => {
+        recordFirebaseRead(COLLECTIONS.CLAIMS, Math.max(1, snapshot.docChanges().length));
         const claimsList: BenefitClaim[] = [];
         snapshot.forEach((d) => {
           claimsList.push({ ...d.data(), id: d.id } as BenefitClaim);
@@ -355,6 +377,7 @@ export function subscribeToFirestore(callbacks: {
     const unsubSettings = onSnapshot(
       doc(db, COLLECTIONS.SETTINGS, 'main_config'),
       (docSnap) => {
+        recordFirebaseRead(COLLECTIONS.SETTINGS, 1);
         if (docSnap.exists()) {
           callbacks.onSettingsChange?.(docSnap.data() as SystemSettings);
         }
@@ -368,6 +391,7 @@ export function subscribeToFirestore(callbacks: {
     const unsubUsers = onSnapshot(
       collection(db, COLLECTIONS.USERS),
       (snapshot) => {
+        recordFirebaseRead(COLLECTIONS.USERS, Math.max(1, snapshot.docChanges().length));
         const usersList: AppUser[] = [];
         snapshot.forEach((d) => {
           usersList.push({ ...d.data(), id: d.id } as AppUser);
@@ -385,6 +409,7 @@ export function subscribeToFirestore(callbacks: {
     const unsubClusters = onSnapshot(
       collection(db, COLLECTIONS.CLUSTERS),
       (snapshot) => {
+        recordFirebaseRead(COLLECTIONS.CLUSTERS, Math.max(1, snapshot.docChanges().length));
         const clustersList: ClusterMaster[] = [];
         snapshot.forEach((d) => {
           clustersList.push({ ...d.data(), id: d.id } as ClusterMaster);
@@ -403,6 +428,7 @@ export function subscribeToFirestore(callbacks: {
     const unsubBenefits = onSnapshot(
       collection(db, COLLECTIONS.BENEFITS),
       (snapshot) => {
+        recordFirebaseRead(COLLECTIONS.BENEFITS, Math.max(1, snapshot.docChanges().length));
         const benefitsList: BenefitMaster[] = [];
         snapshot.forEach((d) => {
           benefitsList.push({ ...d.data(), id: d.id } as BenefitMaster);
@@ -421,6 +447,7 @@ export function subscribeToFirestore(callbacks: {
     const unsubFinancials = onSnapshot(
       doc(db, COLLECTIONS.META, 'financials'),
       (docSnap) => {
+        recordFirebaseRead(COLLECTIONS.META, 1);
         if (docSnap.exists()) {
           const data = docSnap.data();
           const baseBalance = typeof data?.baseFundBalance === 'number' ? data.baseFundBalance : 0;
@@ -428,6 +455,7 @@ export function subscribeToFirestore(callbacks: {
         } else {
           // Check init_status if transactions were cleared
           getDoc(doc(db, COLLECTIONS.META, 'init_status')).then((initSnap) => {
+            recordFirebaseRead(COLLECTIONS.META, 1);
             if (initSnap && initSnap.exists() && (initSnap.data()?.transactionsCleared || initSnap.data()?.isCleared)) {
               callbacks.onFinancialsChange?.(0);
             }
@@ -443,6 +471,7 @@ export function subscribeToFirestore(callbacks: {
     const unsubAmbulance = onSnapshot(
       collection(db, COLLECTIONS.AMBULANCE_ORDERS),
       (snapshot) => {
+        recordFirebaseRead(COLLECTIONS.AMBULANCE_ORDERS, Math.max(1, snapshot.docChanges().length));
         const ordersList: AmbulanceOrder[] = [];
         snapshot.forEach((d) => {
           ordersList.push({ ...d.data(), id: d.id } as AmbulanceOrder);
@@ -458,6 +487,7 @@ export function subscribeToFirestore(callbacks: {
     const unsubFuneral = onSnapshot(
       collection(db, COLLECTIONS.FUNERAL_SCHEDULES),
       (snapshot) => {
+        recordFirebaseRead(COLLECTIONS.FUNERAL_SCHEDULES, Math.max(1, snapshot.docChanges().length));
         const schedList: FuneralSchedule[] = [];
         snapshot.forEach((d) => {
           schedList.push({ ...d.data(), id: d.id } as FuneralSchedule);
@@ -473,6 +503,7 @@ export function subscribeToFirestore(callbacks: {
     const unsubInventory = onSnapshot(
       collection(db, COLLECTIONS.FUNERAL_INVENTORY),
       (snapshot) => {
+        recordFirebaseRead(COLLECTIONS.FUNERAL_INVENTORY, Math.max(1, snapshot.docChanges().length));
         const itemList: FuneralInventoryItem[] = [];
         snapshot.forEach((d) => {
           itemList.push({ ...d.data(), id: d.id } as FuneralInventoryItem);
@@ -488,6 +519,7 @@ export function subscribeToFirestore(callbacks: {
     const unsubInventoryLoans = onSnapshot(
       collection(db, COLLECTIONS.FUNERAL_INVENTORY_LOANS),
       (snapshot) => {
+        recordFirebaseRead(COLLECTIONS.FUNERAL_INVENTORY_LOANS, Math.max(1, snapshot.docChanges().length));
         const loanList: FuneralInventoryLoan[] = [];
         snapshot.forEach((d) => {
           loanList.push({ ...d.data(), id: d.id } as FuneralInventoryLoan);
@@ -512,6 +544,7 @@ export async function syncBaseFundBalanceToCloud(balance: number): Promise<void>
   const metaRef = doc(db, COLLECTIONS.META, 'financials');
   try {
     await setDoc(metaRef, { baseFundBalance: balance }, { merge: true });
+    recordFirebaseWrite(COLLECTIONS.META, 1);
   } catch (error: any) {
     console.warn('Firestore syncBaseFundBalanceToCloud notice:', error?.message);
   }
@@ -524,6 +557,7 @@ export async function syncBenefitToCloud(benefit: BenefitMaster): Promise<void> 
   const ref = doc(db, COLLECTIONS.BENEFITS, benefit.id);
   try {
     await setDoc(ref, benefit, { merge: true });
+    recordFirebaseWrite(COLLECTIONS.BENEFITS, 1);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.BENEFITS}/${benefit.id}`);
@@ -541,6 +575,7 @@ export async function syncBenefitsBatchToCloud(benefits: BenefitMaster[]): Promi
   });
   try {
     await batch.commit();
+    recordFirebaseWrite(COLLECTIONS.BENEFITS, benefits.length);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.WRITE, COLLECTIONS.BENEFITS);
@@ -554,6 +589,7 @@ export async function deleteBenefitFromCloud(benefitId: string): Promise<void> {
   const ref = doc(db, COLLECTIONS.BENEFITS, benefitId);
   try {
     await deleteDoc(ref);
+    recordFirebaseWrite(COLLECTIONS.BENEFITS, 1, true);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.DELETE, `${COLLECTIONS.BENEFITS}/${benefitId}`);
@@ -567,6 +603,7 @@ export async function syncClusterToCloud(cluster: ClusterMaster): Promise<void> 
   const ref = doc(db, COLLECTIONS.CLUSTERS, cluster.id);
   try {
     await setDoc(ref, cluster, { merge: true });
+    recordFirebaseWrite(COLLECTIONS.CLUSTERS, 1);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.CLUSTERS}/${cluster.id}`);
@@ -584,6 +621,7 @@ export async function syncClustersBatchToCloud(clusters: ClusterMaster[]): Promi
   });
   try {
     await batch.commit();
+    recordFirebaseWrite(COLLECTIONS.CLUSTERS, clusters.length);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.WRITE, COLLECTIONS.CLUSTERS);
@@ -597,6 +635,7 @@ export async function deleteClusterFromCloud(clusterId: string): Promise<void> {
   const ref = doc(db, COLLECTIONS.CLUSTERS, clusterId);
   try {
     await deleteDoc(ref);
+    recordFirebaseWrite(COLLECTIONS.CLUSTERS, 1, true);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.DELETE, `${COLLECTIONS.CLUSTERS}/${clusterId}`);
@@ -622,6 +661,7 @@ export async function syncMemberToCloud(member: Member): Promise<boolean> {
     }
 
     await setDoc(ref, safeData, { merge: true });
+    recordFirebaseWrite(COLLECTIONS.MEMBERS, 1);
     return true;
   } catch (error: any) {
     console.warn(`Firestore syncMemberToCloud initial attempt notice for member ${member.id}:`, error?.message);
@@ -638,6 +678,7 @@ export async function syncMemberToCloud(member: Member): Promise<boolean> {
           : '',
       };
       await setDoc(ref, strippedData, { merge: true });
+      recordFirebaseWrite(COLLECTIONS.MEMBERS, 1);
       return true;
     } catch (retryErr: any) {
       if (retryErr?.code === 'permission-denied' || retryErr?.message?.includes('insufficient permissions')) {
@@ -666,6 +707,7 @@ export async function syncMembersBatchToCloud(members: Member[]): Promise<void> 
   });
   try {
     await batch.commit();
+    recordFirebaseWrite(COLLECTIONS.MEMBERS, members.length);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.WRITE, COLLECTIONS.MEMBERS);
@@ -701,6 +743,7 @@ export async function syncPaymentToCloud(payment: Payment): Promise<void> {
   try {
     const sanitized = sanitizeFirestoreData(payment);
     await setDoc(ref, sanitized, { merge: true });
+    recordFirebaseWrite(COLLECTIONS.PAYMENTS, 1);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.PAYMENTS}/${payment.id}`);
@@ -715,6 +758,7 @@ export async function syncClaimToCloud(claim: BenefitClaim): Promise<void> {
   try {
     const sanitized = sanitizeFirestoreData(claim);
     await setDoc(ref, sanitized, { merge: true });
+    recordFirebaseWrite(COLLECTIONS.CLAIMS, 1);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.CLAIMS}/${claim.id}`);
@@ -729,6 +773,7 @@ export async function syncAmbulanceOrderToCloud(order: AmbulanceOrder): Promise<
   try {
     const sanitized = sanitizeFirestoreData(order);
     await setDoc(ref, sanitized, { merge: true });
+    recordFirebaseWrite(COLLECTIONS.AMBULANCE_ORDERS, 1);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.AMBULANCE_ORDERS}/${order.id}`);
@@ -743,6 +788,7 @@ export async function syncFuneralScheduleToCloud(schedule: FuneralSchedule): Pro
   try {
     const sanitized = sanitizeFirestoreData(schedule);
     await setDoc(ref, sanitized, { merge: true });
+    recordFirebaseWrite(COLLECTIONS.FUNERAL_SCHEDULES, 1);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.FUNERAL_SCHEDULES}/${schedule.id}`);
@@ -757,6 +803,7 @@ export async function syncFuneralInventoryItemToCloud(item: FuneralInventoryItem
   try {
     const sanitized = sanitizeFirestoreData(item);
     await setDoc(ref, sanitized, { merge: true });
+    recordFirebaseWrite(COLLECTIONS.FUNERAL_INVENTORY, 1);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.FUNERAL_INVENTORY}/${item.id}`);
@@ -771,6 +818,7 @@ export async function syncFuneralInventoryLoanToCloud(loan: FuneralInventoryLoan
   try {
     const sanitized = sanitizeFirestoreData(loan);
     await setDoc(ref, sanitized, { merge: true });
+    recordFirebaseWrite(COLLECTIONS.FUNERAL_INVENTORY_LOANS, 1);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.FUNERAL_INVENTORY_LOANS}/${loan.id}`);
@@ -790,6 +838,7 @@ export async function syncSettingsToCloud(settings: SystemSettings): Promise<voi
       ),
     };
     await setDoc(ref, cleanedSettings, { merge: true });
+    recordFirebaseWrite(COLLECTIONS.SETTINGS, 1);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.SETTINGS}/main_config`);
@@ -804,6 +853,7 @@ export async function syncUserToCloud(user: AppUser): Promise<void> {
   try {
     const sanitized = sanitizeFirestoreData(user);
     await setDoc(ref, sanitized, { merge: true });
+    recordFirebaseWrite(COLLECTIONS.USERS, 1);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.USERS}/${user.id}`);
@@ -822,6 +872,7 @@ export async function syncUsersBatchToCloud(users: AppUser[]): Promise<void> {
   });
   try {
     await batch.commit();
+    recordFirebaseWrite(COLLECTIONS.USERS, users.length);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.WRITE, COLLECTIONS.USERS);
@@ -838,12 +889,14 @@ export async function deleteMemberFromCloud(memberId: string): Promise<void> {
   const ref = doc(db, COLLECTIONS.MEMBERS, memberId);
   try {
     await deleteDoc(ref);
+    recordFirebaseWrite(COLLECTIONS.MEMBERS, 1, true);
 
     // Also remove associated user account from Firestore
     try {
       const usersSnap = await getDocs(collection(db, COLLECTIONS.USERS));
+      recordFirebaseRead(COLLECTIONS.USERS, Math.max(1, usersSnap.size));
       const userBatch = writeBatch(db);
-      let foundUser = false;
+      let deletedCount = 0;
       usersSnap.forEach((uDoc) => {
         const uData = uDoc.data();
         if (
@@ -851,11 +904,12 @@ export async function deleteMemberFromCloud(memberId: string): Promise<void> {
           uData.memberId === memberId
         ) {
           userBatch.delete(uDoc.ref);
-          foundUser = true;
+          deletedCount++;
         }
       });
-      if (foundUser) {
+      if (deletedCount > 0) {
         await userBatch.commit();
+        recordFirebaseWrite(COLLECTIONS.USERS, deletedCount, true);
       }
     } catch (userErr) {
       console.warn(`Notice while deleting user for member ${memberId}:`, userErr);
@@ -873,6 +927,7 @@ export async function deletePaymentFromCloud(paymentId: string): Promise<void> {
   const ref = doc(db, COLLECTIONS.PAYMENTS, paymentId);
   try {
     await deleteDoc(ref);
+    recordFirebaseWrite(COLLECTIONS.PAYMENTS, 1, true);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.DELETE, `${COLLECTIONS.PAYMENTS}/${paymentId}`);
@@ -886,6 +941,7 @@ export async function deleteClaimFromCloud(claimId: string): Promise<void> {
   const ref = doc(db, COLLECTIONS.CLAIMS, claimId);
   try {
     await deleteDoc(ref);
+    recordFirebaseWrite(COLLECTIONS.CLAIMS, 1, true);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.DELETE, `${COLLECTIONS.CLAIMS}/${claimId}`);
@@ -899,6 +955,7 @@ export async function deleteAmbulanceOrderFromCloud(orderId: string): Promise<vo
   const ref = doc(db, COLLECTIONS.AMBULANCE_ORDERS, orderId);
   try {
     await deleteDoc(ref);
+    recordFirebaseWrite(COLLECTIONS.AMBULANCE_ORDERS, 1, true);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.DELETE, `${COLLECTIONS.AMBULANCE_ORDERS}/${orderId}`);
@@ -911,11 +968,15 @@ export async function deleteAmbulanceOrderFromCloud(orderId: string): Promise<vo
 export async function clearAllAmbulanceOrdersFromCloud(): Promise<void> {
   try {
     const ordersSnap = await getDocs(collection(db, COLLECTIONS.AMBULANCE_ORDERS));
+    recordFirebaseRead(COLLECTIONS.AMBULANCE_ORDERS, Math.max(1, ordersSnap.size));
     const batch = writeBatch(db);
     ordersSnap.forEach((docItem) => {
       batch.delete(docItem.ref);
     });
     await batch.commit();
+    if (ordersSnap.size > 0) {
+      recordFirebaseWrite(COLLECTIONS.AMBULANCE_ORDERS, ordersSnap.size, true);
+    }
     console.log('Successfully cleared all ambulance orders from Cloud Firestore.');
   } catch (error) {
     console.error('Error clearing ambulance orders from Firestore:', error);
@@ -927,6 +988,7 @@ export async function deleteFuneralScheduleFromCloud(scheduleId: string): Promis
   const ref = doc(db, COLLECTIONS.FUNERAL_SCHEDULES, scheduleId);
   try {
     await deleteDoc(ref);
+    recordFirebaseWrite(COLLECTIONS.FUNERAL_SCHEDULES, 1, true);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.DELETE, `${COLLECTIONS.FUNERAL_SCHEDULES}/${scheduleId}`);
@@ -939,11 +1001,15 @@ export async function deleteFuneralScheduleFromCloud(scheduleId: string): Promis
 export async function clearAllFuneralSchedulesFromCloud(): Promise<void> {
   try {
     const schedSnap = await getDocs(collection(db, COLLECTIONS.FUNERAL_SCHEDULES));
+    recordFirebaseRead(COLLECTIONS.FUNERAL_SCHEDULES, Math.max(1, schedSnap.size));
     const batch = writeBatch(db);
     schedSnap.forEach((docItem) => {
       batch.delete(docItem.ref);
     });
     await batch.commit();
+    if (schedSnap.size > 0) {
+      recordFirebaseWrite(COLLECTIONS.FUNERAL_SCHEDULES, schedSnap.size, true);
+    }
     console.log('Successfully cleared all funeral schedules from Cloud Firestore.');
   } catch (error) {
     console.error('Error clearing funeral schedules from Firestore:', error);
@@ -955,11 +1021,12 @@ export async function deleteFuneralInventoryItemFromCloud(itemId: string): Promi
   const ref = doc(db, COLLECTIONS.FUNERAL_INVENTORY, itemId);
   try {
     await deleteDoc(ref);
+    recordFirebaseWrite(COLLECTIONS.FUNERAL_INVENTORY, 1, true);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.DELETE, `${COLLECTIONS.FUNERAL_INVENTORY}/${itemId}`);
     } else {
-      console.warn(`Firestore deleteFuneralInventoryItemFromCloud notice for item ${itemId}:`, error?.message);
+      console.warn(`Firestore deleteFuneralInventoryItemToCloud notice for item ${itemId}:`, error?.message);
     }
   }
 }
@@ -968,6 +1035,7 @@ export async function deleteFuneralInventoryLoanFromCloud(loanId: string): Promi
   const ref = doc(db, COLLECTIONS.FUNERAL_INVENTORY_LOANS, loanId);
   try {
     await deleteDoc(ref);
+    recordFirebaseWrite(COLLECTIONS.FUNERAL_INVENTORY_LOANS, 1, true);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.DELETE, `${COLLECTIONS.FUNERAL_INVENTORY_LOANS}/${loanId}`);
@@ -981,6 +1049,7 @@ export async function deleteUserFromCloud(userId: string): Promise<void> {
   const ref = doc(db, COLLECTIONS.USERS, userId);
   try {
     await deleteDoc(ref);
+    recordFirebaseWrite(COLLECTIONS.USERS, 1, true);
   } catch (error: any) {
     if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
       handleFirestoreError(error, OperationType.DELETE, `${COLLECTIONS.USERS}/${userId}`);
@@ -996,11 +1065,15 @@ export async function deleteUserFromCloud(userId: string): Promise<void> {
 export async function clearAllClaimsFromCloud(): Promise<void> {
   try {
     const claimsSnap = await getDocs(collection(db, COLLECTIONS.CLAIMS));
+    recordFirebaseRead(COLLECTIONS.CLAIMS, Math.max(1, claimsSnap.size));
     const batch = writeBatch(db);
     claimsSnap.forEach((docItem) => {
       batch.delete(docItem.ref);
     });
     await batch.commit();
+    if (claimsSnap.size > 0) {
+      recordFirebaseWrite(COLLECTIONS.CLAIMS, claimsSnap.size, true);
+    }
     console.log('Successfully cleared all claims from Cloud Firestore.');
   } catch (error) {
     console.error('Error clearing claims from Firestore:', error);
@@ -1015,17 +1088,21 @@ export async function cleanupDemoClaimsFromCloud(): Promise<void> {
   try {
     const demoIds = ['claim-1', 'claim-2', 'claim-3'];
     const batch = writeBatch(db);
-    let hasDeletes = false;
+    let deleteCount = 0;
     for (const id of demoIds) {
       const docRef = doc(db, COLLECTIONS.CLAIMS, id);
       const snap = await getDoc(docRef).catch(() => null);
+      if (snap) {
+        recordFirebaseRead(COLLECTIONS.CLAIMS, 1);
+      }
       if (snap && snap.exists()) {
         batch.delete(docRef);
-        hasDeletes = true;
+        deleteCount++;
       }
     }
-    if (hasDeletes) {
+    if (deleteCount > 0) {
       await batch.commit();
+      recordFirebaseWrite(COLLECTIONS.CLAIMS, deleteCount, true);
       console.log('Cleaned up legacy demo claims from Cloud Firestore.');
     }
   } catch (err) {
@@ -1042,29 +1119,36 @@ export async function clearTransactionsFromCloud(): Promise<void> {
   try {
     // 1. Delete all payments in safe chunked batches
     const paymentsSnap = await getDocs(collection(db, COLLECTIONS.PAYMENTS));
+    recordFirebaseRead(COLLECTIONS.PAYMENTS, Math.max(1, paymentsSnap.size));
     const paymentDocs = paymentsSnap.docs;
     for (let i = 0; i < paymentDocs.length; i += 400) {
       const batch = writeBatch(db);
-      paymentDocs.slice(i, i + 400).forEach((docItem) => {
+      const chunk = paymentDocs.slice(i, i + 400);
+      chunk.forEach((docItem) => {
         batch.delete(docItem.ref);
       });
       await batch.commit();
+      recordFirebaseWrite(COLLECTIONS.PAYMENTS, chunk.length, true);
     }
 
     // 2. Delete all claims in safe chunked batches
     const claimsSnap = await getDocs(collection(db, COLLECTIONS.CLAIMS));
+    recordFirebaseRead(COLLECTIONS.CLAIMS, Math.max(1, claimsSnap.size));
     const claimDocs = claimsSnap.docs;
     for (let i = 0; i < claimDocs.length; i += 400) {
       const batch = writeBatch(db);
-      claimDocs.slice(i, i + 400).forEach((docItem) => {
+      const chunk = claimDocs.slice(i, i + 400);
+      chunk.forEach((docItem) => {
         batch.delete(docItem.ref);
       });
       await batch.commit();
+      recordFirebaseWrite(COLLECTIONS.CLAIMS, chunk.length, true);
     }
 
     // 3. Reset financials balance in meta
     const metaRef = doc(db, COLLECTIONS.META, 'financials');
     await setDoc(metaRef, { baseFundBalance: 0 }, { merge: true });
+    recordFirebaseWrite(COLLECTIONS.META, 1);
 
     // 4. Update init_status so demo transactions will never auto-seed again
     const metaInitRef = doc(db, COLLECTIONS.META, 'init_status');
@@ -1077,6 +1161,7 @@ export async function clearTransactionsFromCloud(): Promise<void> {
       },
       { merge: true }
     );
+    recordFirebaseWrite(COLLECTIONS.META, 1);
 
     // 5. Local storage marker
     if (typeof window !== 'undefined') {
@@ -1098,38 +1183,47 @@ export async function clearAllDemoDataFromCloud(): Promise<void> {
   try {
     // 1. Delete all members
     const membersSnap = await getDocs(collection(db, COLLECTIONS.MEMBERS));
+    recordFirebaseRead(COLLECTIONS.MEMBERS, Math.max(1, membersSnap.size));
     const batch1 = writeBatch(db);
     membersSnap.forEach((docItem) => {
       batch1.delete(docItem.ref);
     });
     await batch1.commit();
+    if (membersSnap.size > 0) recordFirebaseWrite(COLLECTIONS.MEMBERS, membersSnap.size, true);
 
     // 2. Delete all payments
     const paymentsSnap = await getDocs(collection(db, COLLECTIONS.PAYMENTS));
+    recordFirebaseRead(COLLECTIONS.PAYMENTS, Math.max(1, paymentsSnap.size));
     const batch2 = writeBatch(db);
     paymentsSnap.forEach((docItem) => {
       batch2.delete(docItem.ref);
     });
     await batch2.commit();
+    if (paymentsSnap.size > 0) recordFirebaseWrite(COLLECTIONS.PAYMENTS, paymentsSnap.size, true);
 
     // 3. Delete all claims
     const claimsSnap = await getDocs(collection(db, COLLECTIONS.CLAIMS));
+    recordFirebaseRead(COLLECTIONS.CLAIMS, Math.max(1, claimsSnap.size));
     const batch3 = writeBatch(db);
     claimsSnap.forEach((docItem) => {
       batch3.delete(docItem.ref);
     });
     await batch3.commit();
+    if (claimsSnap.size > 0) recordFirebaseWrite(COLLECTIONS.CLAIMS, claimsSnap.size, true);
 
     // 4. Delete inventory loans
     const loansSnap = await getDocs(collection(db, COLLECTIONS.FUNERAL_INVENTORY_LOANS));
+    recordFirebaseRead(COLLECTIONS.FUNERAL_INVENTORY_LOANS, Math.max(1, loansSnap.size));
     const batchLoans = writeBatch(db);
     loansSnap.forEach((docItem) => {
       batchLoans.delete(docItem.ref);
     });
     await batchLoans.commit();
+    if (loansSnap.size > 0) recordFirebaseWrite(COLLECTIONS.FUNERAL_INVENTORY_LOANS, loansSnap.size, true);
 
     // 5. Reset users collection to default admin/staff only (remove member accounts)
     const usersSnap = await getDocs(collection(db, COLLECTIONS.USERS));
+    recordFirebaseRead(COLLECTIONS.USERS, Math.max(1, usersSnap.size));
     const batch4 = writeBatch(db);
     usersSnap.forEach((docItem) => {
       batch4.delete(docItem.ref);
@@ -1141,6 +1235,8 @@ export async function clearAllDemoDataFromCloud(): Promise<void> {
       batch4.set(ref, u);
     });
     await batch4.commit();
+    recordFirebaseWrite(COLLECTIONS.USERS, usersSnap.size, true);
+    recordFirebaseWrite(COLLECTIONS.USERS, adminUsers.length);
 
     // 6. Reset financials balance and update init_status flag
     const metaRef = doc(db, COLLECTIONS.META, 'financials');
@@ -1148,6 +1244,7 @@ export async function clearAllDemoDataFromCloud(): Promise<void> {
 
     const metaInitRef = doc(db, COLLECTIONS.META, 'init_status');
     await setDoc(metaInitRef, { initialized: true, isCleared: true, clearedAt: new Date().toISOString() });
+    recordFirebaseWrite(COLLECTIONS.META, 2);
 
     console.log('Successfully cleared all demo data from Cloud Firestore.');
   } catch (error) {
@@ -1220,6 +1317,18 @@ export async function restoreDemoDataToCloud(): Promise<void> {
     batch.set(metaRef, { baseFundBalance: INITIAL_BASE_FUND_BALANCE });
 
     await batch.commit();
+    recordFirebaseWrite(COLLECTIONS.MEMBERS, sampleDemoMembers.length);
+    recordFirebaseWrite(COLLECTIONS.PAYMENTS, sampleDemoPayments.length);
+    recordFirebaseWrite(COLLECTIONS.CLAIMS, sampleDemoClaims.length);
+    recordFirebaseWrite(COLLECTIONS.USERS, initialUsers.length);
+    recordFirebaseWrite(COLLECTIONS.CLUSTERS, DEFAULT_CLUSTERS.length);
+    recordFirebaseWrite(COLLECTIONS.BENEFITS, DEFAULT_BENEFITS.length);
+    recordFirebaseWrite(COLLECTIONS.AMBULANCE_ORDERS, sampleInitialAmbulanceOrders.length);
+    recordFirebaseWrite(COLLECTIONS.FUNERAL_SCHEDULES, sampleInitialFuneralSchedules.length);
+    recordFirebaseWrite(COLLECTIONS.FUNERAL_INVENTORY, sampleInitialInventoryItems.length);
+    recordFirebaseWrite(COLLECTIONS.FUNERAL_INVENTORY_LOANS, sampleInitialInventoryLoans.length);
+    recordFirebaseWrite(COLLECTIONS.SETTINGS, 1);
+    recordFirebaseWrite(COLLECTIONS.META, 1);
     console.log('Successfully restored demo data to Cloud Firestore.');
   } catch (error) {
     console.error('Error restoring demo data to Firestore:', error);
