@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Member, Payment, SystemSettings, PaymentType, PaymentMethod, AppUser } from '../types';
 import { formatIDR, getMemberForUser } from '../lib/storage';
-import { getSystemConfiguredPeriod } from '../lib/receiptUtils';
+import { getSystemConfiguredPeriod, getEffectivePaymentPeriod } from '../lib/receiptUtils';
 import {
   CreditCard,
   Upload,
@@ -24,16 +24,19 @@ import {
   Banknote,
   LayoutDashboard,
   HelpCircle,
+  Trash2,
 } from 'lucide-react';
 import { KtaQrScannerModal } from './KtaQrScannerModal';
 import { PaymentConfirmationGuideModal } from './PaymentConfirmationGuideModal';
 
 interface PaymentFormProps {
   members: Member[];
+  payments?: Payment[];
   settings: SystemSettings;
   activeUser?: AppUser;
   selectedMemberForPayment?: Member | null;
   onAddPayment: (payment: Payment) => void;
+  onDeletePayment?: (paymentId: string) => void;
   onNavigateToValidation?: () => void;
   onNavigateToVerification?: () => void;
   onNavigateToDashboard?: () => void;
@@ -41,18 +44,22 @@ interface PaymentFormProps {
 
 export const PaymentForm: React.FC<PaymentFormProps> = ({
   members,
+  payments = [],
   settings,
   activeUser,
   selectedMemberForPayment,
   onAddPayment,
+  onDeletePayment,
   onNavigateToValidation,
   onNavigateToVerification,
   onNavigateToDashboard,
 }) => {
+  const isAdminUser = activeUser?.authority === 'Admin';
   const isAnggota = activeUser?.authority === 'Anggota';
   const isKetuaRt = activeUser?.authority === 'Ketua RT (Cluster)';
   const isReadOnlyRole = activeUser?.authority === 'Ketua RW' || activeUser?.authority === 'Ketua DKM';
   const userRtCluster = activeUser?.cluster;
+  const [deleteTargetPayment, setDeleteTargetPayment] = useState<Payment | null>(null);
 
   const myLinkedMember = isAnggota ? getMemberForUser(activeUser, members) || members.find(m => m?.name && activeUser?.name && m.name.toLowerCase() === activeUser.name.toLowerCase()) : null;
 
@@ -258,6 +265,45 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
   // Eligible to pay if verified by RT (Menunggu Pembayaran, Menunggu Validasi Bendahara, or Aktif)
   const isEligibleToPay = activeMember && !isPendingVerification && !isRejected && !isDeceased && (activeMember.verificationStatus === 'Verified' || isAwaitingPayment || isAwaitingTreasurer || isMemberActive);
 
+  // Riwayat pembayaran milik anggota yang sedang dipilih pada periode yang sama
+  const existingSamePeriodPayments = useMemo(() => {
+    if (!activeMember || !payments.length) return [];
+    const targetPeriod = (periodMonth || systemPeriod || '').toLowerCase().trim();
+    return payments.filter((p) => {
+      if (!p || p.status === 'Rejected') return false;
+      const sameMem =
+        (p.memberId && p.memberId === activeMember.id) ||
+        (p.memberNumber && activeMember.memberNumber && p.memberNumber === activeMember.memberNumber) ||
+        (p.memberName && activeMember.name && p.memberName.toLowerCase().trim() === activeMember.name.toLowerCase().trim());
+      if (!sameMem) return false;
+      const pPeriod = getEffectivePaymentPeriod(p, settings).toLowerCase().trim();
+      const rawPeriod = (p.periodMonth || '').toLowerCase().trim();
+      return (pPeriod === targetPeriod || rawPeriod === targetPeriod) && p.paymentType === paymentType;
+    });
+  }, [activeMember, payments, periodMonth, systemPeriod, paymentType, settings]);
+
+  // Deteksi seluruh pembayaran duplikat periode untuk Admin
+  const allDuplicatePayments = useMemo(() => {
+    const groups = new Map<string, Payment[]>();
+    payments.forEach((p) => {
+      if (!p || p.status === 'Rejected') return;
+      const memberKey = (p.memberId || p.memberNumber || (p.memberName || '').toLowerCase().trim()).toLowerCase();
+      const periodKey = getEffectivePaymentPeriod(p, settings).toLowerCase().trim();
+      const typeKey = (p.paymentType || 'Iuran Tahunan').toLowerCase().trim();
+      const groupKey = `${memberKey}::${typeKey}::${periodKey}`;
+      const list = groups.get(groupKey) || [];
+      list.push(p);
+      groups.set(groupKey, list);
+    });
+    const dups: Payment[] = [];
+    groups.forEach((list) => {
+      if (list.length > 1) {
+        dups.push(...list);
+      }
+    });
+    return dups;
+  }, [payments, settings]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeMember) {
@@ -273,6 +319,17 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
     if (!proofImage && paymentMethod !== 'Tunai') {
       alert('Mohon unggah bukti transfer / pembayaran terlebih dahulu.');
       return;
+    }
+
+    if (existingSamePeriodPayments.length > 0) {
+      const confirmDup = window.confirm(
+        `PERINGATAN KONFIRMASI GANDA:\n\n` +
+          `Warga "${activeMember.name}" sudah memiliki ${existingSamePeriodPayments.length} data konfirmasi pembayaran untuk ${paymentType} periode "${periodMonth}" (${existingSamePeriodPayments.map((p) => `${p.receiptNumber || '-'} - ${p.status}`).join(', ')}).\n\n` +
+          `Apakah Anda yakin tetap ingin mengirim konfirmasi pembayaran lagi untuk periode yang sama?`
+      );
+      if (!confirmDup) {
+        return;
+      }
     }
 
     const nextId = 'pay-' + Date.now();
@@ -657,6 +714,65 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                 </div>
               </div>
 
+              {/* Peringatan & Tombol Hapus jika warga terpilih sudah punya konfirmasi pembayaran pada periode yang sama */}
+              {existingSamePeriodPayments.length > 0 && (
+                <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-xl text-xs space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-extrabold text-amber-950">
+                          Tercatat {existingSamePeriodPayments.length} Konfirmasi Pembayaran untuk {activeMember?.name} ({periodMonth})
+                        </p>
+                        <p className="text-[11px] text-amber-800 mt-0.5">
+                          {existingSamePeriodPayments.length > 1
+                            ? 'Terdapat konfirmasi pembayaran lebih dari sekali pada periode yang sama.'
+                            : 'Warga ini sudah pernah mengirimkan konfirmasi pembayaran untuk periode ini.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 pt-1">
+                    {existingSamePeriodPayments.map((pay) => (
+                      <div
+                        key={pay.id}
+                        className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-white border border-amber-200 rounded-lg"
+                      >
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono font-bold text-slate-800 text-[11px]">{pay.receiptNumber}</span>
+                            <span className="font-extrabold text-emerald-700 font-mono text-xs">{formatIDR(pay.amount)}</span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                pay.status === 'Verified'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-amber-100 text-amber-900'
+                              }`}
+                            >
+                              {pay.status}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-500 font-mono">
+                            {pay.paymentMethod} • {pay.createdAt}
+                          </p>
+                        </div>
+                        {isAdminUser && onDeletePayment && (
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTargetPayment(pay)}
+                            className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 transition-all cursor-pointer"
+                            title="Hapus data pembayaran ini (Khusus Admin)"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Hapus</span>
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Nominal Amount */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -936,6 +1052,173 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
               >
                 <HelpCircle className="w-4 h-4" />
                 <span>Buka Panduan Lengkap & Unduh PDF</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PANEL KHUSUS ADMIN: DAFTAR PEMBAYARAN DUPLIKAT / KELOLA HAPUS DATA PEMBAYARAN */}
+      {isAdminUser && onDeletePayment && payments.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-[11px] font-bold mb-1">
+                <Trash2 className="w-3 h-3" />
+                <span>Otoritas Admin • Kelola & Hapus Data Pembayaran</span>
+              </div>
+              <h3 className="text-base font-extrabold text-slate-900">
+                Daftar Konfirmasi Pembayaran Warga ({payments.length} Transaksi)
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Jika terdapat warga yang melakukan konfirmasi pembayaran lebih dari sekali pada periode yang sama, Admin dapat menghapus data duplikat di bawah ini.
+              </p>
+            </div>
+            {allDuplicatePayments.length > 0 && (
+              <span className="px-3 py-1.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-extrabold inline-flex items-center gap-1.5 self-start sm:self-center">
+                <Copy className="w-3.5 h-3.5 text-amber-700" />
+                <span>{allDuplicatePayments.length} Data Duplikat Periode Terdeteksi</span>
+              </span>
+            )}
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-900 text-white font-bold uppercase tracking-wider text-[11px]">
+                  <th className="py-3 px-3.5 rounded-tl-xl">Nama Warga & NPA</th>
+                  <th className="py-3 px-3.5">Jenis & Periode</th>
+                  <th className="py-3 px-3.5">Nominal</th>
+                  <th className="py-3 px-3.5">Waktu & Metode</th>
+                  <th className="py-3 px-3.5">Status</th>
+                  <th className="py-3 px-3.5 text-right rounded-tr-xl">Aksi Admin</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {payments.map((pay) => {
+                  const isDup = allDuplicatePayments.some((d) => d.id === pay.id);
+                  return (
+                    <tr
+                      key={pay.id}
+                      className={isDup ? 'bg-amber-50/70 hover:bg-amber-100/60' : 'hover:bg-slate-50'}
+                    >
+                      <td className="py-3 px-3.5">
+                        <div className="font-extrabold text-slate-900">{pay.memberName}</div>
+                        <div className="font-mono text-[10px] text-slate-500">{pay.memberNumber} • {pay.receiptNumber}</div>
+                      </td>
+                      <td className="py-3 px-3.5">
+                        <div className="font-bold text-slate-800">{pay.paymentType}</div>
+                        <div className="text-[11px] text-slate-600">{getEffectivePaymentPeriod(pay, settings)}</div>
+                        {isDup && (
+                          <span className="mt-0.5 px-1.5 py-0.5 bg-amber-200 text-amber-950 font-black text-[10px] rounded inline-flex items-center gap-1">
+                            <Copy className="w-2.5 h-2.5" />
+                            <span>Duplikat Periode</span>
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3.5 font-mono font-extrabold text-emerald-700">
+                        {formatIDR(pay.amount)}
+                      </td>
+                      <td className="py-3 px-3.5">
+                        <div className="font-semibold text-slate-700">{pay.paymentMethod}</div>
+                        <div className="font-mono text-[10px] text-slate-500">{pay.createdAt}</div>
+                      </td>
+                      <td className="py-3 px-3.5">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            pay.status === 'Verified'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : pay.status === 'Rejected'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-900'
+                          }`}
+                        >
+                          {pay.status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3.5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTargetPayment(pay)}
+                          className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 transition-all cursor-pointer"
+                          title="Hapus data pembayaran ini"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Hapus</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KONFIRMASI HAPUS DATA PEMBAYARAN DI HALAMAN INPUT IURAN */}
+      {deleteTargetPayment && onDeletePayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 border border-rose-100">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-rose-100 text-rose-700 rounded-xl shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base">Hapus Data Pembayaran?</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Konfirmasi penghapusan data pembayaran oleh Admin.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1.5">
+              <div className="flex justify-between gap-2">
+                <span className="text-slate-500">Nama Warga:</span>
+                <span className="font-extrabold text-slate-900 text-right">{deleteTargetPayment.memberName}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-slate-500">No. Anggota / Kwitansi:</span>
+                <span className="font-mono font-bold text-slate-800 text-right">
+                  {deleteTargetPayment.memberNumber} • {deleteTargetPayment.receiptNumber || '-'}
+                </span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-slate-500">Jenis & Periode:</span>
+                <span className="font-bold text-slate-800 text-right">
+                  {deleteTargetPayment.paymentType} ({getEffectivePaymentPeriod(deleteTargetPayment, settings)})
+                </span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-slate-500">Nominal & Status:</span>
+                <span className="font-mono font-black text-emerald-700 text-right">
+                  {formatIDR(deleteTargetPayment.amount)} ({deleteTargetPayment.status})
+                </span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-slate-500">Waktu Konfirmasi:</span>
+                <span className="font-mono text-slate-600 text-right">{deleteTargetPayment.createdAt}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTargetPayment(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeletePayment(deleteTargetPayment.id);
+                  setDeleteTargetPayment(null);
+                }}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors inline-flex items-center gap-1.5 shadow-sm"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Ya, Hapus Pembayaran</span>
               </button>
             </div>
           </div>

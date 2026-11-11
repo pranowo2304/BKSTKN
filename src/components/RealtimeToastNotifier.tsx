@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Siren, HeartHandshake, AlertCircle, X, ChevronRight, BellRing, CalendarDays } from 'lucide-react';
 import { AppNotification } from '../types';
 
@@ -56,6 +56,11 @@ const ToastSingleItem: React.FC<ToastSingleItemProps> = ({ toast, onDismiss, onN
   const [progress, setProgress] = useState(100);
   const [isHovered, setIsHovered] = useState(false);
   const durationMs = 7500;
+  const onDismissRef = useRef(onDismiss);
+
+  useEffect(() => {
+    onDismissRef.current = onDismiss;
+  }, [onDismiss]);
 
   useEffect(() => {
     if (isHovered) return;
@@ -66,7 +71,6 @@ const ToastSingleItem: React.FC<ToastSingleItemProps> = ({ toast, onDismiss, onN
       setProgress((prev) => {
         if (prev <= step) {
           clearInterval(timer);
-          onDismiss();
           return 0;
         }
         return prev - step;
@@ -74,7 +78,13 @@ const ToastSingleItem: React.FC<ToastSingleItemProps> = ({ toast, onDismiss, onN
     }, intervalTime);
 
     return () => clearInterval(timer);
-  }, [isHovered, onDismiss]);
+  }, [isHovered]);
+
+  useEffect(() => {
+    if (progress <= 0) {
+      onDismissRef.current();
+    }
+  }, [progress]);
 
   const isAmbulance = toast.category === 'ambulance' || toast.title.toLowerCase().includes('ambulans');
   const isClaim = toast.category === 'claim' || toast.title.toLowerCase().includes('klaim');

@@ -1968,6 +1968,88 @@ export default function App() {
     }
   };
 
+  // DELETE SINGLE PAYMENT RECORD (Khusus Admin - misalnya jika ada konfirmasi pembayaran ganda pada periode yang sama)
+  const handleDeletePayment = (paymentId: string) => {
+    if (activeUser?.authority !== 'Admin') {
+      alert('Akses Ditolak: Hanya Admin yang memiliki wewenang menghapus data pembayaran.');
+      return;
+    }
+
+    const targetPayment = payments.find((p) => p.id === paymentId);
+    if (!targetPayment) return;
+
+    const remainingPayments = payments.filter((p) => p.id !== paymentId);
+    setPayments(remainingPayments);
+    savePayments(remainingPayments);
+    deletePaymentFromCloud(paymentId).catch((e) => console.warn('Cloud delete payment error:', e));
+
+    if (selectedReceiptPayment?.id === paymentId) {
+      setSelectedReceiptPayment(null);
+    }
+
+    // Cek apakah warga terkait masih memiliki pembayaran lain yang aktif (Verified / Pending)
+    const memberRemainingPayments = remainingPayments.filter(
+      (p) =>
+        p &&
+        p.status !== 'Rejected' &&
+        (p.memberId === targetPayment.memberId ||
+          (targetPayment.memberNumber && p.memberNumber === targetPayment.memberNumber) ||
+          (targetPayment.memberName &&
+            p.memberName &&
+            p.memberName.toLowerCase().trim() === targetPayment.memberName.toLowerCase().trim()))
+    );
+
+    const hasRemainingVerified = memberRemainingPayments.some((p) => p.status === 'Verified');
+    const hasRemainingPending = memberRemainingPayments.some((p) => p.status === 'Pending');
+
+    // Jika warga sudah tidak punya pembayaran Verified/Pending sama sekali padahal statusnya Menunggu Validasi Bendahara,
+    // kembalikan statusnya ke Menunggu Pembayaran (jika masih punya pembayaran lain di periode yang sama, status tidak berubah)
+    if (!hasRemainingVerified && !hasRemainingPending) {
+      let updatedMemberObj: Member | null = null;
+      const updatedMembers = members.map((m) => {
+        if (
+          m.id === targetPayment.memberId ||
+          (targetPayment.memberNumber && m.memberNumber === targetPayment.memberNumber)
+        ) {
+          if (m.status === 'Menunggu Validasi Bendahara') {
+            const mUpdated: Member = {
+              ...m,
+              status: 'Menunggu Pembayaran' as const,
+            };
+            updatedMemberObj = mUpdated;
+            return mUpdated;
+          }
+        }
+        return m;
+      });
+      if (updatedMemberObj) {
+        setMembers(updatedMembers);
+        saveMembers(updatedMembers);
+        syncMemberToCloud(updatedMemberObj).catch((e) => console.warn('Cloud sync member status error:', e));
+      }
+    }
+
+    // Bersihkan notifikasi yang terhubung ke paymentId yang dihapus
+    setNotifications((prevNotifs) => {
+      const filtered = prevNotifs.filter((n) => n.paymentId !== paymentId);
+      if (filtered.length !== prevNotifs.length) {
+        saveStoredNotifications(filtered);
+      }
+      return filtered;
+    });
+
+    const targetMem = members.find(
+      (m) => m.id === targetPayment.memberId || m.memberNumber === targetPayment.memberNumber
+    );
+    addNotification({
+      type: 'warning',
+      category: 'system',
+      title: 'Data Pembayaran Dihapus oleh Admin',
+      message: `Data pembayaran ${targetPayment.paymentType} (${targetPayment.periodMonth}) sebesar ${formatIDR(targetPayment.amount)} atas nama "${targetPayment.memberName}" (${targetPayment.receiptNumber || targetPayment.memberNumber}) telah dihapus oleh ${activeUser?.name || 'Admin'}.`,
+      cluster: targetMem?.cluster,
+    });
+  };
+
   // ADD BENEFIT CLAIM (SANTUNAN DUKA - DIAJUKAN RT / ADMIN)
   const handleAddClaim = (newClaim: BenefitClaim) => {
     // Sesuai aturan: Bendahara dan Ketua Paguyuban TIDAK BISA input klaim manfaat
@@ -2973,10 +3055,12 @@ export default function App() {
         {currentTab === 'payment' && (
           <PaymentForm
             members={members}
+            payments={synchronizedPayments}
             settings={settings}
             activeUser={activeUser}
             selectedMemberForPayment={selectedMemberForPayment}
             onAddPayment={handleAddPayment}
+            onDeletePayment={activeUser?.authority === 'Admin' ? handleDeletePayment : undefined}
             onNavigateToValidation={() => setCurrentTab('validation')}
             onNavigateToVerification={can(activeUser?.authority, 'verify_rt_members') ? () => setCurrentTab('rt-verification') : undefined}
             onNavigateToDashboard={() => {
@@ -2998,6 +3082,7 @@ export default function App() {
             setCurrentTab={setCurrentTab}
             onVerifyPayment={handleVerifyPayment}
             onRejectPayment={handleRejectPayment}
+            onDeletePayment={activeUser?.authority === 'Admin' ? handleDeletePayment : undefined}
             onViewReceipt={(p) => setSelectedReceiptPayment(p)}
             onSaveDefaultSignature={handleSaveDefaultSignature}
           />

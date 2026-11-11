@@ -417,8 +417,13 @@ export function subscribeToFirestore(callbacks: {
         if (!snapshot.metadata.fromCache) {
           recordFirebaseRead(COLLECTIONS.PAYMENTS, Math.max(1, snapshot.docChanges().length));
         }
+        const deletedPaymentIds = getExplicitlyDeletedPaymentIds();
         const paymentsList: Payment[] = [];
         snapshot.forEach((d) => {
+          if (deletedPaymentIds.has(d.id)) {
+            deleteDoc(doc(db, COLLECTIONS.PAYMENTS, d.id)).catch(() => {});
+            return;
+          }
           paymentsList.push({ ...d.data(), id: d.id } as Payment);
         });
         callbacks.onPaymentsChange?.(sortPaymentsByNewest(paymentsList));
@@ -1072,7 +1077,33 @@ export async function deleteMemberFromCloud(memberId: string): Promise<void> {
   }
 }
 
+const DELETED_PAYMENT_IDS_KEY = 'dana_kematian_deleted_payment_ids_v1';
+
+export function getExplicitlyDeletedPaymentIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(DELETED_PAYMENT_IDS_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function markPaymentExplicitlyDeleted(paymentId: string): void {
+  if (typeof window === 'undefined' || !paymentId) return;
+  try {
+    const set = getExplicitlyDeletedPaymentIds();
+    set.add(paymentId);
+    localStorage.setItem(DELETED_PAYMENT_IDS_KEY, JSON.stringify(Array.from(set)));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export async function deletePaymentFromCloud(paymentId: string): Promise<void> {
+  markPaymentExplicitlyDeleted(paymentId);
   const ref = doc(db, COLLECTIONS.PAYMENTS, paymentId);
   try {
     await deleteDoc(ref);
