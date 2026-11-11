@@ -36,13 +36,23 @@ import {
   Send,
   MessageCircle,
   Boxes,
+  Copy,
+  Users,
+  ShieldCheck,
 } from 'lucide-react';
+import {
+  buildFuneralTeamWhatsAppMessage,
+  FuneralWhatsAppTemplateType,
+  createDirectWhatsAppLink,
+  dispatchWhatsAppNotification,
+} from '../lib/whatsappService';
 
 interface FuneralScheduleProps {
   schedules: FuneralSchedule[];
   members?: Member[];
   claims?: BenefitClaim[];
   ambulanceOrders?: AmbulanceOrder[];
+  users?: AppUser[];
   currentUser: AppUser | null;
   settings?: SystemSettings;
   onAddSchedule: (schedule: FuneralSchedule) => void;
@@ -58,6 +68,7 @@ export const FuneralScheduleSection: React.FC<FuneralScheduleProps> = ({
   members = [],
   claims = [],
   ambulanceOrders = [],
+  users = [],
   currentUser,
   settings,
   onAddSchedule,
@@ -73,6 +84,22 @@ export const FuneralScheduleSection: React.FC<FuneralScheduleProps> = ({
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<FuneralSchedule | null>(null);
   const [copiedScheduleId, setCopiedScheduleId] = useState<string | null>(null);
+
+  // State for specialized WhatsApp Notification Modal (Tim Fardhu Kifayah & Koordinator DKM)
+  const [dispatchModalSchedule, setDispatchModalSchedule] = useState<FuneralSchedule | null>(null);
+  const [selectedTemplateType, setSelectedTemplateType] = useState<FuneralWhatsAppTemplateType>('fardhu_kifayah');
+  const [customMessageText, setCustomMessageText] = useState('');
+  const [targetRecipientName, setTargetRecipientName] = useState('Tim Fardhu Kifayah & Logistik');
+  const [targetRecipientPhone, setTargetRecipientPhone] = useState('');
+  const [autoOpenDispatchAfterPublish, setAutoOpenDispatchAfterPublish] = useState(true);
+  const [justPublishedNotice, setJustPublishedNotice] = useState(false);
+  const [templateCopied, setTemplateCopied] = useState(false);
+  const [isDispatchingGateway, setIsDispatchingGateway] = useState(false);
+  const [gatewayFeedback, setGatewayFeedback] = useState<{
+    type: 'success' | 'info' | 'warning';
+    text: string;
+    directLink?: string;
+  } | null>(null);
 
   const isRt =
     currentUser?.authority === 'Ketua RT (Cluster)' ||
@@ -205,36 +232,242 @@ export const FuneralScheduleSection: React.FC<FuneralScheduleProps> = ({
     setShowAddModal(true);
   };
 
-  const handleSubmitSchedule = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.deceasedName.trim()) {
-      alert('Nama almarhum/almarhumah wajib diisi!');
-      return;
+  // Quick-select contact directory for Tim Fardhu Kifayah & Koordinator DKM
+  const buildQuickContactsForSchedule = (sched: FuneralSchedule) => {
+    const contacts: {
+      id: string;
+      label: string;
+      roleBadge: string;
+      name: string;
+      phone: string;
+      recommendedTemplate: FuneralWhatsAppTemplateType;
+    }[] = [];
+
+    // 1. Koordinator DKM from users directory
+    const dkmUsers = users.filter((u) => u.authority === 'Ketua DKM' && u.status === 'Aktif');
+    dkmUsers.forEach((u) => {
+      if (u.phone) {
+        contacts.push({
+          id: `dkm-${u.id}`,
+          label: `Koordinator DKM (${u.name})`,
+          roleBadge: 'Ketua DKM',
+          name: u.name,
+          phone: u.phone,
+          recommendedTemplate: 'dkm_coordinator',
+        });
+      }
+    });
+
+    // 2. Tim Fardhu Kifayah / Petugas Staf from users directory
+    const staffUsers = users.filter((u) => u.authority === 'Petugas Staf' && u.status === 'Aktif');
+    staffUsers.forEach((u) => {
+      if (u.phone) {
+        contacts.push({
+          id: `staf-${u.id}`,
+          label: `Tim Fardhu Kifayah (${u.name})`,
+          roleBadge: 'Fardhu Kifayah / Logistik',
+          name: u.name,
+          phone: u.phone,
+          recommendedTemplate: 'fardhu_kifayah',
+        });
+      }
+    });
+
+    // 3. Koordinator Lapangan on the schedule itself
+    if (sched.coordinatorPhone) {
+      contacts.push({
+        id: `coord-${sched.id}`,
+        label: `${sched.coordinatorName} (${sched.coordinatorRole || 'Koordinator Lapangan'})`,
+        roleBadge: 'Koordinator Lapangan',
+        name: sched.coordinatorName,
+        phone: sched.coordinatorPhone,
+        recommendedTemplate: 'combined_briefing',
+      });
     }
-    if (!formData.homeAddress.trim()) {
-      alert('Alamat rumah duka wajib diisi!');
+
+    // 4. Ketua RT of the schedule's cluster
+    const rtUsers = users.filter(
+      (u) =>
+        u.authority === 'Ketua RT (Cluster)' &&
+        u.status === 'Aktif' &&
+        u.phone &&
+        (!sched.cluster || u.cluster === sched.cluster)
+    );
+    rtUsers.forEach((u) => {
+      if (u.phone && !contacts.some((c) => c.phone === u.phone)) {
+        contacts.push({
+          id: `rt-${u.id}`,
+          label: `Ketua RT (${u.name})`,
+          roleBadge: u.cluster || 'Ketua RT',
+          name: u.name,
+          phone: u.phone,
+          recommendedTemplate: 'combined_briefing',
+        });
+      }
+    });
+
+    // 5. Driver Ambulans from users directory
+    const driverUsers = users.filter((u) => u.authority === 'Driver' && u.status === 'Aktif');
+    driverUsers.forEach((u) => {
+      if (u.phone) {
+        contacts.push({
+          id: `drv-${u.id}`,
+          label: `Armada Ambulans (${u.name})`,
+          roleBadge: 'Driver Siaga',
+          name: u.name,
+          phone: u.phone,
+          recommendedTemplate: 'fardhu_kifayah',
+        });
+      }
+    });
+
+    return contacts;
+  };
+
+  const handleOpenTeamDispatchModal = (
+    sched: FuneralSchedule,
+    initialTemplate: FuneralWhatsAppTemplateType = 'fardhu_kifayah',
+    isFromPublish = false
+  ) => {
+    const contacts = buildQuickContactsForSchedule(sched);
+    const matchingContact =
+      contacts.find((c) => c.recommendedTemplate === initialTemplate) || contacts[0];
+
+    setDispatchModalSchedule(sched);
+    setSelectedTemplateType(initialTemplate);
+    setCustomMessageText(buildFuneralTeamWhatsAppMessage(initialTemplate, sched, settings));
+    setTargetRecipientName(
+      matchingContact
+        ? matchingContact.name
+        : initialTemplate === 'dkm_coordinator'
+        ? sched.prayerImamName || 'Koordinator DKM Masjid'
+        : 'Tim Fardhu Kifayah & Logistik'
+    );
+    setTargetRecipientPhone(matchingContact ? matchingContact.phone : sched.coordinatorPhone || '');
+    setJustPublishedNotice(isFromPublish);
+    setTemplateCopied(false);
+    setGatewayFeedback(null);
+  };
+
+  const handleSelectTemplateType = (type: FuneralWhatsAppTemplateType) => {
+    if (!dispatchModalSchedule) return;
+    setSelectedTemplateType(type);
+    setCustomMessageText(buildFuneralTeamWhatsAppMessage(type, dispatchModalSchedule, settings));
+    setTemplateCopied(false);
+    setGatewayFeedback(null);
+
+    const contacts = buildQuickContactsForSchedule(dispatchModalSchedule);
+    const matchingContact = contacts.find((c) => c.recommendedTemplate === type);
+    if (matchingContact) {
+      setTargetRecipientName(matchingContact.name);
+      setTargetRecipientPhone(matchingContact.phone);
+    } else if (type === 'dkm_coordinator') {
+      setTargetRecipientName(dispatchModalSchedule.prayerImamName || 'Koordinator DKM Masjid');
+    } else if (type === 'fardhu_kifayah') {
+      setTargetRecipientName(dispatchModalSchedule.bathingTeam || 'Tim Fardhu Kifayah');
+    } else {
+      setTargetRecipientName(dispatchModalSchedule.coordinatorName || 'Tim Gabungan Lapangan');
+    }
+  };
+
+  const handleCopySpecialTemplate = () => {
+    if (!customMessageText.trim()) return;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(customMessageText);
+      setTemplateCopied(true);
+      setTimeout(() => setTemplateCopied(false), 3500);
+    }
+  };
+
+  const handleSendViaGateway = async () => {
+    if (!dispatchModalSchedule || !customMessageText.trim()) return;
+    if (!targetRecipientPhone.trim()) {
+      setGatewayFeedback({
+        type: 'warning',
+        text: 'Masukkan atau pilih nomor WhatsApp tujuan (Tim Fardhu Kifayah / Koordinator DKM) terlebih dahulu.',
+      });
       return;
     }
 
+    setIsDispatchingGateway(true);
+    setGatewayFeedback(null);
+
+    const triggerMap: Record<
+      FuneralWhatsAppTemplateType,
+      'funeral_fardhu_kifayah' | 'funeral_dkm_coordination' | 'funeral_field_combined'
+    > = {
+      fardhu_kifayah: 'funeral_fardhu_kifayah',
+      dkm_coordinator: 'funeral_dkm_coordination',
+      combined_briefing: 'funeral_field_combined',
+    };
+
+    try {
+      const log = await dispatchWhatsAppNotification({
+        phone: targetRecipientPhone,
+        recipientName: targetRecipientName || 'Koordinator Lapangan',
+        memberNumber: dispatchModalSchedule.scheduleCode,
+        message: customMessageText,
+        triggerType: triggerMap[selectedTemplateType],
+        settings: settings || ({ communityName: 'Paguyuban Dana Kematian' } as SystemSettings),
+      });
+
+      if (log.status === 'sent') {
+        setGatewayFeedback({
+          type: 'success',
+          text: `Notifikasi WhatsApp berhasil dikirim via Gateway (${log.provider || 'API'}) ke ${targetRecipientName} (+${log.recipientPhone}).`,
+          directLink: log.directWaLink,
+        });
+      } else {
+        setGatewayFeedback({
+          type: 'info',
+          text: `Pesan telah dicatat di Log Notifikasi. Klik tombol "Kirim via WhatsApp Web / Aplikasi" untuk meneruskan langsung ke ${targetRecipientName}.`,
+          directLink: log.directWaLink,
+        });
+      }
+    } catch {
+      setGatewayFeedback({
+        type: 'warning',
+        text: 'Gagal menghubungi Gateway otomatis. Gunakan tombol Kirim Langsung WhatsApp (wa.me) di bawah.',
+      });
+    } finally {
+      setIsDispatchingGateway(false);
+    }
+  };
+
+  const handleSubmitSchedule = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.deceasedName.trim()) {
+      return;
+    }
+    if (!formData.homeAddress.trim()) {
+      return;
+    }
+
+    let savedSchedule: FuneralSchedule;
+
     if (editingSchedule) {
-      const updated: FuneralSchedule = {
+      savedSchedule = {
         ...formData,
         id: editingSchedule.id,
         updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
       };
-      onUpdateSchedule(updated);
+      onUpdateSchedule(savedSchedule);
     } else {
-      const newSched: FuneralSchedule = {
+      savedSchedule = {
         ...formData,
         id: `jkm-${Date.now()}`,
         createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
         updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
       };
-      onAddSchedule(newSched);
+      onAddSchedule(savedSchedule);
     }
 
     setShowAddModal(false);
     setEditingSchedule(null);
+
+    if (autoOpenDispatchAfterPublish) {
+      handleOpenTeamDispatchModal(savedSchedule, 'fardhu_kifayah', true);
+    }
   };
 
   // Helper to copy WhatsApp broadcast message
@@ -474,8 +707,19 @@ Semoga almarhum/ah husnul khotimah, diampuni segala dosanya, dan keluarga yang d
                     {getStatusBadge(sched.status)}
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {/* Broadcast WhatsApp button */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Dedicated Fardhu Kifayah & DKM Coordination WhatsApp Modal Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenTeamDispatchModal(sched, 'fardhu_kifayah', false)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs transition-all cursor-pointer"
+                      title="Buka template notifikasi WhatsApp khusus untuk Tim Fardhu Kifayah dan Koordinator DKM"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>WA Tim Fardhu Kifayah & DKM</span>
+                    </button>
+
+                    {/* Broadcast WhatsApp button for general residents */}
                     <button
                       type="button"
                       onClick={() => handleCopyWhatsAppBroadcast(sched)}
@@ -685,6 +929,24 @@ Semoga almarhum/ah husnul khotimah, diampuni segala dosanya, dan keluarga yang d
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenTeamDispatchModal(sched, 'fardhu_kifayah', false)}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all shadow-md cursor-pointer"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Siaga Fardhu Kifayah</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenTeamDispatchModal(sched, 'dkm_coordinator', false)}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-black transition-all shadow-md cursor-pointer"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>Koordinasi DKM Masjid</span>
+                      </button>
+
                       {sched.coordinatorPhone && (
                         <a
                           href={`https://wa.me/${sched.coordinatorPhone.replace(/[^0-9]/g, '')}`}
@@ -998,6 +1260,48 @@ Semoga almarhum/ah husnul khotimah, diampuni segala dosanya, dan keluarga yang d
                 </div>
               </div>
 
+              {/* Petugas Tim Fardhu Kifayah & DKM Masjid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-100">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Tim Pemulasaraan (Fardhu Kifayah)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.bathingTeam || ''}
+                    onChange={(e) => setFormData((p) => ({ ...p, bathingTeam: e.target.value }))}
+                    placeholder="Tim Pemulasaraan Lingkungan"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Imam Sholat Jenazah (DKM)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.prayerImamName || ''}
+                    onChange={(e) => setFormData((p) => ({ ...p, prayerImamName: e.target.value }))}
+                    placeholder="Ustadz DKM Setempat"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Petugas Doa & Talkin TPU
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.talkinOfficerName || ''}
+                    onChange={(e) => setFormData((p) => ({ ...p, talkinOfficerName: e.target.value }))}
+                    placeholder="Petugas Doa Paguyuban"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
               {/* Koordinator Lapangan & WhatsApp */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
                 <div>
@@ -1041,6 +1345,24 @@ Semoga almarhum/ah husnul khotimah, diampuni segala dosanya, dan keluarga yang d
                 />
               </div>
 
+              {/* Opsi Otomatis Buka Panel Notifikasi WA Fardhu Kifayah & DKM */}
+              <label className="flex items-start gap-3 p-3.5 rounded-2xl bg-indigo-50/80 border border-indigo-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoOpenDispatchAfterPublish}
+                  onChange={(e) => setAutoOpenDispatchAfterPublish(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                />
+                <div className="text-xs">
+                  <div className="font-black text-indigo-950">
+                    Siapkan Notifikasi WhatsApp Tim Fardhu Kifayah & Koordinator DKM Segera Setelah Terbit
+                  </div>
+                  <p className="text-[11px] text-indigo-700 mt-0.5">
+                    Membuka panel template pesan koordinasi lapangan (Pemulasaraan, Logistik Keranda/Tenda, serta Imam Sholat Jenazah DKM) begitu jadwal disimpan.
+                  </p>
+                </div>
+              </label>
+
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
                 <button
                   type="button"
@@ -1053,10 +1375,308 @@ Semoga almarhum/ah husnul khotimah, diampuni segala dosanya, dan keluarga yang d
                   type="submit"
                   className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-md cursor-pointer"
                 >
-                  {editingSchedule ? 'Simpan Perubahan' : 'Terbitkan Jadwal Pemakaman'}
+                  {editingSchedule ? 'Simpan & Koordinasikan' : 'Terbitkan Jadwal Pemakaman'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: TEMPLATE NOTIFIKASI WHATSAPP KHUSUS TIM FARDHU KIFAYAH & KOORDINATOR DKM */}
+      {dispatchModalSchedule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 my-8 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-100">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-black uppercase tracking-wider">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Siaga Koordinasi Lapangan • {dispatchModalSchedule.scheduleCode}</span>
+                </div>
+                <h3 className="text-lg sm:text-xl font-black text-slate-900">
+                  Template Notifikasi WhatsApp Tim Fardhu Kifayah & Koordinator DKM
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Prosesi Pemakaman: <strong className="text-slate-800">{dispatchModalSchedule.deceasedName}</strong> ({dispatchModalSchedule.cluster})
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDispatchModalSchedule(null)}
+                className="text-slate-400 hover:text-slate-600 p-2 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Banner if opened immediately after schedule publication */}
+            {justPublishedNotice && (
+              <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="text-xs text-emerald-950 space-y-0.5">
+                  <div className="font-black">
+                    Jadwal Pemakaman Berhasil Diterbitkan!
+                  </div>
+                  <p className="text-emerald-800">
+                    Gunakan template khusus di bawah ini untuk segera mengirimkan instruksi kesiapan kepada <strong>Tim Fardhu Kifayah (Pemulasaraan & Logistik)</strong> serta <strong>Koordinator DKM Masjid</strong>.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Step 1: Select Specialized Template Tab */}
+            <div className="space-y-2">
+              <label className="block text-xs font-black text-slate-700 uppercase tracking-wider">
+                1. Pilih Jenis Template Koordinasi Lapangan:
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => handleSelectTemplateType('fardhu_kifayah')}
+                  className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                    selectedTemplateType === 'fardhu_kifayah'
+                      ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-500/20'
+                      : 'bg-slate-50 hover:bg-slate-100 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-900">
+                      Tim Fardhu Kifayah
+                    </span>
+                    {selectedTemplateType === 'fardhu_kifayah' && (
+                      <Check className="w-4 h-4 text-amber-600" />
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-600 mt-1 leading-snug">
+                    Instruksi pemulasaraan (mandi & kafan), armada ambulans, serta checklist keranda & tenda duka.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectTemplateType('dkm_coordinator')}
+                  className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                    selectedTemplateType === 'dkm_coordinator'
+                      ? 'bg-teal-50 border-teal-400 ring-2 ring-teal-500/20'
+                      : 'bg-slate-50 hover:bg-slate-100 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-900">
+                      Koordinator DKM Masjid
+                    </span>
+                    {selectedTemplateType === 'dkm_coordinator' && (
+                      <Check className="w-4 h-4 text-teal-600" />
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-600 mt-1 leading-snug">
+                    Koordinasi waktu sholat jenazah, penugasan imam & petugas talkin TPU, serta pengeras suara masjid.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectTemplateType('combined_briefing')}
+                  className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                    selectedTemplateType === 'combined_briefing'
+                      ? 'bg-indigo-50 border-indigo-400 ring-2 ring-indigo-500/20'
+                      : 'bg-slate-50 hover:bg-slate-100 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-900">
+                      Briefing Gabungan Tim
+                    </span>
+                    {selectedTemplateType === 'combined_briefing' && (
+                      <Check className="w-4 h-4 text-indigo-600" />
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-600 mt-1 leading-snug">
+                    Format ringkas terpadu untuk Grup WA Pengurus Paguyuban, RT, DKM, dan Fardhu Kifayah.
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* Step 2: Recipient Contact Selection */}
+            <div className="space-y-2.5 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>2. Pilih Kontak Petugas / Koordinator Tujuan:</span>
+                </label>
+                <span className="text-[11px] text-slate-500">
+                  Klik kontak untuk isi otomatis nomor WA
+                </span>
+              </div>
+
+              {buildQuickContactsForSchedule(dispatchModalSchedule).length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {buildQuickContactsForSchedule(dispatchModalSchedule).map((ct) => {
+                    const isSelected = targetRecipientPhone === ct.phone && targetRecipientName === ct.name;
+                    return (
+                      <button
+                        key={ct.id}
+                        type="button"
+                        onClick={() => {
+                          setTargetRecipientName(ct.name);
+                          setTargetRecipientPhone(ct.phone);
+                        }}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-slate-900 text-white border-slate-900'
+                            : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        <span>{ct.name}</span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded ${
+                            isSelected ? 'bg-emerald-500 text-slate-950 font-black' : 'bg-slate-100 text-slate-500'
+                          }`}
+                        >
+                          {ct.roleBadge}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    Nama Penerima / Tim Tujuan
+                  </label>
+                  <input
+                    type="text"
+                    value={targetRecipientName}
+                    onChange={(e) => setTargetRecipientName(e.target.value)}
+                    placeholder="Contoh: Koordinator DKM / Tim Fardhu Kifayah"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    Nomor WhatsApp Tujuan (Opsional untuk Share Grup)
+                  </label>
+                  <input
+                    type="text"
+                    value={targetRecipientPhone}
+                    onChange={(e) => setTargetRecipientPhone(e.target.value)}
+                    placeholder="Contoh: 081234567801"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-mono focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Step 3: Preview & Customize Message */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-black text-slate-700 uppercase tracking-wider">
+                  3. Pratinjau & Sesuaikan Isi Pesan WhatsApp:
+                </label>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCustomMessageText(
+                      buildFuneralTeamWhatsAppMessage(selectedTemplateType, dispatchModalSchedule, settings)
+                    )
+                  }
+                  className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                >
+                  Reset ke Format Awal
+                </button>
+              </div>
+              <textarea
+                rows={11}
+                value={customMessageText}
+                onChange={(e) => setCustomMessageText(e.target.value)}
+                className="w-full p-3.5 rounded-2xl border border-slate-200 bg-slate-50/70 font-mono text-xs text-slate-800 leading-relaxed focus:bg-white focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            {/* Gateway Feedback Banner */}
+            {gatewayFeedback && (
+              <div
+                className={`p-3.5 rounded-2xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                  gatewayFeedback.type === 'success'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : gatewayFeedback.type === 'warning'
+                    ? 'bg-amber-50 border-amber-200 text-amber-900'
+                    : 'bg-indigo-50 border-indigo-200 text-indigo-900'
+                }`}
+              >
+                <span className="font-semibold">{gatewayFeedback.text}</span>
+                {gatewayFeedback.directLink && (
+                  <a
+                    href={gatewayFeedback.directLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shrink-0"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Buka wa.me</span>
+                  </a>
+                )}
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={handleCopySpecialTemplate}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black border transition-all cursor-pointer ${
+                  templateCopied
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white hover:bg-slate-100 text-slate-800 border-slate-300'
+                }`}
+              >
+                {templateCopied ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Template Tersalin!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 text-slate-600" />
+                    <span>Salin Template WA</span>
+                  </>
+                )}
+              </button>
+
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleSendViaGateway}
+                  disabled={isDispatchingGateway}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-xs font-black shadow-sm transition-all cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{isDispatchingGateway ? 'Mengirim...' : 'Kirim via WA Gateway'}</span>
+                </button>
+
+                <a
+                  href={
+                    targetRecipientPhone.trim()
+                      ? createDirectWhatsAppLink(targetRecipientPhone, customMessageText)
+                      : `https://wa.me/?text=${encodeURIComponent(customMessageText)}`
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-md transition-all cursor-pointer"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>
+                    {targetRecipientPhone.trim()
+                      ? `Kirim Langsung WA (${targetRecipientName.split(' ')[0]})`
+                      : 'Bagikan ke Grup WA Lapangan'}
+                  </span>
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       )}

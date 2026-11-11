@@ -25,6 +25,10 @@ export default defineConfig(() => {
         'lucide-react',
         'qrcode.react',
         'recharts',
+        'd3',
+        'firebase/app',
+        'firebase/auth',
+        'firebase/firestore',
       ],
     },
     server: {

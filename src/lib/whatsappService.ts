@@ -1,4 +1,11 @@
-import { Member, Payment, SystemSettings, WhatsAppNotificationLog, WhatsAppTriggerEvent } from '../types';
+import {
+  Member,
+  Payment,
+  SystemSettings,
+  WhatsAppNotificationLog,
+  WhatsAppTriggerEvent,
+  FuneralSchedule,
+} from '../types';
 import { cleanPhoneNumberForWhatsApp, formatPhoneDisplay, getEffectivePaymentPeriod } from './receiptUtils';
 import { formatIDR } from './storage';
 
@@ -411,3 +418,198 @@ Notifikasi otomatis ke anggota (pembayaran valid, KTA terbit, dan verifikasi RT)
     };
   }
 }
+
+export type FuneralWhatsAppTemplateType =
+  | 'fardhu_kifayah'
+  | 'dkm_coordinator'
+  | 'combined_briefing';
+
+/**
+ * Template khusus untuk Tim Fardhu Kifayah, Pemulasaraan Jenazah & Logistik Lapangan.
+ * Fokus pada kesiapan memandikan/mengkafani jenazah, peralatan keranda/tenda, armada ambulans, dan waktu pelepasan.
+ */
+export function buildFardhuKifayahDispatchMessage(params: {
+  schedule: FuneralSchedule;
+  settings?: SystemSettings;
+}): string {
+  const { schedule, settings } = params;
+  const orgName = settings?.communityName || 'PAGUYUBAN DANA KEMATIAN WARGA';
+  const footer =
+    settings?.whatsappCustomFooter ||
+    `Pengurus ${orgName} — Siaga Fardhu Kifayah & Sosial Lingkungan`;
+
+  const equipmentList =
+    schedule.equipmentNeeded && schedule.equipmentNeeded.length > 0
+      ? schedule.equipmentNeeded.map((item) => `  ✓ ${item}`).join('\n')
+      : '  ✓ Keranda Jenazah, Kain Penutup, Perlengkapan Mandi & Tenda Duka';
+
+  const statusLabel =
+    schedule.status === 'ACTIVE'
+      ? 'SIAGA DARURAT / HARI INI (AKTIF)'
+      : schedule.status === 'UPCOMING'
+      ? 'TERJADWAL / PERSIAPAN LAPANGAN'
+      : 'SELESAI / ARSIP';
+
+  return `*INSTRUKSI SIAGA TIM FARDHU KIFAYAH & LOGISTIK*
+*${orgName.toUpperCase()}*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+_Assalamu'alaikum Wr. Wb._
+_Innalillahi wa inna ilaihi raji'un._
+
+Mohon kesigapan *Tim Pemulasaraan Fardhu Kifayah, Petugas Logistik & Armada Ambulans* untuk penanganan jadwal pemakaman yang baru diterbitkan:
+
+📋 *DATA PROSESI DUKA:*
+• *Kode Jadwal:* ${schedule.scheduleCode}
+• *Status Operasional:* *${statusLabel}*
+• *Nama Almarhum/ah:* *${schedule.deceasedName}*
+• *Ahli Waris / Keluarga:* ${schedule.familyContactName}${schedule.familyContactPhone ? ` (${schedule.familyContactPhone})` : ''}
+• *Lingkungan / Cluster:* *${schedule.cluster}*
+• *Hari / Tanggal:* ${schedule.date}
+
+🧼 *1. PEMULASARAAN & RUMAH DUKA:*
+• *Lokasi Rumah Duka:* ${schedule.homeAddress}
+• *Tim Pemulasaraan (Mandi & Kafan):* *${schedule.bathingTeam || 'Tim Pemulasaraan Fardhu Kifayah Lingkungan'}*
+• *Target Selesai & Pelepasan:* *${schedule.timeDeparture || 'Sesuai kesiapan keluarga'}*
+
+🚑 *2. ARMADA AMBULANS & RUTE PENGANTARAN:*
+• *Petugas / Armada:* ${schedule.driverName ? `${schedule.driverName} (${schedule.vehiclePlate || 'Unit Paguyuban'})` : 'Unit Ambulans Jenazah Paguyuban'}
+• *Status Armada:* ${schedule.ambulanceStatus || 'Siaga Penjemputan'}
+• *Rute Konvoi:* Rumah Duka ➔ ${schedule.prayerLocation || 'Masjid Lingkungan'} ➔ ${schedule.cemeteryName}${schedule.cemeteryPlot ? ` (Kav. ${schedule.cemeteryPlot})` : ''}
+• *Jadwal Pemakaman TPU:* *${schedule.timeBurial || '-'}*
+
+📦 *3. CHECKLIST PERALATAN & LOGISTIK LAPANGAN:*
+${equipmentList}
+${schedule.allocatedInventorySummary ? `• *Alokasi Gudang Duka:* ${schedule.allocatedInventorySummary}\n` : ''}
+📞 *4. KOMANDO & KOORDINASI LAPANGAN:*
+• *Koordinator Lapangan:* *${schedule.coordinatorName}*${schedule.coordinatorRole ? ` (${schedule.coordinatorRole})` : ''}
+• *Kontak WA Koordinator:* ${schedule.coordinatorPhone || '-'}
+${schedule.googleMapsUrl ? `• *Titik Lokasi Maps:* ${schedule.googleMapsUrl}\n` : ''}${schedule.notes ? `\n📝 *Catatan Lapangan:*\n_${schedule.notes}_\n` : ''}
+Mohon seluruh personel Tim Fardhu Kifayah segera merapat ke Rumah Duka dan mengonfirmasi kesiapan peralatan kepada Koordinator Lapangan. Semoga menjadi amal jariyah kita bersama.
+
+_${footer}_`;
+}
+
+/**
+ * Template khusus untuk Koordinator DKM, Takmir Masjid, Imam Sholat Jenazah & Petugas Doa/Talkin.
+ * Fokus pada pengumuman masjid, kesiapan ruang sholat jenazah, penugasan imam & talkin, serta jadwal iring-iringan ke TPU.
+ */
+export function buildDkmCoordinatorDispatchMessage(params: {
+  schedule: FuneralSchedule;
+  settings?: SystemSettings;
+}): string {
+  const { schedule, settings } = params;
+  const orgName = settings?.communityName || 'PAGUYUBAN DANA KEMATIAN WARGA';
+  const footer =
+    settings?.whatsappCustomFooter ||
+    `Pengurus ${orgName} — Koordinasi Takmir DKM & Ibadah Jenazah`;
+
+  return `*KOORDINASI KOORDINATOR DKM & IMAM SHOLAT JENAZAH*
+*${orgName.toUpperCase()}*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+_Assalamu'alaikum Wr. Wb._
+_Innalillahi wa inna ilaihi raji'un._
+
+Kepada Yth. *Koordinator DKM, Pengurus Takmir Masjid, Imam Sholat Jenazah & Petugas Doa/Talkin*, berikut rincian jadwal prosesi ibadah pemakaman warga yang baru diterbitkan:
+
+🕌 *DATA ALMARHUM/AH & KELUARGA:*
+• *Kode Jadwal:* ${schedule.scheduleCode}
+• *Almarhum/ah:* *${schedule.deceasedName}*
+• *Keluarga / Ahli Waris:* ${schedule.familyContactName}${schedule.familyContactPhone ? ` (${schedule.familyContactPhone})` : ''}
+• *Lingkungan:* *${schedule.cluster}*
+• *Alamat Rumah Duka:* ${schedule.homeAddress}
+
+🕰️ *1. JADWAL & LOKASI SHOLAT JENAZAH:*
+• *Hari / Tanggal:* ${schedule.date}
+• *Pelepasan dari Rumah Duka:* ${schedule.timeDeparture || 'Sesuai kesiapan keluarga'}
+• *Lokasi Sholat Jenazah:* *${schedule.prayerLocation || 'Masjid Jami Lingkungan'}*
+• *Waktu Sholat Jenazah:* *${schedule.timePrayer || "Ba'da Sholat Fardhu"}*
+
+👳 *2. PENUGASAN IMAM & PETUGAS TALKIN:*
+• *Imam Sholat Jenazah:* *${schedule.prayerImamName || 'Ustadz / Imam DKM Bertugas'}*
+• *Petugas Doa & Talkin di TPU:* *${schedule.talkinOfficerName || 'Petugas Doa Paguyuban / DKM'}*
+• *Tempat Pemakaman (TPU):* ${schedule.cemeteryName}${schedule.cemeteryPlot ? ` (Blok/Kav. ${schedule.cemeteryPlot})` : ''}
+• *Estimasi Waktu Pemakaman:* *${schedule.timeBurial || '-'}*
+
+🔊 *3. PERSIAPAN FASILITAS DKM MASJID:*
+  ✓ Siaran pengumuman berita duka cita & ajakan sholat jenazah berjamaah
+  ✓ Penyiapan area peletakan keranda jenazah di shaf depan & pengeras suara imam
+  ✓ Koordinasi akses parkir ambulans (${schedule.vehiclePlate || 'Unit Jenazah'}) di halaman masjid
+
+📞 *4. NARAHUBUNG KOORDINASI LAPANGAN:*
+• *Koordinator RT / Lapangan:* *${schedule.coordinatorName}*${schedule.coordinatorRole ? ` (${schedule.coordinatorRole})` : ''}
+• *WhatsApp Koordinator:* ${schedule.coordinatorPhone || '-'}
+${schedule.googleMapsUrl ? `• *Peta Lokasi:* ${schedule.googleMapsUrl}\n` : ''}${schedule.notes ? `\n📝 *Catatan Tambahan:*\n_${schedule.notes}_\n` : ''}
+Mohon kesediaan Pengurus DKM dan Ustadz/Imam bertugas untuk mengonfirmasi kesiapan pelaksanaan sholat jenazah dan pembacaan talkin. _Jazakumullahu khairan katsiran._
+
+_${footer}_`;
+}
+
+/**
+ * Template briefing gabungan untuk Grup WhatsApp Koordinasi Tim Fardhu Kifayah, Koordinator DKM & Pengurus RT.
+ */
+export function buildCombinedFuneralTeamDispatchMessage(params: {
+  schedule: FuneralSchedule;
+  settings?: SystemSettings;
+}): string {
+  const { schedule, settings } = params;
+  const orgName = settings?.communityName || 'PAGUYUBAN DANA KEMATIAN WARGA';
+  const footer =
+    settings?.whatsappCustomFooter ||
+    `Posko Terpadu ${orgName} — Fardhu Kifayah, DKM & RT`;
+
+  const equipmentText =
+    schedule.equipmentNeeded && schedule.equipmentNeeded.length > 0
+      ? schedule.equipmentNeeded.join(', ')
+      : 'Keranda Jenazah, Tenda Duka, Kursi Warga, Sound System';
+
+  return `*BRIEFING OPERASIONAL TERPADU: TIM FARDHU KIFAYAH & DKM*
+*${orgName.toUpperCase()}*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+_Assalamu'alaikum Wr. Wb._
+Jadwal pemakaman resmi (*${schedule.scheduleCode}*) telah diterbitkan. Mohon sinergi cepat *Tim Fardhu Kifayah, Koordinator DKM Masjid, Armada Ambulans, dan Pengurus ${schedule.cluster}*:
+
+👤 *JENAZAH & AHLI WARIS:*
+• *Almarhum/ah:* *${schedule.deceasedName}*
+• *Ahli Waris:* ${schedule.familyContactName} (${schedule.familyContactPhone || '-'})
+• *Rumah Duka:* ${schedule.homeAddress} (${schedule.cluster})
+
+⏱️ *LINIMASA OPERASIONAL (${schedule.date}):*
+1️⃣ *Pemulasaraan & Pelepasan:* Pkl *${schedule.timeDeparture || '-'}* di Rumah Duka
+   ↳ _Tim Mandi/Kafan:_ *${schedule.bathingTeam || 'Tim Fardhu Kifayah'}*
+2️⃣ *Sholat Jenazah:* Pkl *${schedule.timePrayer || '-'}* di *${schedule.prayerLocation || 'Masjid Lingkungan'}*
+   ↳ _Imam Sholat:_ *${schedule.prayerImamName || 'Imam DKM'}*
+3️⃣ *Pemakaman & Talkin:* Pkl *${schedule.timeBurial || '-'}* di *${schedule.cemeteryName}*${schedule.cemeteryPlot ? ` (Kav. ${schedule.cemeteryPlot})` : ''}
+   ↳ _Petugas Talkin/Doa:_ *${schedule.talkinOfficerName || 'Petugas Doa DKM/Paguyuban'}*
+   ↳ _Armada Ambulans:_ *${schedule.driverName ? `${schedule.driverName} (${schedule.vehiclePlate || 'Unit Paguyuban'})` : 'Unit Ambulans Paguyuban'}* [${schedule.ambulanceStatus || 'Siaga'}]
+
+📦 *LOGISTIK & PERALATAN DUKA:*
+• *Kebutuhan Lapangan:* ${equipmentText}
+${schedule.allocatedInventorySummary ? `• *Inventaris Gudang:* ${schedule.allocatedInventorySummary}\n` : ''}
+📞 *KOMANDO LAPANGAN:*
+• *Koordinator:* *${schedule.coordinatorName}* (${schedule.coordinatorRole || 'Koordinator Lapangan'})
+• *Kontak WA:* ${schedule.coordinatorPhone || '-'}
+${schedule.googleMapsUrl ? `• *Google Maps:* ${schedule.googleMapsUrl}\n` : ''}${schedule.notes ? `\n📝 *Catatan:* _${schedule.notes}_\n` : ''}
+Mohon masing-masing koordinator unit (Pemulasaraan, Logistik Gudang, Takmir DKM, dan Driver Ambulans) membalas status kesiapan di grup koordinasi ini.
+
+_${footer}_`;
+}
+
+/**
+ * Dispatcher helper to build the requested template message based on FuneralWhatsAppTemplateType.
+ */
+export function buildFuneralTeamWhatsAppMessage(
+  templateType: FuneralWhatsAppTemplateType,
+  schedule: FuneralSchedule,
+  settings?: SystemSettings
+): string {
+  switch (templateType) {
+    case 'fardhu_kifayah':
+      return buildFardhuKifayahDispatchMessage({ schedule, settings });
+    case 'dkm_coordinator':
+      return buildDkmCoordinatorDispatchMessage({ schedule, settings });
+    case 'combined_briefing':
+    default:
+      return buildCombinedFuneralTeamDispatchMessage({ schedule, settings });
+  }
+}
+

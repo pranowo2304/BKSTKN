@@ -11,6 +11,43 @@ export interface DailyFirebaseTelemetry {
   lastUpdated: string;
 }
 
+export type CloudDiagnosticReason =
+  | 'connected'
+  | 'connecting'
+  | 'quota_exceeded'
+  | 'network_offline'
+  | 'permission_denied';
+
+export interface CloudConnectionDiagnostics {
+  reason: CloudDiagnosticReason;
+  errorMessage?: string;
+  failedCollection?: string;
+  updatedAt: string;
+}
+
+let currentCloudDiagnostics: CloudConnectionDiagnostics = {
+  reason: 'connecting',
+  updatedAt: new Date().toISOString(),
+};
+
+export function setCloudConnectionDiagnostics(
+  reason: CloudDiagnosticReason,
+  errorMessage?: string,
+  failedCollection?: string
+): void {
+  currentCloudDiagnostics = {
+    reason,
+    errorMessage,
+    failedCollection,
+    updatedAt: new Date().toISOString(),
+  };
+  notifyListeners();
+}
+
+export function getCloudConnectionDiagnostics(): CloudConnectionDiagnostics {
+  return currentCloudDiagnostics;
+}
+
 const STORAGE_KEY = 'dana_kematian_daily_telemetry_v1';
 const SESSION_VISIT_KEY = 'dana_kematian_session_visited_date_v1';
 

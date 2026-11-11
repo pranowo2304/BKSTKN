@@ -472,6 +472,9 @@ export type WhatsAppTriggerEvent =
   | 'rt_approved'
   | 'rt_rejected'
   | 'status_changed'
+  | 'funeral_fardhu_kifayah'
+  | 'funeral_dkm_coordination'
+  | 'funeral_field_combined'
   | 'test_message';
 
 export interface WhatsAppNotificationLog {

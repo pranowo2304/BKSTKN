@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import * as d3 from 'd3';
 import { formatIDR } from '../lib/storage';
-import { BarChart3, Grid, ArrowUpDown, Users, Building2, ArrowRight } from 'lucide-react';
+import { BarChart3, Grid, ArrowUpDown, Users, Building2, ArrowRight, Download, Check } from 'lucide-react';
 
 export interface ClusterDistributionStat {
   id: string;
@@ -59,6 +59,8 @@ export const ClusterD3DistributionChart: React.FC<ClusterD3DistributionChartProp
   const containerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [containerWidth, setContainerWidth] = useState<number>(860);
+  const [isExportingPng, setIsExportingPng] = useState<boolean>(false);
+  const [exportSuccess, setExportSuccess] = useState<boolean>(false);
 
   // Observe container width for responsive D3 SVG rendering
   useEffect(() => {
@@ -108,6 +110,149 @@ export const ClusterD3DistributionChart: React.FC<ClusterD3DistributionChartProp
     if (key === 'souls') return `${val} Jiwa`;
     if (key === 'totalCount') return `${val} KK`;
     return `${val} Aktif`;
+  };
+
+  // Export D3 SVG chart as high-resolution PNG snapshot for monthly reports
+  const handleDownloadPng = () => {
+    const svgEl = svgRef.current;
+    if (!svgEl || isExportingPng) return;
+
+    setIsExportingPng(true);
+    try {
+      const viewBox = svgEl.getAttribute('viewBox')?.split(/\s+/).map(Number);
+      const svgWidth = (viewBox && viewBox[2]) || svgEl.clientWidth || 860;
+      const svgHeight = (viewBox && viewBox[3]) || svgEl.clientHeight || 300;
+
+      // Clone SVG and ensure explicit namespaces and dimensions for standalone image rendering
+      const clonedSvg = svgEl.cloneNode(true) as SVGSVGElement;
+      clonedSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      clonedSvg.setAttribute('width', String(svgWidth));
+      clonedSvg.setAttribute('height', String(svgHeight));
+
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(clonedSvg);
+      const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+
+      const img = new Image();
+      img.onload = () => {
+        const scale = 2; // 2x Retina resolution for crisp monthly report print/PDF inclusion
+        const padX = 32;
+        const headerHeight = 68;
+        const footerHeight = 44;
+        const totalWidth = svgWidth + padX * 2;
+        const totalHeight = svgHeight + headerHeight + footerHeight;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = totalWidth * scale;
+        canvas.height = totalHeight * scale;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          URL.revokeObjectURL(url);
+          setIsExportingPng(false);
+          return;
+        }
+
+        ctx.scale(scale, scale);
+
+        // 1. Clean White Report Background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, totalWidth, totalHeight);
+
+        // Subtle outer border
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(8, 8, totalWidth - 16, totalHeight - 16);
+
+        // 2. Report Header Title & Metadata
+        const modeTitle =
+          vizMode === 'heatmap'
+            ? 'Peta Panas (Heatmap) Sebaran Anggota per Cluster'
+            : `Grafik Batang Sebaran Anggota per Cluster (${
+                metricKey === 'activeCount'
+                  ? 'Warga Aktif'
+                  : metricKey === 'totalCount'
+                  ? 'Total KK'
+                  : metricKey === 'souls'
+                  ? 'Jiwa Tertanggung'
+                  : 'Iuran Terkumpul'
+              })`;
+
+        ctx.fillStyle = '#0f172a';
+        ctx.font = 'bold 15px ui-sans-serif, system-ui, -apple-system, sans-serif';
+        ctx.fillText(modeTitle, padX, 34);
+
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('id-ID', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+        });
+
+        ctx.fillStyle = '#64748b';
+        ctx.font = '11.5px ui-monospace, SFMono-Regular, Menlo, monospace';
+        ctx.fillText(
+          `Total Aktif: ${activeMembersCount} KK  ·  Total Database: ${totalMembersCount} KK  ·  Dicetak: ${dateStr}`,
+          padX,
+          54
+        );
+
+        // Header divider line
+        ctx.strokeStyle = '#f1f5f9';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padX, headerHeight - 4);
+        ctx.lineTo(totalWidth - padX, headerHeight - 4);
+        ctx.stroke();
+
+        // 3. Draw D3 SVG Snapshot
+        ctx.drawImage(img, padX, headerHeight, svgWidth, svgHeight);
+
+        // 4. Footer Legend & Source Note
+        const footerY = headerHeight + svgHeight + 24;
+        ctx.strokeStyle = '#f1f5f9';
+        ctx.beginPath();
+        ctx.moveTo(padX, headerHeight + svgHeight + 6);
+        ctx.lineTo(totalWidth - padX, headerHeight + svgHeight + 6);
+        ctx.stroke();
+
+        ctx.fillStyle = '#64748b';
+        ctx.font = '10.5px ui-sans-serif, system-ui, -apple-system, sans-serif';
+        ctx.fillText(
+          'Laporan Visualisasi Distribusi Keanggotaan Paguyuban (Sinkron Database Cloud Firestore)',
+          padX,
+          footerY
+        );
+
+        URL.revokeObjectURL(url);
+
+        const dateSlug = now.toISOString().split('T')[0];
+        const fileName = `Sebaran_Anggota_Cluster_${vizMode === 'heatmap' ? 'Heatmap' : 'BarChart'}_${dateSlug}.png`;
+
+        const pngDataUrl = canvas.toDataURL('image/png');
+        const downloadLink = document.createElement('a');
+        downloadLink.href = pngDataUrl;
+        downloadLink.download = fileName;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+
+        setIsExportingPng(false);
+        setExportSuccess(true);
+        setTimeout(() => setExportSuccess(false), 2500);
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        setIsExportingPng(false);
+      };
+
+      img.src = url;
+    } catch (err) {
+      console.error('Gagal menyimpan gambar PNG:', err);
+      setIsExportingPng(false);
+    }
   };
 
   // Render D3 Visualization whenever mode, data, metric, sort, or width changes
@@ -563,6 +708,31 @@ export const ClusterD3DistributionChart: React.FC<ClusterD3DistributionChartProp
                 ? 'Urutan: Aktif Terbanyak'
                 : 'Urutan: Total KK Terbanyak'}
             </span>
+          </button>
+
+          {/* Save PNG Snapshot Button for Monthly Report */}
+          <button
+            type="button"
+            onClick={handleDownloadPng}
+            disabled={isExportingPng}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 border ${
+              exportSuccess
+                ? 'bg-emerald-600 text-white border-emerald-600'
+                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
+            }`}
+            title="Unduh snapshot grafik D3.js sebagai berkas PNG untuk laporan bulanan"
+          >
+            {exportSuccess ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-white" />
+                <span>Tersimpan (PNG)</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-3.5 h-3.5 text-emerald-700" />
+                <span>{isExportingPng ? 'Menyimpan...' : 'Simpan Gambar'}</span>
+              </>
+            )}
           </button>
         </div>
       </div>

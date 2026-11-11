@@ -39,7 +39,10 @@ import {
   subscribeToTelemetry,
   resetTodayTelemetry,
   exportTelemetryCSV,
+  getCloudConnectionDiagnostics,
+  CloudConnectionDiagnostics,
 } from '../lib/firebaseTelemetry';
+import { testConnection } from '../lib/firebase';
 
 const COLLECTION_LABELS: Record<string, string> = {
   members: 'Data Warga (members)',
@@ -96,10 +99,15 @@ export const AdminFirebaseStatsPanel: React.FC = () => {
     getTodayTelemetry()
   );
   const [confirmReset, setConfirmReset] = useState(false);
+  const [cloudDiag, setCloudDiag] = useState<CloudConnectionDiagnostics>(() =>
+    getCloudConnectionDiagnostics()
+  );
+  const [isTestingPing, setIsTestingPing] = useState(false);
 
   const refreshTelemetry = () => {
     setHistory(getDailyTelemetryHistory(selectedDays));
     setTodayStats(getTodayTelemetry());
+    setCloudDiag(getCloudConnectionDiagnostics());
   };
 
   useEffect(() => {
@@ -107,9 +115,20 @@ export const AdminFirebaseStatsPanel: React.FC = () => {
     const unsub = subscribeToTelemetry(() => {
       setHistory(getDailyTelemetryHistory(selectedDays));
       setTodayStats(getTodayTelemetry());
+      setCloudDiag(getCloudConnectionDiagnostics());
     });
     return unsub;
   }, [selectedDays]);
+
+  const handlePingCloudServer = async () => {
+    setIsTestingPing(true);
+    try {
+      await testConnection();
+      setCloudDiag(getCloudConnectionDiagnostics());
+    } finally {
+      setIsTestingPing(false);
+    }
+  };
 
   const todayKey = getTodayDateKey();
 
@@ -314,6 +333,94 @@ export const AdminFirebaseStatsPanel: React.FC = () => {
 
       {/* Main Content Body */}
       <div className="p-5 sm:p-7 space-y-6">
+        {/* Cloud Connection & Quota Diagnostic Banner */}
+        <div
+          className={`rounded-2xl border p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+            cloudDiag.reason === 'connected'
+              ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+              : cloudDiag.reason === 'quota_exceeded'
+              ? 'bg-amber-50 border-amber-300 text-amber-950'
+              : 'bg-slate-50 border-slate-200 text-slate-900'
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className={`p-2.5 rounded-xl shrink-0 mt-0.5 ${
+                cloudDiag.reason === 'connected'
+                  ? 'bg-emerald-600 text-white'
+                  : cloudDiag.reason === 'quota_exceeded'
+                  ? 'bg-amber-500 text-slate-950'
+                  : 'bg-slate-800 text-amber-300'
+              }`}
+            >
+              {cloudDiag.reason === 'connected' ? (
+                <CheckCircle2 className="w-5 h-5" />
+              ) : (
+                <AlertTriangle className="w-5 h-5" />
+              )}
+            </div>
+            <div className="space-y-1 text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-black text-sm">
+                  {cloudDiag.reason === 'connected'
+                    ? 'Status Cloud DB: Terhubung Realtime ke Server Google Cloud Firestore'
+                    : cloudDiag.reason === 'quota_exceeded'
+                    ? 'Status Cloud DB: Mode Lokal Aktif (Kuota Harian Server Google Cloud Tercapai)'
+                    : 'Status Cloud DB: Mode Lokal Aktif (Cache Offline / Gangguan Jaringan Sementara)'}
+                </span>
+              </div>
+              <p className="leading-relaxed text-slate-700">
+                {cloudDiag.reason === 'connected' ? (
+                  <>
+                    Penghitung di bawah mencatat operasi dari perangkat/browser ini sejak <strong>00:00 WIB</strong> (tanpa membebani kuota tulis database). Kuota harian server Google Cloud berlaku gabungan untuk seluruh perangkat dan di-reset setiap pukul <strong>14:00–15:00 WIB (00:00 Waktu Pasifik)</strong>.
+                  </>
+                ) : (
+                  <>
+                    <strong>Mengapa persentase di bawah masih &lt; 1% tetapi status beralih ke Mode Lokal?</strong> Angka pada kartu di bawah adalah penghitung lokal pada browser perangkat ini sejak pukul <strong>00:00 WIB</strong>, sedangkan server Google Cloud Firestore menghitung <strong>total gabungan seluruh perangkat/tab/sesi</strong> dan baru me-reset kuota harian pada pukul <strong>14:00–15:00 WIB (00:00 Waktu Pasifik AS)</strong>, atau koneksi seluler ke server mengalami *timeout* sementara.
+                  </>
+                )}
+              </p>
+              {cloudDiag.errorMessage && cloudDiag.reason !== 'connected' && (
+                <p className="text-[11px] font-mono text-amber-800 bg-amber-100/80 px-2.5 py-1 rounded-lg inline-block mt-1">
+                  Info Diagnostik: {cloudDiag.errorMessage}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <a
+              href="https://console.firebase.google.com/project/green-canto-3mbw7/firestore/databases/ai-studio-aplikasidanakema-30bdbfbd-1e3f-4c3f-84d1-a065a143bb83/data?openUpgradeDialog=true"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-xs transition-all cursor-pointer"
+              title="Buka dialog Upgrade Blaze Plan langsung di Firebase Console untuk proyek green-canto-3mbw7"
+            >
+              <span>Upgrade Blaze Plan</span>
+            </a>
+
+            <a
+              href="https://console.cloud.google.com/billing/linkedaccount?project=green-canto-3mbw7"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-bold shadow-xs transition-all cursor-pointer"
+              title="Kelola Billing & Budget Alert di Google Cloud Console untuk proyek green-canto-3mbw7"
+            >
+              <span>Google Cloud Billing</span>
+            </a>
+
+            <button
+              type="button"
+              onClick={handlePingCloudServer}
+              disabled={isTestingPing}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white text-xs font-black shrink-0 shadow-xs transition-all cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isTestingPing ? 'animate-spin' : ''}`} />
+              <span>{isTestingPing ? 'Mengecek Server...' : 'Cek / Hubungkan Ulang Cloud DB'}</span>
+            </button>
+          </div>
+        </div>
+
         {/* 4 Primary KPI Cards (Today's Live Metrics & Daily Averages) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           {/* Card 1: Kunjungan Aplikasi Hari Ini */}

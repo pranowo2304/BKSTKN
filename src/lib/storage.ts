@@ -558,7 +558,12 @@ export const getStoredMembers = (): Member[] => {
         }
         migrated = true;
       }
-      if (m.status !== 'Aktif' && m.isPaguyubanApproved === true) {
+      if (
+        m.status === 'Menunggu Persetujuan Ketua Paguyuban' &&
+        !m.approvedByPaguyuban &&
+        !m.approvedByPaguyubanAt &&
+        m.isPaguyubanApproved === true
+      ) {
         migrated = true;
         return { ...m, cluster, isPaguyubanApproved: false, isKtaIssued: false };
       }

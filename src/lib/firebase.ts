@@ -20,7 +20,7 @@ import {
 setLogLevel('silent');
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Member, Payment, BenefitClaim, SystemSettings, AppUser, ClusterMaster, DEFAULT_CLUSTERS, BenefitMaster, DEFAULT_BENEFITS, AmbulanceOrder, FuneralSchedule, FuneralInventoryItem, FuneralInventoryLoan } from '../types';
-import { recordFirebaseRead, recordFirebaseWrite } from './firebaseTelemetry';
+import { recordFirebaseRead, recordFirebaseWrite, setCloudConnectionDiagnostics } from './firebaseTelemetry';
 import { sortPaymentsByNewest } from './receiptUtils';
 import {
   initialMembers,
@@ -77,10 +77,23 @@ export async function testConnection(): Promise<boolean> {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
     recordFirebaseRead('meta', 1);
+    setCloudConnectionDiagnostics('connected');
     return true;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
+  } catch (error: any) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (error?.code === 'resource-exhausted' || msg.toLowerCase().includes('quota')) {
+      setCloudConnectionDiagnostics(
+        'quota_exceeded',
+        'Kuota harian gratis di server Google Cloud Firestore telah mencapai batas maksimal (di-reset pukul 14:00–15:00 WIB / 00:00 Waktu Pasifik).',
+        'test/connection'
+      );
+    } else if (msg.includes('the client is offline') || error?.code === 'unavailable') {
       console.warn('Notice: Firestore operating in offline cache mode. Check network or permissions.');
+      setCloudConnectionDiagnostics(
+        'network_offline',
+        'Koneksi ke server Cloud Firestore terputus atau terhalang jaringan seluler/firewall.',
+        'test/connection'
+      );
     }
     return false;
   }
@@ -308,20 +321,67 @@ export function subscribeToFirestore(callbacks: {
   onStatusChange?: (status: 'connected' | 'connecting' | 'offline' | 'error', errorMsg?: string) => void;
 }): () => void {
   callbacks.onStatusChange?.('connecting');
+  setCloudConnectionDiagnostics('connecting');
   const unsubscribers: (() => void)[] = [];
+  let hasConfirmedServerConnection = false;
+  let isQuotaExhausted = false;
+
+  // Proactively verify real server connection so cached snapshots don't mask quota/offline states
+  testConnection().then((ok) => {
+    if (ok) {
+      hasConfirmedServerConnection = true;
+      callbacks.onStatusChange?.('connected');
+    } else if (!hasConfirmedServerConnection) {
+      callbacks.onStatusChange?.('offline');
+    }
+  });
+
+  const markConnectedFromSnapshot = (fromCache: boolean) => {
+    if (isQuotaExhausted) return;
+    if (!fromCache) {
+      hasConfirmedServerConnection = true;
+      setCloudConnectionDiagnostics('connected');
+      callbacks.onStatusChange?.('connected');
+    } else if (hasConfirmedServerConnection) {
+      callbacks.onStatusChange?.('connected');
+    }
+  };
 
   const handleListenerError = (err: any, collectionName: string) => {
-    if (err?.code === 'permission-denied' || err?.message?.includes('insufficient permissions')) {
+    const errMsg = String(err?.message || err || '');
+    if (err?.code === 'permission-denied' || errMsg.includes('insufficient permissions')) {
+      setCloudConnectionDiagnostics('permission_denied', errMsg, collectionName);
       handleFirestoreError(err, OperationType.GET, collectionName);
-    } else if (err?.code === 'unavailable' || err?.message?.includes('unavailable') || err?.message?.includes('Could not reach')) {
-      console.warn(`Firestore [${collectionName}] notice: Backend connection waiting or offline. Operating in offline cache mode.`);
-      callbacks.onStatusChange?.('offline', err.message);
-    } else if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+    } else if (
+      err?.code === 'resource-exhausted' ||
+      errMsg.toLowerCase().includes('quota') ||
+      errMsg.includes('resource-exhausted')
+    ) {
+      isQuotaExhausted = true;
+      hasConfirmedServerConnection = false;
       console.warn(`Firestore [${collectionName}] notice: Kuota harian pembacaan gratis Firestore (50.000 read/hari) telah tercapai. Sistem otomatis beralih ke Mode Lokal agar aplikasi tetap dapat digunakan.`);
+      setCloudConnectionDiagnostics(
+        'quota_exceeded',
+        'Kuota harian gratis di server Google Cloud Firestore telah tercapai (akumulasi seluruh perangkat/sesi). Kuota di-reset otomatis pukul 14:00–15:00 WIB (00:00 Waktu Pasifik).',
+        collectionName
+      );
       callbacks.onStatusChange?.('offline', 'Kuota harian gratis Firestore telah mencapai batas maksimal.');
+    } else if (err?.code === 'unavailable' || errMsg.includes('unavailable') || errMsg.includes('Could not reach')) {
+      console.warn(`Firestore [${collectionName}] notice: Backend connection waiting or offline. Operating in offline cache mode.`);
+      if (!hasConfirmedServerConnection) {
+        setCloudConnectionDiagnostics(
+          'network_offline',
+          'Koneksi long-polling ke server Cloud Firestore terputus atau lambat. Sistem menggunakan penyimpanan lokal sementara.',
+          collectionName
+        );
+        callbacks.onStatusChange?.('offline', errMsg);
+      }
     } else {
-      console.warn(`Firestore [${collectionName}] subscribe notice:`, err?.message || err);
-      callbacks.onStatusChange?.('offline', err?.message);
+      console.warn(`Firestore [${collectionName}] subscribe notice:`, errMsg);
+      if (!hasConfirmedServerConnection) {
+        setCloudConnectionDiagnostics('network_offline', errMsg, collectionName);
+        callbacks.onStatusChange?.('offline', errMsg);
+      }
     }
   };
 
@@ -330,13 +390,18 @@ export function subscribeToFirestore(callbacks: {
     const unsubMembers = onSnapshot(
       collection(db, COLLECTIONS.MEMBERS),
       (snapshot) => {
-        recordFirebaseRead(COLLECTIONS.MEMBERS, Math.max(1, snapshot.docChanges().length));
+        if (snapshot.metadata.fromCache && snapshot.empty) {
+          return;
+        }
+        if (!snapshot.metadata.fromCache) {
+          recordFirebaseRead(COLLECTIONS.MEMBERS, Math.max(1, snapshot.docChanges().length));
+        }
         const membersList: Member[] = [];
         snapshot.forEach((d) => {
           membersList.push({ ...d.data(), id: d.id } as Member);
         });
         callbacks.onMembersChange?.(membersList);
-        callbacks.onStatusChange?.('connected');
+        markConnectedFromSnapshot(snapshot.metadata.fromCache);
       },
       (err) => handleListenerError(err, COLLECTIONS.MEMBERS)
     );
@@ -346,13 +411,18 @@ export function subscribeToFirestore(callbacks: {
     const unsubPayments = onSnapshot(
       collection(db, COLLECTIONS.PAYMENTS),
       (snapshot) => {
-        recordFirebaseRead(COLLECTIONS.PAYMENTS, Math.max(1, snapshot.docChanges().length));
+        if (snapshot.metadata.fromCache && snapshot.empty) {
+          return;
+        }
+        if (!snapshot.metadata.fromCache) {
+          recordFirebaseRead(COLLECTIONS.PAYMENTS, Math.max(1, snapshot.docChanges().length));
+        }
         const paymentsList: Payment[] = [];
         snapshot.forEach((d) => {
           paymentsList.push({ ...d.data(), id: d.id } as Payment);
         });
         callbacks.onPaymentsChange?.(sortPaymentsByNewest(paymentsList));
-        callbacks.onStatusChange?.('connected');
+        markConnectedFromSnapshot(snapshot.metadata.fromCache);
       },
       (err) => handleListenerError(err, COLLECTIONS.PAYMENTS)
     );
@@ -362,13 +432,18 @@ export function subscribeToFirestore(callbacks: {
     const unsubClaims = onSnapshot(
       collection(db, COLLECTIONS.CLAIMS),
       (snapshot) => {
-        recordFirebaseRead(COLLECTIONS.CLAIMS, Math.max(1, snapshot.docChanges().length));
+        if (snapshot.metadata.fromCache && snapshot.empty) {
+          return;
+        }
+        if (!snapshot.metadata.fromCache) {
+          recordFirebaseRead(COLLECTIONS.CLAIMS, Math.max(1, snapshot.docChanges().length));
+        }
         const claimsList: BenefitClaim[] = [];
         snapshot.forEach((d) => {
           claimsList.push({ ...d.data(), id: d.id } as BenefitClaim);
         });
         callbacks.onClaimsChange?.(claimsList);
-        callbacks.onStatusChange?.('connected');
+        markConnectedFromSnapshot(snapshot.metadata.fromCache);
       },
       (err) => handleListenerError(err, COLLECTIONS.CLAIMS)
     );
@@ -378,11 +453,13 @@ export function subscribeToFirestore(callbacks: {
     const unsubSettings = onSnapshot(
       doc(db, COLLECTIONS.SETTINGS, 'main_config'),
       (docSnap) => {
-        recordFirebaseRead(COLLECTIONS.SETTINGS, 1);
+        if (!docSnap.metadata.fromCache) {
+          recordFirebaseRead(COLLECTIONS.SETTINGS, 1);
+        }
         if (docSnap.exists()) {
           callbacks.onSettingsChange?.(docSnap.data() as SystemSettings);
         }
-        callbacks.onStatusChange?.('connected');
+        markConnectedFromSnapshot(docSnap.metadata.fromCache);
       },
       (err) => handleListenerError(err, COLLECTIONS.SETTINGS)
     );
@@ -392,7 +469,9 @@ export function subscribeToFirestore(callbacks: {
     const unsubUsers = onSnapshot(
       collection(db, COLLECTIONS.USERS),
       (snapshot) => {
-        recordFirebaseRead(COLLECTIONS.USERS, Math.max(1, snapshot.docChanges().length));
+        if (!snapshot.metadata.fromCache) {
+          recordFirebaseRead(COLLECTIONS.USERS, Math.max(1, snapshot.docChanges().length));
+        }
         const usersList: AppUser[] = [];
         snapshot.forEach((d) => {
           usersList.push({ ...d.data(), id: d.id } as AppUser);
@@ -400,7 +479,7 @@ export function subscribeToFirestore(callbacks: {
         if (usersList.length > 0) {
           callbacks.onUsersChange?.(usersList);
         }
-        callbacks.onStatusChange?.('connected');
+        markConnectedFromSnapshot(snapshot.metadata.fromCache);
       },
       (err) => handleListenerError(err, COLLECTIONS.USERS)
     );
@@ -410,7 +489,9 @@ export function subscribeToFirestore(callbacks: {
     const unsubClusters = onSnapshot(
       collection(db, COLLECTIONS.CLUSTERS),
       (snapshot) => {
-        recordFirebaseRead(COLLECTIONS.CLUSTERS, Math.max(1, snapshot.docChanges().length));
+        if (!snapshot.metadata.fromCache) {
+          recordFirebaseRead(COLLECTIONS.CLUSTERS, Math.max(1, snapshot.docChanges().length));
+        }
         const clustersList: ClusterMaster[] = [];
         snapshot.forEach((d) => {
           clustersList.push({ ...d.data(), id: d.id } as ClusterMaster);
@@ -419,7 +500,7 @@ export function subscribeToFirestore(callbacks: {
           clustersList.sort((a, b) => (a.orderIndex || 99) - (b.orderIndex || 99));
           callbacks.onClustersChange?.(clustersList);
         }
-        callbacks.onStatusChange?.('connected');
+        markConnectedFromSnapshot(snapshot.metadata.fromCache);
       },
       (err) => handleListenerError(err, COLLECTIONS.CLUSTERS)
     );
@@ -429,7 +510,9 @@ export function subscribeToFirestore(callbacks: {
     const unsubBenefits = onSnapshot(
       collection(db, COLLECTIONS.BENEFITS),
       (snapshot) => {
-        recordFirebaseRead(COLLECTIONS.BENEFITS, Math.max(1, snapshot.docChanges().length));
+        if (!snapshot.metadata.fromCache) {
+          recordFirebaseRead(COLLECTIONS.BENEFITS, Math.max(1, snapshot.docChanges().length));
+        }
         const benefitsList: BenefitMaster[] = [];
         snapshot.forEach((d) => {
           benefitsList.push({ ...d.data(), id: d.id } as BenefitMaster);
@@ -438,7 +521,7 @@ export function subscribeToFirestore(callbacks: {
           benefitsList.sort((a, b) => (a.orderIndex || 99) - (b.orderIndex || 99));
           callbacks.onBenefitsChange?.(benefitsList);
         }
-        callbacks.onStatusChange?.('connected');
+        markConnectedFromSnapshot(snapshot.metadata.fromCache);
       },
       (err) => handleListenerError(err, COLLECTIONS.BENEFITS)
     );
@@ -448,7 +531,9 @@ export function subscribeToFirestore(callbacks: {
     const unsubFinancials = onSnapshot(
       doc(db, COLLECTIONS.META, 'financials'),
       (docSnap) => {
-        recordFirebaseRead(COLLECTIONS.META, 1);
+        if (!docSnap.metadata.fromCache) {
+          recordFirebaseRead(COLLECTIONS.META, 1);
+        }
         if (docSnap.exists()) {
           const data = docSnap.data();
           const baseBalance = typeof data?.baseFundBalance === 'number' ? data.baseFundBalance : 0;
@@ -456,13 +541,15 @@ export function subscribeToFirestore(callbacks: {
         } else {
           // Check init_status if transactions were cleared
           getDoc(doc(db, COLLECTIONS.META, 'init_status')).then((initSnap) => {
-            recordFirebaseRead(COLLECTIONS.META, 1);
+            if (initSnap && !initSnap.metadata.fromCache) {
+              recordFirebaseRead(COLLECTIONS.META, 1);
+            }
             if (initSnap && initSnap.exists() && (initSnap.data()?.transactionsCleared || initSnap.data()?.isCleared)) {
               callbacks.onFinancialsChange?.(0);
             }
           }).catch(() => {});
         }
-        callbacks.onStatusChange?.('connected');
+        markConnectedFromSnapshot(docSnap.metadata.fromCache);
       },
       (err) => handleListenerError(err, `${COLLECTIONS.META}/financials`)
     );
@@ -472,13 +559,18 @@ export function subscribeToFirestore(callbacks: {
     const unsubAmbulance = onSnapshot(
       collection(db, COLLECTIONS.AMBULANCE_ORDERS),
       (snapshot) => {
-        recordFirebaseRead(COLLECTIONS.AMBULANCE_ORDERS, Math.max(1, snapshot.docChanges().length));
+        if (snapshot.metadata.fromCache && snapshot.empty) {
+          return;
+        }
+        if (!snapshot.metadata.fromCache) {
+          recordFirebaseRead(COLLECTIONS.AMBULANCE_ORDERS, Math.max(1, snapshot.docChanges().length));
+        }
         const ordersList: AmbulanceOrder[] = [];
         snapshot.forEach((d) => {
           ordersList.push({ ...d.data(), id: d.id } as AmbulanceOrder);
         });
         callbacks.onAmbulanceOrdersChange?.(ordersList);
-        callbacks.onStatusChange?.('connected');
+        markConnectedFromSnapshot(snapshot.metadata.fromCache);
       },
       (err) => handleListenerError(err, COLLECTIONS.AMBULANCE_ORDERS)
     );
@@ -488,13 +580,18 @@ export function subscribeToFirestore(callbacks: {
     const unsubFuneral = onSnapshot(
       collection(db, COLLECTIONS.FUNERAL_SCHEDULES),
       (snapshot) => {
-        recordFirebaseRead(COLLECTIONS.FUNERAL_SCHEDULES, Math.max(1, snapshot.docChanges().length));
+        if (snapshot.metadata.fromCache && snapshot.empty) {
+          return;
+        }
+        if (!snapshot.metadata.fromCache) {
+          recordFirebaseRead(COLLECTIONS.FUNERAL_SCHEDULES, Math.max(1, snapshot.docChanges().length));
+        }
         const schedList: FuneralSchedule[] = [];
         snapshot.forEach((d) => {
           schedList.push({ ...d.data(), id: d.id } as FuneralSchedule);
         });
         callbacks.onFuneralSchedulesChange?.(schedList);
-        callbacks.onStatusChange?.('connected');
+        markConnectedFromSnapshot(snapshot.metadata.fromCache);
       },
       (err) => handleListenerError(err, COLLECTIONS.FUNERAL_SCHEDULES)
     );
@@ -504,13 +601,18 @@ export function subscribeToFirestore(callbacks: {
     const unsubInventory = onSnapshot(
       collection(db, COLLECTIONS.FUNERAL_INVENTORY),
       (snapshot) => {
-        recordFirebaseRead(COLLECTIONS.FUNERAL_INVENTORY, Math.max(1, snapshot.docChanges().length));
+        if (snapshot.metadata.fromCache && snapshot.empty) {
+          return;
+        }
+        if (!snapshot.metadata.fromCache) {
+          recordFirebaseRead(COLLECTIONS.FUNERAL_INVENTORY, Math.max(1, snapshot.docChanges().length));
+        }
         const itemList: FuneralInventoryItem[] = [];
         snapshot.forEach((d) => {
           itemList.push({ ...d.data(), id: d.id } as FuneralInventoryItem);
         });
         callbacks.onFuneralInventoryChange?.(itemList);
-        callbacks.onStatusChange?.('connected');
+        markConnectedFromSnapshot(snapshot.metadata.fromCache);
       },
       (err) => handleListenerError(err, COLLECTIONS.FUNERAL_INVENTORY)
     );
@@ -520,19 +622,25 @@ export function subscribeToFirestore(callbacks: {
     const unsubInventoryLoans = onSnapshot(
       collection(db, COLLECTIONS.FUNERAL_INVENTORY_LOANS),
       (snapshot) => {
-        recordFirebaseRead(COLLECTIONS.FUNERAL_INVENTORY_LOANS, Math.max(1, snapshot.docChanges().length));
+        if (snapshot.metadata.fromCache && snapshot.empty) {
+          return;
+        }
+        if (!snapshot.metadata.fromCache) {
+          recordFirebaseRead(COLLECTIONS.FUNERAL_INVENTORY_LOANS, Math.max(1, snapshot.docChanges().length));
+        }
         const loanList: FuneralInventoryLoan[] = [];
         snapshot.forEach((d) => {
           loanList.push({ ...d.data(), id: d.id } as FuneralInventoryLoan);
         });
         callbacks.onFuneralInventoryLoansChange?.(loanList);
-        callbacks.onStatusChange?.('connected');
+        markConnectedFromSnapshot(snapshot.metadata.fromCache);
       },
       (err) => handleListenerError(err, COLLECTIONS.FUNERAL_INVENTORY_LOANS)
     );
     unsubscribers.push(unsubInventoryLoans);
   } catch (e: any) {
     console.error('Failed to set up Firestore subscriptions:', e);
+    setCloudConnectionDiagnostics('network_offline', e?.message);
     callbacks.onStatusChange?.('error', e.message);
   }
 
@@ -646,7 +754,44 @@ export async function deleteClusterFromCloud(clusterId: string): Promise<void> {
   }
 }
 
+const PENDING_MEMBERS_SYNC_KEY = 'dana_kematian_pending_members_sync_v1';
+
+export function getPendingUnsyncedMembers(): Member[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(PENDING_MEMBERS_SYNC_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function markMemberPendingSync(member: Member): void {
+  if (typeof window === 'undefined' || !member?.id) return;
+  try {
+    const current = getPendingUnsyncedMembers();
+    const updated = [member, ...current.filter((m) => m && m.id !== member.id)];
+    localStorage.setItem(PENDING_MEMBERS_SYNC_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function clearMemberPendingSync(memberId: string): void {
+  if (typeof window === 'undefined' || !memberId) return;
+  try {
+    const current = getPendingUnsyncedMembers();
+    const updated = current.filter((m) => m && m.id !== memberId);
+    localStorage.setItem(PENDING_MEMBERS_SYNC_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export async function syncMemberToCloud(member: Member): Promise<boolean> {
+  markMemberPendingSync(member);
   const ref = doc(db, COLLECTIONS.MEMBERS, member.id);
   try {
     const sanitized = sanitizeFirestoreData(member);
@@ -662,6 +807,7 @@ export async function syncMemberToCloud(member: Member): Promise<boolean> {
     }
 
     await setDoc(ref, safeData, { merge: true });
+    clearMemberPendingSync(member.id);
     recordFirebaseWrite(COLLECTIONS.MEMBERS, 1);
     return true;
   } catch (error: any) {
@@ -679,13 +825,14 @@ export async function syncMemberToCloud(member: Member): Promise<boolean> {
           : '',
       };
       await setDoc(ref, strippedData, { merge: true });
+      clearMemberPendingSync(member.id);
       recordFirebaseWrite(COLLECTIONS.MEMBERS, 1);
       return true;
     } catch (retryErr: any) {
       if (retryErr?.code === 'permission-denied' || retryErr?.message?.includes('insufficient permissions')) {
         handleFirestoreError(retryErr, OperationType.WRITE, `${COLLECTIONS.MEMBERS}/${member.id}`);
       } else {
-        console.error(`Firestore syncMemberToCloud error for member ${member.id}:`, retryErr?.message);
+        console.error(`Firestore syncMemberToCloud error for member ${member.id} (kept in pending local sync queue):`, retryErr?.message);
       }
       return false;
     }
@@ -887,6 +1034,7 @@ export async function syncUsersBatchToCloud(users: AppUser[]): Promise<void> {
  * Delete single entity from Firestore
  */
 export async function deleteMemberFromCloud(memberId: string): Promise<void> {
+  clearMemberPendingSync(memberId);
   const ref = doc(db, COLLECTIONS.MEMBERS, memberId);
   try {
     await deleteDoc(ref);

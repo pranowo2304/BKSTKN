@@ -92,11 +92,20 @@ import {
   clearAllClaimsFromCloud,
   cleanupDemoClaimsFromCloud,
   restoreDemoDataToCloud,
+  getPendingUnsyncedMembers,
+  clearMemberPendingSync,
 } from './lib/firebase';
 import { checkDuplicateMember } from './lib/duplicateValidator';
 import { isMemberAwaitingPaguyubanApproval } from './lib/ktaUtils';
 import { syncAndFilterPaymentsWithMembers } from './lib/receiptUtils';
 import { recordAppVisit } from './lib/firebaseTelemetry';
+import {
+  recoverMissingMembersFromTraces,
+  markMemberExplicitlyDeleted,
+  mergeMemberRecords,
+  getMemberStatusRank,
+  cleanCorruptedPendingSyncQueue,
+} from './lib/memberRecovery';
 import { initialUsers } from './data/initialData';
 
 import { Navbar } from './components/Navbar';
@@ -202,11 +211,57 @@ export default function App() {
     const initialU = getStoredUsers();
     const initialCl = getStoredClusters();
     const initialB = getStoredBenefits();
-    const initialN = getStoredNotifications();
+    const rawInitialN = getStoredNotifications();
+
+    // Pulihkan warga yang sempat didaftarkan & diverifikasi saat Mode Lokal (termasuk Supardi)
+    // serta perbaiki anggota resmi yang statusnya sempat turun ke verifikasi RT
+    const initialRecovery = recoverMissingMembersFromTraces({
+      currentMembers: initialM,
+      users: initialU,
+      notifications: rawInitialN,
+      payments: initialP,
+    });
+    const effectiveInitialM = initialRecovery.mergedMembers;
+    if (initialRecovery.recoveredMembers.length > 0) {
+      saveMembers(effectiveInitialM);
+      initialRecovery.recoveredMembers.forEach((recMem) => {
+        syncMemberToCloud(recMem).catch(() => {});
+        const recUser = createMemberUser(recMem);
+        syncUserToCloud(recUser).catch(() => {});
+      });
+    }
+    const initialN = initialRecovery.restoredNotification
+      ? [initialRecovery.restoredNotification, ...rawInitialN]
+      : rawInitialN;
+
+    const activeInitialIds = new Set(effectiveInitialM.map((m) => m.id));
+    const activeInitialNames = effectiveInitialM
+      .map((m) => (m.name || '').toLowerCase().trim())
+      .filter(Boolean);
+    const cleanedInitialN = initialN.filter((n) => {
+      if (n.id.startsWith('notif-demo-')) return false;
+      if (n.category === 'registration') {
+        if (n.memberId && !activeInitialIds.has(n.memberId)) {
+          return false;
+        }
+        const msgLower = (n.message || '').toLowerCase();
+        if (
+          activeInitialNames.length > 0 &&
+          (msgLower.includes('pendaftaran warga') || msgLower.includes('disetujui') || msgLower.includes('diverifikasi'))
+        ) {
+          const matchesAny = activeInitialNames.some((name) => msgLower.includes(name));
+          if (!matchesAny) return false;
+        }
+      }
+      return true;
+    });
+    if (cleanedInitialN.length !== rawInitialN.length || initialRecovery.restoredNotification) {
+      saveStoredNotifications(cleanedInitialN);
+    }
     const initialBase = getBaseBalance();
     const storedActive = getStoredActiveUser();
 
-    setMembers(initialM);
+    setMembers(effectiveInitialM);
     setPayments(initialP);
     setClaims(initialC);
     setAmbulanceOrders(initialAmb);
@@ -214,12 +269,12 @@ export default function App() {
     setInventoryItems(initialInv);
     setInventoryLoans(initialLoans);
     setSettings(initialS);
-    const initialSyncedU = syncMembersToUsers(initialM, initialU);
+    const initialSyncedU = syncMembersToUsers(effectiveInitialM, initialU);
     saveUsers(initialSyncedU);
     setUsers(initialSyncedU);
     setClusters(initialCl);
     setBenefits(initialB);
-    setNotifications(initialN);
+    setNotifications(cleanedInitialN);
     setBaseFundBalance(initialBase);
     // Validate stored active user against Master Users list
     let validActiveUser: AppUser | null = null;
@@ -282,6 +337,9 @@ export default function App() {
         if (!isAlreadyInit) {
           await seedInitialFirestoreData();
           await cleanupDemoClaimsFromCloud().catch(() => {});
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('dana_kematian_initialized_v1', 'true');
+          }
         }
         unsubscribeFirestore = subscribeToFirestore({
           onMembersChange: (cloudMembers) => {
@@ -325,8 +383,13 @@ export default function App() {
                   }
                 }
 
-                // Jika status belum Aktif (mis. Menunggu Persetujuan Ketua Paguyuban), pastikan isPaguyubanApproved = false
-                if (m.status !== 'Aktif' && m.isPaguyubanApproved === true) {
+                // Jika status eksplisit Menunggu Persetujuan Ketua Paguyuban dan belum ada data pengesahan, pastikan isPaguyubanApproved = false
+                if (
+                  m.status === 'Menunggu Persetujuan Ketua Paguyuban' &&
+                  !m.approvedByPaguyuban &&
+                  !m.approvedByPaguyubanAt &&
+                  m.isPaguyubanApproved === true
+                ) {
                   return {
                     ...m,
                     cluster,
@@ -340,11 +403,108 @@ export default function App() {
                 };
               });
 
-              setMembers(normalizedCloudMembers);
-              saveMembers(normalizedCloudMembers);
+              // Bersihkan antrean sinkronisasi lokal dari data korup sebelum digabungkan
+              cleanCorruptedPendingSyncQueue();
+              const pendingLocalMembers = getPendingUnsyncedMembers();
+              const storedLocalMembers = getStoredMembers();
+              const currentPayments = getStoredPayments();
+
+              // Jika snapshot Cloud kosong padahal penyimpanan lokal memiliki daftar anggota (mis. saat kuota habis), pertahankan data lokal
+              const baseMembers =
+                normalizedCloudMembers.length === 0 && storedLocalMembers.length > 0
+                  ? [...storedLocalMembers]
+                  : normalizedCloudMembers.map((cm) => {
+                      const localMatch = storedLocalMembers.find((lm) => lm && lm.id === cm.id);
+                      return localMatch ? mergeMemberRecords(cm, localMatch, currentPayments) : cm;
+                    });
+
+              const mergedCloudMembers = [...baseMembers];
+              if (pendingLocalMembers.length > 0) {
+                pendingLocalMembers.forEach((pendingMem) => {
+                  if (!pendingMem || !pendingMem.id) return;
+                  const existingIdx = mergedCloudMembers.findIndex((cm) => cm && cm.id === pendingMem.id);
+                  if (existingIdx === -1) {
+                    mergedCloudMembers.unshift(pendingMem);
+                    syncMemberToCloud(pendingMem).catch(() => {});
+                  } else {
+                    const existingCloud = mergedCloudMembers[existingIdx];
+                    const cloudRank = getMemberStatusRank(existingCloud, currentPayments);
+                    const pendingRank = getMemberStatusRank(pendingMem, currentPayments);
+                    // Jangan pernah menimpa status anggota yang sudah lebih tinggi (mis. Aktif) dengan antrean lama (Menunggu Verifikasi RT)
+                    if (cloudRank > pendingRank) {
+                      mergedCloudMembers[existingIdx] = mergeMemberRecords(existingCloud, pendingMem, currentPayments);
+                      clearMemberPendingSync(pendingMem.id);
+                    } else {
+                      const merged = mergeMemberRecords(existingCloud, pendingMem, currentPayments);
+                      mergedCloudMembers[existingIdx] = merged;
+                      syncMemberToCloud(merged).catch(() => {});
+                    }
+                  }
+                });
+              }
+
+              // Pulihkan juga warga (seperti Supardi), kembalikan Wasisto Trianggono ke Menunggu Verifikasi RT,
+              // dan perbaiki anggota resmi yang sudah membayar
+              const cloudRecovery = recoverMissingMembersFromTraces({
+                currentMembers: mergedCloudMembers,
+                users: getStoredUsers(),
+                notifications: getStoredNotifications(),
+                payments: currentPayments,
+              });
+              const finalMergedMembers = cloudRecovery.mergedMembers;
+              if (cloudRecovery.recoveredMembers.length > 0) {
+                cloudRecovery.recoveredMembers.forEach((recMem) => {
+                  syncMemberToCloud(recMem).catch(() => {});
+                  const recUser = createMemberUser(recMem);
+                  syncUserToCloud(recUser).catch(() => {});
+                });
+              }
+
+              setMembers(finalMergedMembers);
+              saveMembers(finalMergedMembers);
+
+              // Bersihkan notifikasi pendaftaran/verifikasi yatim (orphaned) yang merujuk pada warga yang sudah tidak ada di database
+              setNotifications((prevNotifs) => {
+                const baseNotifs =
+                  cloudRecovery.restoredNotification &&
+                  !prevNotifs.some((n) => n.id === cloudRecovery.restoredNotification!.id)
+                    ? [cloudRecovery.restoredNotification, ...prevNotifs]
+                    : prevNotifs;
+
+                const activeMemberIds = new Set(finalMergedMembers.map((m) => m.id));
+                const activeMemberNames = finalMergedMembers
+                  .map((m) => (m.name || '').toLowerCase().trim())
+                  .filter(Boolean);
+
+                const cleanedNotifs = baseNotifs.filter((n) => {
+                  if (n.id.startsWith('notif-demo-')) return false;
+                  if (n.category === 'registration') {
+                    if (n.memberId && !activeMemberIds.has(n.memberId)) {
+                      return false;
+                    }
+                    // Jika tidak ada memberId, cek kecocokan nama pada pesan pendaftaran/verifikasi
+                    const msgLower = (n.message || '').toLowerCase();
+                    if (
+                      activeMemberNames.length > 0 &&
+                      (msgLower.includes('pendaftaran warga') || msgLower.includes('disetujui') || msgLower.includes('diverifikasi'))
+                    ) {
+                      const matchesAnyActiveMember = activeMemberNames.some((name) => msgLower.includes(name));
+                      if (!matchesAnyActiveMember) {
+                        return false;
+                      }
+                    }
+                  }
+                  return true;
+                });
+
+                if (cleanedNotifs.length !== prevNotifs.length || cloudRecovery.restoredNotification) {
+                  saveStoredNotifications(cleanedNotifs);
+                }
+                return cleanedNotifs;
+              });
 
               setUsers((prevUsers) => {
-                const syncedUsers = syncMembersToUsers(normalizedCloudMembers, prevUsers);
+                const syncedUsers = syncMembersToUsers(finalMergedMembers, prevUsers);
                 saveUsers(syncedUsers);
                 return syncedUsers;
               });
@@ -355,6 +515,24 @@ export default function App() {
             if (cloudPayments && Array.isArray(cloudPayments)) {
               setPayments(cloudPayments);
               savePayments(cloudPayments);
+
+              // Rekonsiliasi ulang status anggota terhadap data pembayaran terbaru dari Cloud
+              setMembers((prevMembers) => {
+                const reconciled = recoverMissingMembersFromTraces({
+                  currentMembers: prevMembers,
+                  users: getStoredUsers(),
+                  notifications: getStoredNotifications(),
+                  payments: cloudPayments,
+                });
+                if (reconciled.recoveredMembers.length > 0) {
+                  saveMembers(reconciled.mergedMembers);
+                  reconciled.recoveredMembers.forEach((recMem) => {
+                    syncMemberToCloud(recMem).catch(() => {});
+                  });
+                  return reconciled.mergedMembers;
+                }
+                return prevMembers;
+              });
             }
             setIsInitialLoading(false);
           },
@@ -1033,6 +1211,9 @@ export default function App() {
     const targetMember = members.find((m) => m.id === memberId);
     if (!targetMember) return;
 
+    // Tandai bahwa anggota ini dihapus secara eksplisit oleh Admin agar tidak dipulihkan ulang otomatis
+    markMemberExplicitlyDeleted(memberId, targetMember.name);
+
     const updatedMembers = members.filter((m) => m.id !== memberId);
     setMembers(updatedMembers);
     saveMembers(updatedMembers);
@@ -1084,6 +1265,24 @@ export default function App() {
     if (registeredMemberForLogin?.id === memberId) {
       setRegisteredMemberForLogin(null);
     }
+
+    // Hapus juga riwayat notifikasi pendaftaran/verifikasi lama milik anggota yang dihapus
+    setNotifications((prevNotifs) => {
+      const targetNameLower = (targetMember.name || '').toLowerCase().trim();
+      const filteredNotifs = prevNotifs.filter((n) => {
+        if (n.memberId && n.memberId === memberId) return false;
+        if (
+          n.category === 'registration' &&
+          targetNameLower &&
+          (n.message || '').toLowerCase().includes(targetNameLower)
+        ) {
+          return false;
+        }
+        return true;
+      });
+      saveStoredNotifications(filteredNotifs);
+      return filteredNotifs;
+    });
 
     addNotification({
       type: 'warning',
@@ -2845,6 +3044,7 @@ export default function App() {
             members={members}
             claims={claims}
             ambulanceOrders={ambulanceOrders}
+            users={users}
             currentUser={activeUser}
             settings={settings}
             onAddSchedule={handleAddFuneralSchedule}
