@@ -1,10 +1,15 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { SystemSettings, Payment, AppUser, UserAuthority, Member, AppNotification, AmbulanceOrder } from '../types';
-import { formatIDR } from '../lib/storage';
+import { formatIDR, getMemberForUser } from '../lib/storage';
 import { calculatePendingGracePeriod, getGracePeriodSummary } from '../lib/gracePeriodUtils';
 import { isMemberAwaitingPaguyubanApproval } from '../lib/ktaUtils';
 import { analyzeMemberStatusAnomalies } from '../lib/systemAuditLog';
-import { useRolePermissions, isAuthorizedForFuneralInventory } from '../lib/permissions';
+import {
+  useRolePermissions,
+  isAuthorizedForFuneralInventory,
+  filterNotificationsForUser,
+  resolveNotificationTargetTab,
+} from '../lib/permissions';
 import { 
   HeartHandshake, 
   Users, 
@@ -129,22 +134,27 @@ export const Navbar: React.FC<NavbarProps> = ({
   const userDropdownRef = useRef<HTMLDivElement>(null);
 
   const authority: UserAuthority = activeUser ? activeUser.authority : 'Anggota';
-  const isBendahara = authority === 'Bendahara';
-  const isBendaharaOrAdmin = authority === 'Bendahara' || authority === 'Admin';
-  const isKetuaRt = authority === 'Ketua RT (Cluster)';
-  const isKetuaPaguyuban = authority === 'Ketua Paguyuban';
-  const isDriver = authority === 'Driver';
-  const isStaf = authority === 'Petugas Staf';
-  const isAdminRole = authority === 'Admin';
+  const { permissions } = useRolePermissions();
+  const isBendahara = Boolean(activeUser && authority === 'Bendahara');
+  const isBendaharaOrAdmin = Boolean(activeUser && (authority === 'Bendahara' || authority === 'Admin'));
+  const isKetuaRt = Boolean(activeUser && authority === 'Ketua RT (Cluster)');
+  const isKetuaPaguyuban = Boolean(activeUser && authority === 'Ketua Paguyuban');
+  const isDriver = Boolean(activeUser && authority === 'Driver');
+  const isStaf = Boolean(activeUser && authority === 'Petugas Staf');
+  const isAdminRole = Boolean(activeUser && authority === 'Admin');
   const userCluster = activeUser?.cluster;
+  const myLinkedMemberId = useMemo(
+    () => (activeUser ? getMemberForUser(activeUser, members)?.id || activeUser.memberId : undefined),
+    [activeUser, members]
+  );
 
   // Tombol ganti peran hanya untuk Admin
-  const canSwitchRole = authority === 'Admin';
+  const canSwitchRole = Boolean(activeUser && authority === 'Admin');
   // Tombol laporan di header untuk Admin, Bendahara, dan Ketua DKM
-  const canAccessReport =
-    authority === 'Admin' ||
-    authority === 'Bendahara' ||
-    authority === 'Ketua DKM';
+  const canAccessReport = Boolean(
+    activeUser &&
+      (authority === 'Admin' || authority === 'Bendahara' || authority === 'Ketua DKM')
+  );
 
   const pendingPayments = useMemo(() => {
     return payments.filter((p) => p.status === 'Pending');
@@ -175,7 +185,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   }, [isAdminRole, members, payments, notifications]);
 
   const pendingAmbulanceList = useMemo(() => {
-    if (!ambulanceOrders) return [];
+    if (!activeUser || !ambulanceOrders) return [];
     if (isBendahara || isAdminRole || isKetuaPaguyuban) {
       return ambulanceOrders.filter((o) => o.status === 'MENUNGGU_BENDAHARA');
     }
@@ -185,22 +195,19 @@ export const Navbar: React.FC<NavbarProps> = ({
     if (isDriver) {
       return ambulanceOrders.filter((o) => o.status === 'MENUNGGU_KONFIRMASI_DRIVER' && (o.driverId === activeUser?.id || !o.driverId));
     }
-    return ambulanceOrders.filter((o) => ['MENUNGGU_BENDAHARA', 'DISETUJUI_BENDAHARA', 'MENUNGGU_KONFIRMASI_DRIVER'].includes(o.status));
-  }, [ambulanceOrders, isBendahara, isAdminRole, isKetuaPaguyuban, isStaf, isDriver, activeUser]);
+    return [];
+  }, [activeUser, ambulanceOrders, isBendahara, isAdminRole, isKetuaPaguyuban, isStaf, isDriver]);
 
   const unreadSystemNotifs = useMemo(() => {
-    if (!notifications) return [];
-    return notifications.filter((n) => {
-      if (n.read) return false;
-      if (isKetuaRt && userCluster) {
-        return !n.cluster || n.cluster === userCluster || n.category === 'system';
-      }
-      return true;
-    });
-  }, [notifications, isKetuaRt, userCluster]);
+    if (!activeUser || !notifications) return [];
+    return filterNotificationsForUser(notifications, activeUser, myLinkedMemberId, permissions).filter(
+      (n) => !n.read
+    );
+  }, [activeUser, notifications, myLinkedMemberId, permissions]);
 
-  // Unified list of actionable notification items tailored to user authority
+  // Unified list of actionable notification items tailored strictly to user authority
   const actionableItems = useMemo(() => {
+    if (!activeUser) return [];
     const items: Array<{
       id: string;
       category: 'rt' | 'payment' | 'paguyuban' | 'ambulance' | 'system';
@@ -305,32 +312,38 @@ export const Navbar: React.FC<NavbarProps> = ({
       });
     }
 
-    // 5. Notifikasi Sistem & Aktivitas Belum Dibaca
+    // 5. Notifikasi Sistem & Aktivitas Belum Dibaca (Sudah difilter sesuai otoritas user)
     unreadSystemNotifs.forEach((n) => {
+      const targetTab = resolveNotificationTargetTab(n.linkTab, authority, permissions);
       items.push({
         id: `sys-${n.id}`,
         category: 'system',
         title: n.title,
         subtitle: n.message,
         meta: n.timestamp ? n.timestamp.split('T')[0] : 'Baru',
-        badgeLabel: n.category === 'payment' ? 'Iuran' : n.category === 'registration' ? 'Warga' : n.category === 'claim' ? 'Santunan' : n.category === 'ambulance' ? 'Ambulans' : 'Sistem',
+        badgeLabel: n.category === 'payment' ? 'Iuran' : n.category === 'registration' ? 'Warga' : n.category === 'claim' ? 'Santunan' : n.category === 'ambulance' ? 'Ambulans' : n.category === 'funeral' ? 'Pemakaman' : 'Sistem',
         badgeColor: n.type === 'error' ? 'bg-rose-100 text-rose-900 border-rose-300' : n.type === 'warning' ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-blue-100 text-blue-900 border-blue-200',
-        actionLabel: n.linkTab ? 'Buka Menu' : 'Tandai Dibaca',
+        actionLabel: targetTab ? 'Buka Menu' : 'Tandai Dibaca',
         onAction: () => {
           if (onMarkNotificationRead) onMarkNotificationRead(n.id);
-          if (n.linkTab) {
+          if (targetTab) {
             setShowNotifications(false);
-            setIsAdmin(true);
-            setCurrentTab(n.linkTab);
+            if (authority !== 'Anggota') {
+              setIsAdmin(true);
+            }
+            setCurrentTab(targetTab);
           }
         },
-        secondaryActionLabel: n.linkTab ? 'Tandai Dibaca' : undefined,
-        onSecondaryAction: n.linkTab ? () => onMarkNotificationRead && onMarkNotificationRead(n.id) : undefined,
+        secondaryActionLabel: targetTab ? 'Tandai Dibaca' : undefined,
+        onSecondaryAction: targetTab ? () => onMarkNotificationRead && onMarkNotificationRead(n.id) : undefined,
       });
     });
 
     return items;
   }, [
+    activeUser,
+    authority,
+    permissions,
     isKetuaRt,
     isAdminRole,
     isBendahara,
@@ -443,8 +456,6 @@ export const Navbar: React.FC<NavbarProps> = ({
         return <User className="w-3.5 h-3.5 text-slate-300" />;
     }
   };
-
-  const { permissions } = useRolePermissions();
 
   return (
     <header className="sticky top-0 z-40 bg-slate-900 border-b border-slate-800 text-white shadow-xl">
@@ -732,7 +743,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           )}
 
-          {/* NOTIFICATION BELL DROPDOWN */}
+          {/* NOTIFICATION BELL DROPDOWN (HANYA USER TERAUTENTIKASI) */}
+          {activeUser && (
           <div className="relative" ref={notificationRef}>
             <button
               type="button"
@@ -1074,17 +1086,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                     type="button"
                     onClick={() => {
                       setShowNotifications(false);
-                      setCurrentTab('dashboard');
+                      setCurrentTab(authority === 'Anggota' ? 'member-portal' : 'dashboard');
                     }}
                     className="text-xs font-bold text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1 group"
                   >
-                    <span>Buka Dashboard</span>
+                    <span>{authority === 'Anggota' ? 'Buka Portal Anggota' : 'Buka Dashboard'}</span>
                     <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                   </button>
                 </div>
               </div>
             )}
           </div>
+          )}
 
           {/* Quick Dashboard Button for Admin & Bendahara in Top Header Bar */}
           {isBendaharaOrAdmin && (

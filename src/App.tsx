@@ -151,7 +151,13 @@ import { DigitalKtaModal } from './components/DigitalKtaModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { AppIcon } from './components/AppIcon';
 import { HeartHandshake, Loader2, Cloud, Database, Lock, Check } from 'lucide-react';
-import { useRolePermissions, getPermittedTabsForRole, isAuthorizedForFuneralInventory } from './lib/permissions';
+import {
+  useRolePermissions,
+  getPermittedTabsForRole,
+  isAuthorizedForFuneralInventory,
+  filterNotificationsForUser,
+  resolveNotificationTargetTab,
+} from './lib/permissions';
 import {
   dispatchWhatsAppNotification,
   buildPaymentValidatedActiveMessage,
@@ -2971,9 +2977,11 @@ export default function App() {
 
     addNotification({
       type: 'warning',
-      category: 'claim',
+      category: 'ambulance',
       title: 'Permohonan Ambulans Masuk (RT)',
       message: `Layanan ${newOrder.serviceType === 'KEMATIAN' ? 'Antar Jenazah / Fardhu Kifayah' : 'Pasien Sakit'} untuk ${newOrder.patientName} (${newOrder.orderCode}) diajukan oleh ${newOrder.rtSubmittingUserName}. Menunggu persetujuan Bendahara.`,
+      cluster: newOrder.cluster || newOrder.clusterName,
+      memberId: newOrder.memberId,
       linkTab: 'ambulance',
     });
   };
@@ -2991,41 +2999,51 @@ export default function App() {
     if (updatedOrder.status === 'DISETUJUI_BENDAHARA') {
       addNotification({
         type: 'info',
-        category: 'claim',
+        category: 'ambulance',
         title: 'Ambulans Disetujui Bendahara',
         message: `Pemesanan ambulans #${updatedOrder.orderCode} untuk ${updatedOrder.patientName} disetujui Bendahara (BBM: ${formatIDR(updatedOrder.fuelSubsidyAmount || 0)}). Menunggu Petugas Staf menugaskan driver & armada.`,
+        cluster: updatedOrder.cluster || updatedOrder.clusterName,
+        memberId: updatedOrder.memberId,
         linkTab: 'ambulance',
       });
     } else if (updatedOrder.status === 'MENUNGGU_KONFIRMASI_DRIVER') {
       addNotification({
         type: 'info',
-        category: 'claim',
+        category: 'ambulance',
         title: 'Penugasan Driver Ambulans',
         message: `Driver ${updatedOrder.driverName} ditugaskan untuk ambulans #${updatedOrder.orderCode} (${updatedOrder.vehiclePlate}). Menunggu konfirmasi ketersediaan driver.`,
+        cluster: updatedOrder.cluster || updatedOrder.clusterName,
+        memberId: updatedOrder.memberId,
         linkTab: 'ambulance',
       });
     } else if (updatedOrder.status === 'DRIVER_BERSIAP') {
       addNotification({
         type: 'info',
-        category: 'claim',
+        category: 'ambulance',
         title: 'Driver Konfirmasi Siap Bertugas',
         message: `Driver ${updatedOrder.driverName} telah mengonfirmasi BISA & SIAP meluncur jemput ${updatedOrder.patientName} (${updatedOrder.orderCode}).`,
+        cluster: updatedOrder.cluster || updatedOrder.clusterName,
+        memberId: updatedOrder.memberId,
         linkTab: 'ambulance',
       });
     } else if (updatedOrder.status === 'PENUGASAN_ULANG_STAF') {
       addNotification({
         type: 'warning',
-        category: 'claim',
+        category: 'ambulance',
         title: 'Driver Berhalangan / Menolak Tugas',
         message: `Driver menolak penugasan ambulans #${updatedOrder.orderCode}: ${updatedOrder.driverResponseNotes || 'Tidak bisa bertugas'}. Mohon Petugas Staf menunjuk driver cadangan lain.`,
+        cluster: updatedOrder.cluster || updatedOrder.clusterName,
+        memberId: updatedOrder.memberId,
         linkTab: 'ambulance',
       });
     } else if (updatedOrder.status === 'SELESAI') {
       addNotification({
         type: 'info',
-        category: 'claim',
+        category: 'ambulance',
         title: 'Pelayanan Ambulans Selesai',
         message: `Pelayanan ambulans #${updatedOrder.orderCode} untuk ${updatedOrder.patientName} telah tuntas dan mobil kembali ke pos.`,
+        cluster: updatedOrder.cluster || updatedOrder.clusterName,
+        memberId: updatedOrder.memberId,
         linkTab: 'ambulance',
       });
     }
@@ -3051,9 +3069,11 @@ export default function App() {
 
     addNotification({
       type: 'info',
-      category: 'claim',
+      category: 'funeral',
       title: 'Agenda Pemakaman Diterbitkan',
       message: `Jadwal pemakaman untuk ${newSched.deceasedName} (${newSched.scheduleCode}) di ${newSched.cemeteryName} telah dijadwalkan.`,
+      cluster: newSched.cluster,
+      memberId: newSched.memberId,
       linkTab: 'funeral-schedule',
     });
   };
@@ -4136,11 +4156,19 @@ export default function App() {
         onClose={() => setIsPWAInstallModalOpen(false)}
       />
 
-      {/* Floating Real-time Animated Slide-in Toast Notifier */}
+      {/* Floating Real-time Animated Slide-in Toast Notifier (Dibatasi sesuai Otoritas Pengguna) */}
       <RealtimeToastNotifier
-        toasts={toastAlerts}
+        toasts={filterNotificationsForUser(
+          toastAlerts,
+          activeUser,
+          activeUser ? getMemberForUser(activeUser, members)?.id || activeUser.memberId : undefined,
+          rolePermissions
+        )}
         onDismiss={(id) => setToastAlerts((prev) => prev.filter((t) => t.toastId !== id))}
-        onNavigateTab={(tab) => setCurrentTab(tab)}
+        onNavigateTab={(tab) => {
+          const target = resolveNotificationTargetTab(tab, activeUser?.authority, rolePermissions);
+          if (target) setCurrentTab(target);
+        }}
       />
     </div>
   );

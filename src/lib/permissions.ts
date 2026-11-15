@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserAuthority, USER_AUTHORITIES, AppUser } from '../types';
+import { AppNotification, UserAuthority, USER_AUTHORITIES, AppUser } from '../types';
 
 export type PermissionKey =
   // Laporan & Rekapitulasi (Reports)
@@ -695,4 +695,230 @@ export const useRolePermissions = () => {
     can,
     refreshPermissions: () => setPermissions(getStoredRolePermissions()),
   };
+};
+
+/**
+ * Normalizes legacy notification linkTab identifiers to valid App currentTab IDs.
+ */
+export const resolveNotificationTargetTab = (
+  linkTab: string | undefined,
+  role: UserAuthority | string | undefined,
+  permsMap?: RolePermissionsMap
+): string | null => {
+  if (!linkTab || !role) return null;
+  const raw = linkTab.trim().toLowerCase();
+  const normalized =
+    raw === 'payments'
+      ? hasPermission(role, 'approve_payments', permsMap)
+        ? 'validation'
+        : 'history'
+      : raw === 'funeral'
+      ? 'funeral-schedule'
+      : raw;
+
+  const permitted = getPermittedTabsForRole(role, permsMap);
+  return permitted.includes(normalized) ? normalized : null;
+};
+
+/**
+ * Determines whether an AppNotification is relevant and authorized for the given activeUser.
+ * Enforces strict Role/Authority RBAC, Ketua RT cluster isolation, Anggota self-only scope,
+ * and Admin-only visibility for Audit Status & administrative system logs.
+ */
+export const isNotificationRelevantToUser = (
+  notif: AppNotification,
+  activeUser: AppUser | null | undefined,
+  myMemberId?: string,
+  permsMap?: RolePermissionsMap
+): boolean => {
+  // Unauthenticated guests have zero authority to see internal notifications
+  if (!activeUser) return false;
+
+  const rawAuthStr = String(activeUser.authority || 'Anggota');
+  const effectiveRole: UserAuthority =
+    rawAuthStr === 'Ketua RT' || rawAuthStr.includes('RT')
+      ? 'Ketua RT (Cluster)'
+      : (rawAuthStr as UserAuthority);
+
+  // Admin has full system oversight authority
+  if (effectiveRole === 'Admin') {
+    return true;
+  }
+
+  const perms = permsMap || getStoredRolePermissions();
+  const rolePerms =
+    perms[effectiveRole] ||
+    DEFAULT_ROLE_PERMISSIONS[effectiveRole] ||
+    DEFAULT_ROLE_PERMISSIONS['Anggota'];
+
+  const titleLower = (notif.title || '').toLowerCase();
+  const linkTab = (notif.linkTab || '').toLowerCase();
+
+  // Admin-only system audit, deletion, and admin configuration alerts
+  const isAdminOnlyNotif =
+    linkTab === 'audit-status' ||
+    linkTab === 'users' ||
+    linkTab === 'settings' ||
+    titleLower.includes('audit status') ||
+    titleLower.includes('audit npa') ||
+    titleLower.includes('dihapus oleh admin') ||
+    titleLower.includes('record registrasi anggota dihapus') ||
+    titleLower.includes('transaksi telah dikosongkan');
+
+  if (isAdminOnlyNotif) {
+    return false;
+  }
+
+  // Anggota: ONLY notifications tied directly to their own memberId (and not internal officer logs)
+  if (effectiveRole === 'Anggota') {
+    const resolvedOwnMemberId = myMemberId || activeUser.memberId;
+    if (!resolvedOwnMemberId || !notif.memberId || notif.memberId !== resolvedOwnMemberId) {
+      return false;
+    }
+    if (notif.category === 'system') {
+      return false;
+    }
+    if (
+      linkTab === 'validation' ||
+      linkTab === 'rt-verification' ||
+      linkTab === 'paguyuban-approval' ||
+      linkTab === 'inventory'
+    ) {
+      return (
+        titleLower.includes('disetujui') ||
+        titleLower.includes('terverifikasi') ||
+        titleLower.includes('divalidasi') ||
+        titleLower.includes('ditolak') ||
+        titleLower.includes('diterbitkan')
+      );
+    }
+    return true;
+  }
+
+  // Cluster isolation for Ketua RT (Cluster)
+  if (effectiveRole === 'Ketua RT (Cluster)' && activeUser.cluster) {
+    if (
+      notif.cluster &&
+      notif.cluster.trim().toLowerCase() !== activeUser.cluster.trim().toLowerCase()
+    ) {
+      return false;
+    }
+  }
+
+  // LinkTab authorization guard (prevent officers seeing notifications for tabs they cannot access)
+  if (linkTab) {
+    if (linkTab === 'inventory' && !isAuthorizedForFuneralInventory(effectiveRole)) {
+      return false;
+    }
+    if (
+      linkTab === 'validation' &&
+      !(rolePerms.approve_payments || rolePerms.reject_payments || rolePerms.issue_receipts)
+    ) {
+      return false;
+    }
+    if (
+      linkTab === 'rt-verification' &&
+      !(
+        rolePerms.verify_rt_members ||
+        effectiveRole === 'Ketua Paguyuban' ||
+        effectiveRole === 'Ketua RW'
+      )
+    ) {
+      return false;
+    }
+    if (linkTab === 'paguyuban-approval' && !rolePerms.approve_paguyuban) {
+      return false;
+    }
+    if (linkTab === 'realization' && !(rolePerms.process_claims || rolePerms.view_claims)) {
+      return false;
+    }
+    if (
+      (linkTab === 'history' || linkTab === 'payments') &&
+      !(
+        rolePerms.approve_payments ||
+        rolePerms.reject_payments ||
+        rolePerms.record_payments ||
+        effectiveRole === 'Ketua Paguyuban' ||
+        effectiveRole === 'Ketua RW'
+      )
+    ) {
+      return false;
+    }
+  }
+
+  const isAmbulanceNotif =
+    notif.category === 'ambulance' ||
+    linkTab === 'ambulance' ||
+    titleLower.includes('ambulans');
+  const isFuneralNotif =
+    notif.category === 'funeral' ||
+    linkTab === 'funeral-schedule' ||
+    linkTab === 'funeral' ||
+    linkTab === 'inventory';
+
+  if (isAmbulanceNotif) {
+    return (
+      effectiveRole === 'Bendahara' ||
+      effectiveRole === 'Ketua Paguyuban' ||
+      effectiveRole === 'Ketua RW' ||
+      effectiveRole === 'Petugas Staf' ||
+      effectiveRole === 'Driver' ||
+      effectiveRole === 'Ketua RT (Cluster)'
+    );
+  }
+
+  if (isFuneralNotif) {
+    if (linkTab === 'inventory') {
+      return isAuthorizedForFuneralInventory(effectiveRole);
+    }
+    return (
+      effectiveRole === 'Bendahara' ||
+      effectiveRole === 'Ketua Paguyuban' ||
+      effectiveRole === 'Ketua RW' ||
+      effectiveRole === 'Ketua DKM' ||
+      effectiveRole === 'Petugas Staf' ||
+      effectiveRole === 'Ketua RT (Cluster)'
+    );
+  }
+
+  if (notif.category === 'payment') {
+    return Boolean(
+      rolePerms.approve_payments ||
+        rolePerms.reject_payments ||
+        rolePerms.record_payments ||
+        effectiveRole === 'Ketua Paguyuban' ||
+        effectiveRole === 'Ketua RW'
+    );
+  }
+
+  if (notif.category === 'registration') {
+    return Boolean(
+      rolePerms.verify_rt_members ||
+        rolePerms.approve_paguyuban ||
+        rolePerms.register_members ||
+        effectiveRole === 'Ketua RW'
+    );
+  }
+
+  if (notif.category === 'claim') {
+    return Boolean(rolePerms.process_claims || rolePerms.view_claims);
+  }
+
+  if (notif.category === 'system') {
+    return Boolean(rolePerms.view_audit_logs);
+  }
+
+  return false;
+};
+
+export const filterNotificationsForUser = <T extends AppNotification>(
+  notifications: T[] = [],
+  activeUser: AppUser | null | undefined,
+  myMemberId?: string,
+  permsMap?: RolePermissionsMap
+): T[] => {
+  if (!activeUser || !notifications || notifications.length === 0) return [];
+  return notifications.filter((n) =>
+    isNotificationRelevantToUser(n, activeUser, myMemberId, permsMap)
+  );
 };

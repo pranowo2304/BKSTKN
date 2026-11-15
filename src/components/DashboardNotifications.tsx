@@ -19,6 +19,11 @@ import {
   Ambulance,
 } from 'lucide-react';
 import { AppNotification, NotificationCategory, AppUser } from '../types';
+import {
+  useRolePermissions,
+  filterNotificationsForUser,
+  resolveNotificationTargetTab,
+} from '../lib/permissions';
 
 interface DashboardNotificationsProps {
   notifications: AppNotification[];
@@ -42,18 +47,19 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
   const [filterCategory, setFilterCategory] = useState<'all' | 'unread' | 'payment' | 'registration' | 'claim' | 'ambulance' | 'system'>('all');
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
 
+  const { permissions } = useRolePermissions();
   const isKetuaRt = activeUser?.authority === 'Ketua RT (Cluster)';
   const userCluster = activeUser?.cluster;
 
-  // Filter based on Ketua RT cluster isolation if applicable
+  // Filter strictly by user authority, permissions, member scope, and cluster scope
   const relevantNotifications = useMemo(() => {
-    if (isKetuaRt && userCluster) {
-      return notifications.filter(
-        (n) => !n.cluster || n.cluster === userCluster || n.category === 'system'
-      );
-    }
-    return notifications;
-  }, [notifications, isKetuaRt, userCluster]);
+    return filterNotificationsForUser(
+      notifications,
+      activeUser,
+      activeUser?.memberId,
+      permissions
+    );
+  }, [notifications, activeUser, permissions]);
 
   const unreadCount = useMemo(() => {
     return relevantNotifications.filter((n) => !n.read).length;
@@ -419,19 +425,27 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
 
                       {/* Action Links */}
                       <div className="mt-2.5 flex items-center gap-3">
-                        {notif.linkTab && onNavigateTab && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onMarkNotificationRead(notif.id);
-                              onNavigateTab(notif.linkTab!);
-                            }}
-                            className="text-xs font-bold text-emerald-700 hover:text-emerald-800 inline-flex items-center gap-1 group/btn"
-                          >
-                            <span>Buka Halaman Terkait</span>
-                            <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover/btn:translate-x-0.5" />
-                          </button>
-                        )}
+                        {(() => {
+                          const targetTab = resolveNotificationTargetTab(
+                            notif.linkTab,
+                            activeUser?.authority,
+                            permissions
+                          );
+                          if (!targetTab || !onNavigateTab) return null;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onMarkNotificationRead(notif.id);
+                                onNavigateTab(targetTab);
+                              }}
+                              className="text-xs font-bold text-emerald-700 hover:text-emerald-800 inline-flex items-center gap-1 group/btn cursor-pointer"
+                            >
+                              <span>Buka Halaman Terkait</span>
+                              <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover/btn:translate-x-0.5" />
+                            </button>
+                          );
+                        })()}
 
                         {!notif.read && (
                           <button
