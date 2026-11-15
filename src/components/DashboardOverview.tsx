@@ -22,6 +22,11 @@ import { DashboardNotifications } from './DashboardNotifications';
 import { RoleMobileAppMenu } from './RoleMobileAppMenu';
 import { AdminFirebaseStatsPanel } from './AdminFirebaseStatsPanel';
 import { ClusterD3DistributionChart } from './ClusterD3DistributionChart';
+import {
+  RtOnboardingHelpModal,
+  hasSeenRtOnboarding,
+  markRtOnboardingSeen,
+} from './RtOnboardingHelpModal';
 import { useRolePermissions } from '../lib/permissions';
 import { getAllNavigationActionsForUser } from '../lib/navigationMenu';
 import {
@@ -166,7 +171,20 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   const [rtSearchTerm, setRtSearchTerm] = useState('');
   const [rtStatusFilter, setRtStatusFilter] = useState<'Semua' | 'Aktif' | 'Menunggu Verifikasi RT' | 'Segera Habis' | 'Jatuh Tempo'>('Semua');
   const [isDueReminderModalOpen, setIsDueReminderModalOpen] = useState<boolean>(false);
+  const [isRtOnboardingOpen, setIsRtOnboardingOpen] = useState<boolean>(false);
+  const [isRtOnboardingFirstTime, setIsRtOnboardingFirstTime] = useState<boolean>(false);
   const { permissions } = useRolePermissions();
+
+  useEffect(() => {
+    if (
+      activeUser?.authority === 'Ketua RT (Cluster)' &&
+      activeUser?.id &&
+      !hasSeenRtOnboarding(activeUser.id)
+    ) {
+      setIsRtOnboardingFirstTime(true);
+      setIsRtOnboardingOpen(true);
+    }
+  }, [activeUser?.authority, activeUser?.id]);
 
   const activeMembersCount = members.filter((m) => m.status === 'Aktif').length;
   const pendingRtMembersCount = members.filter((m) => m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending').length;
@@ -1768,6 +1786,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     const rtPendingMembers = rtMembers.filter(
       (m) => m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending'
     );
+    const rtRejectedMembers = rtMembers.filter(
+      (m) => m.status === 'Ditolak' || m.verificationStatus === 'Rejected'
+    );
+    const rtClusterClaimsCount = claims.filter((c) => {
+      const mem = members.find((m) => m.id === c.memberId);
+      if (!mem) return false;
+      return rtClusterMaster ? isMemberInCluster(mem, rtClusterMaster) : mem.cluster === rtCluster;
+    }).length;
     const rtTotalDependents = rtMembers.reduce(
       (sum, m) => sum + (Array.isArray(m.dependentsList) ? m.dependentsList.length : (Number(m.dependentsCount) || 0)),
       0
@@ -1868,6 +1894,17 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               gradient: 'from-teal-600 to-emerald-500',
               icon: Scan,
               onClick: () => setIsKtaScannerOpen(true),
+            },
+            {
+              id: 'rt-onboarding-help',
+              label: 'Panduan RT',
+              subLabel: 'Alur Verifikasi Warga',
+              gradient: 'from-slate-700 to-slate-900',
+              icon: HelpCircle,
+              onClick: () => {
+                setIsRtOnboardingFirstTime(false);
+                setIsRtOnboardingOpen(true);
+              },
             },
           ]}
           pills={[
@@ -1971,9 +2008,20 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRtOnboardingFirstTime(false);
+                  setIsRtOnboardingOpen(true);
+                }}
+                className="px-3.5 py-1.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors shadow-xs whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <HelpCircle className="w-4 h-4 text-emerald-700" />
+                <span>Panduan Verifikasi RT</span>
+              </button>
               <span className="text-xs font-semibold px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full inline-flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
                 <span>Arus Kas Paguyuban: {isNetPositive ? 'Surplus / Aman' : 'Defisit Terkendali'}</span>
               </span>
             </div>
@@ -2521,6 +2569,33 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             onSelectMemberForPayment={onSelectMemberForPayment}
           />
         )}
+
+        {/* Modal Onboarding & Panduan Verifikasi Ketua RT */}
+        <RtOnboardingHelpModal
+          isOpen={isRtOnboardingOpen}
+          onClose={(dontShowAgain) => {
+            if (activeUser?.id) {
+              markRtOnboardingSeen(activeUser.id, dontShowAgain);
+            }
+            setIsRtOnboardingOpen(false);
+            setIsRtOnboardingFirstTime(false);
+          }}
+          activeUser={activeUser}
+          clusterName={rtCluster}
+          pendingCount={rtPendingMembers.length}
+          verifiedCount={rtActiveMembers.length}
+          rejectedCount={rtRejectedMembers.length}
+          totalCount={rtMembers.length}
+          claimsCount={rtClusterClaimsCount}
+          isFirstTimeAutoOpen={isRtOnboardingFirstTime}
+          onSelectFilterTab={(tab) => {
+            if (tab === 'claims') {
+              setCurrentTab('realization');
+            } else {
+              setCurrentTab('rt-verification');
+            }
+          }}
+        />
       </div>
     );
   }

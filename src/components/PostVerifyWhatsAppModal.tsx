@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Sparkles,
   Printer,
+  RotateCcw,
 } from 'lucide-react';
 import { Payment, Member, SystemSettings } from '../types';
 import {
@@ -34,6 +35,7 @@ interface PostVerifyWhatsAppModalProps {
   isOpen: boolean;
   onClose: () => void;
   onViewReceipt: (payment: Payment) => void;
+  onCancelVerification?: (payment: Payment) => void;
 }
 
 export const PostVerifyWhatsAppModal: React.FC<PostVerifyWhatsAppModalProps> = ({
@@ -43,6 +45,7 @@ export const PostVerifyWhatsAppModal: React.FC<PostVerifyWhatsAppModalProps> = (
   isOpen,
   onClose,
   onViewReceipt,
+  onCancelVerification,
 }) => {
   const [targetPhone, setTargetPhone] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
@@ -386,7 +389,23 @@ export const PostVerifyWhatsAppModal: React.FC<PostVerifyWhatsAppModalProps> = (
             </button>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+            {onCancelVerification && payment && (
+              <button
+                id="cancel-verify-from-post-modal-btn"
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onCancelVerification(payment);
+                }}
+                className="px-3.5 py-2.5 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-xl transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                title="Salah verifikasi? Batalkan verifikasi pembayaran ini dan kembalikan ke Pending"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Batalkan Verifikasi</span>
+              </button>
+            )}
+
             <button
               id="dismiss-post-verify-modal-btn"
               type="button"

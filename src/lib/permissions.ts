@@ -619,6 +619,11 @@ export const getPermittedTabsForRole = (
     tabs.push('validation');
   }
 
+  // Audit Status (Khusus Admin)
+  if (effectiveRole === 'Admin') {
+    tabs.push('audit-status');
+  }
+
   // Realisasi Santunan Duka
   if (rolePerms.process_claims || rolePerms.view_claims) {
     tabs.push('realization');

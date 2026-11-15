@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
-import { Payment, Member, SystemSettings } from '../types';
+import React, { useMemo, useState } from 'react';
+import { AppNotification, MemberStatus, MemberVerificationStatus, Payment, Member, SystemSettings } from '../types';
 import { formatIDR } from '../lib/storage';
 import { downloadTreasurerPdfReport } from '../lib/treasurerPdfReport';
+import { analyzeMemberStatusAnomalies } from '../lib/systemAuditLog';
+import { SystemStatusTraceModal } from './SystemStatusTraceModal';
 import {
   findMemberForPayment,
   generateReceiptWhatsAppUrl,
   formatPhoneDisplay,
   getEffectivePaymentPeriod,
 } from '../lib/receiptUtils';
+import { doesPaymentBelongToMember } from '../lib/ktaUtils';
 import {
   calculatePendingGracePeriod,
   getGracePeriodSummary,
@@ -39,6 +42,7 @@ import {
   PenTool,
   Trash2,
   Copy,
+  RotateCcw,
 } from 'lucide-react';
 import { DigitalSignatureModal } from './DigitalSignatureModal';
 import { SignatureData } from './DigitalSignaturePad';
@@ -51,6 +55,7 @@ import { useRolePermissions } from '../lib/permissions';
 interface AdminValidationProps {
   payments: Payment[];
   members?: Member[];
+  notifications?: AppNotification[];
   settings: SystemSettings;
   activeUser?: AppUser;
   setCurrentTab?: (tab: string) => void;
@@ -61,8 +66,15 @@ interface AdminValidationProps {
     adminSignerName?: string,
     adminSignerTitle?: string
   ) => void;
+  onCancelVerifyPayment?: (paymentId: string, cancelReason: string) => void;
   onRejectPayment: (paymentId: string, adminNotes: string) => void;
   onDeletePayment?: (paymentId: string) => void;
+  onRepairMemberStatus?: (
+    memberId: string,
+    targetStatus: MemberStatus,
+    targetVerificationStatus: MemberVerificationStatus,
+    reason: string
+  ) => void;
   onViewReceipt: (payment: Payment) => void;
   onSaveDefaultSignature?: (signatureUrl: string, signerName: string, signerTitle: string) => void;
 }
@@ -70,12 +82,15 @@ interface AdminValidationProps {
 export const AdminValidation: React.FC<AdminValidationProps> = ({
   payments,
   members = [],
+  notifications = [],
   settings,
   activeUser,
   setCurrentTab,
   onVerifyPayment,
+  onCancelVerifyPayment,
   onRejectPayment,
   onDeletePayment,
+  onRepairMemberStatus,
   onViewReceipt,
   onSaveDefaultSignature,
 }) => {
@@ -84,10 +99,21 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
   const [selectedProofUrl, setSelectedProofUrl] = useState<string | null>(null);
   const [rejectModalPayment, setRejectModalPayment] = useState<Payment | null>(null);
   const [rejectReason, setRejectReason] = useState<string>('');
+  const [cancelVerifyModalPayment, setCancelVerifyModalPayment] = useState<Payment | null>(null);
+  const [cancelVerifyReason, setCancelVerifyReason] = useState<string>('');
   const [deleteModalPayment, setDeleteModalPayment] = useState<Payment | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [verifySignaturePayment, setVerifySignaturePayment] = useState<Payment | null>(null);
   const [postVerifyPayment, setPostVerifyPayment] = useState<Payment | null>(null);
+  const [isSystemTraceModalOpen, setIsSystemTraceModalOpen] = useState<boolean>(false);
+
+  const statusAnomalies = useMemo(() => {
+    return analyzeMemberStatusAnomalies({
+      members,
+      payments,
+      notifications,
+    });
+  }, [members, payments, notifications]);
 
   const { can } = useRolePermissions();
   const isAdminUser = activeUser?.authority === 'Admin';
@@ -152,6 +178,7 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
 
   const pendingPayments = payments.filter((p) => p.status === 'Pending');
   const verifiedPayments = payments.filter((p) => p.status === 'Verified');
+  const rejectedPayments = payments.filter((p) => p.status === 'Rejected');
   const graceSummary = getGracePeriodSummary(payments);
 
   // Deteksi otomatis konfirmasi pembayaran ganda pada periode & anggota yang sama
@@ -211,6 +238,15 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
     onRejectPayment(rejectModalPayment.id, rejectReason);
     setRejectModalPayment(null);
     setRejectReason('');
+  };
+
+  const handleConfirmCancelVerify = () => {
+    if (!cancelVerifyModalPayment || !onCancelVerifyPayment) return;
+    const reason =
+      cancelVerifyReason.trim() || 'Verifikasi dibatalkan oleh Bendahara untuk pemeriksaan ulang.';
+    onCancelVerifyPayment(cancelVerifyModalPayment.id, reason);
+    setCancelVerifyModalPayment(null);
+    setCancelVerifyReason('');
   };
 
   const handleConfirmDeletePayment = () => {
@@ -433,12 +469,33 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
                 includeActiveWithoutPayment: true,
               })
             }
-            className="px-4 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg transition-all flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95"
+            className="px-4 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg transition-all flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 whitespace-nowrap shrink-0"
             title="Unduh Laporan Bendahara Daftar Anggota Kepesertaan Dana Kematian (.PDF)"
           >
             <FileText className="w-4 h-4 text-slate-950 shrink-0" />
             <span>Laporan Bendahara (PDF)</span>
           </button>
+
+          {activeUser?.authority === 'Admin' && (
+            <button
+              type="button"
+              onClick={() => setIsSystemTraceModalOpen(true)}
+              className={`px-4 py-3 font-extrabold text-xs rounded-xl shadow-lg transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 border ${
+                statusAnomalies.length > 0
+                  ? 'bg-rose-600 hover:bg-rose-500 text-white border-rose-400'
+                  : 'bg-slate-800 hover:bg-slate-700 text-indigo-200 border-slate-600'
+              }`}
+              title="Telusuri asal kesalahan status warga yang belum membayar tetapi masuk antrean validasi Bendahara"
+            >
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>Telusuri Anomali Status</span>
+              {statusAnomalies.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-white text-rose-700 text-[10px] font-black tabular-nums">
+                  {statusAnomalies.length}
+                </span>
+              )}
+            </button>
+          )}
 
           {graceSummary.hasOverdue && (
             <div className="flex items-center gap-3 bg-rose-950/80 px-4 py-3 rounded-xl border border-rose-600/80 shadow-lg shadow-rose-950/40 animate-pulse">
@@ -519,7 +576,10 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
       )}
 
       {/* Filter Tabs, Search & View Switcher */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3">
+      <div
+        id="validation-tabs"
+        className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3"
+      >
         <div className="flex flex-col sm:flex-row items-center gap-3 flex-1">
           <div className="relative w-full sm:w-72">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -581,7 +641,7 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
                   : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              Verified
+              Verified ({verifiedPayments.length})
             </button>
 
             <button
@@ -592,7 +652,7 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
                   : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              Rejected
+              Rejected ({rejectedPayments.length})
             </button>
 
             <button
@@ -787,6 +847,15 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
                             {payment.receiptNumber}
                           </span>
                         )}
+                        {payment.status === 'Pending' && payment.verificationCancelledAt && (
+                          <span
+                            className="mt-1 px-2 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 font-semibold text-[10px] rounded-md inline-flex items-center gap-1"
+                            title={`Verifikasi dibatalkan oleh ${payment.verificationCancelledBy || 'Bendahara'} (${payment.verificationCancelledAt}): ${payment.verificationCancelReason || '-'}`}
+                          >
+                            <RotateCcw className="w-2.5 h-2.5 text-amber-700" />
+                            <span>Verifikasi Dibatalkan</span>
+                          </span>
+                        )}
                       </td>
 
                       {/* Nominal */}
@@ -949,6 +1018,21 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
                                 <FileText className="w-3 h-3 text-emerald-400" />
                                 <span>Kwitansi</span>
                               </button>
+
+                              {canApprovePayments && onCancelVerifyPayment && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCancelVerifyReason('');
+                                    setCancelVerifyModalPayment(payment);
+                                  }}
+                                  className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-600 text-amber-800 hover:text-white font-bold text-[11px] rounded-lg transition-colors border border-amber-300 inline-flex items-center gap-1 shadow-2xs whitespace-nowrap shrink-0 cursor-pointer"
+                                  title="Batalkan verifikasi pembayaran ini dan kembalikan ke antrean Pending"
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                  <span>Batalkan</span>
+                                </button>
+                              )}
                             </>
                           )}
 
@@ -1169,7 +1253,7 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
                       )}
 
                       {payment.status === 'Verified' && (
-                        <div className="inline-flex items-center gap-2 w-full sm:w-auto">
+                        <div className="inline-flex flex-wrap items-center gap-2 w-full sm:w-auto">
                           {payment.adminSignature && (
                             <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg" title="Kwitansi ber-tanda tangan digital resmi">
                               <PenTool className="w-3 h-3" />
@@ -1196,6 +1280,21 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
                             <FileText className="w-4 h-4 text-emerald-400" />
                             <span>Kwitansi</span>
                           </button>
+
+                          {canApprovePayments && onCancelVerifyPayment && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCancelVerifyReason('');
+                                setCancelVerifyModalPayment(payment);
+                              }}
+                              className="flex-1 sm:flex-none px-3.5 py-2 bg-amber-50 hover:bg-amber-600 text-amber-800 hover:text-white font-bold text-xs rounded-xl transition-colors border border-amber-300 inline-flex items-center justify-center gap-1.5 shadow-2xs whitespace-nowrap shrink-0 cursor-pointer"
+                              title="Batalkan verifikasi pembayaran ini dan kembalikan ke antrean Pending"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>Batalkan Verifikasi</span>
+                            </button>
+                          )}
                         </div>
                       )}
 
@@ -1371,6 +1470,159 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
         </div>
       )}
 
+      {/* MODAL KONFIRMASI PEMBATALAN VERIFIKASI PEMBAYARAN (BENDAHARA) */}
+      {cancelVerifyModalPayment && (() => {
+        const targetMem = findMemberForPayment(cancelVerifyModalPayment, members);
+        const hasOtherVerified = targetMem
+          ? payments.some(
+              (otherPay) =>
+                otherPay.id !== cancelVerifyModalPayment.id &&
+                otherPay.status === 'Verified' &&
+                doesPaymentBelongToMember(otherPay, targetMem)
+            )
+          : false;
+        const willRevertMember =
+          Boolean(targetMem) &&
+          !hasOtherVerified &&
+          (targetMem?.status === 'Menunggu Persetujuan Ketua Paguyuban' ||
+            (targetMem?.status === 'Aktif' && targetMem?.isPaguyubanApproved !== true));
+        const isAlreadyActiveKta = Boolean(
+          targetMem && targetMem.status === 'Aktif' && targetMem.isPaguyubanApproved === true
+        );
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 border border-amber-200">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 bg-amber-100 text-amber-800 rounded-xl shrink-0">
+                  <RotateCcw className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base">
+                    Batalkan Verifikasi Pembayaran?
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Transaksi ini akan dikembalikan ke antrean <strong>Pending</strong> untuk pemeriksaan ulang oleh Bendahara.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1.5">
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">Nama Warga:</span>
+                  <span className="font-extrabold text-slate-900 text-right">
+                    {cancelVerifyModalPayment.memberName}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">No. Anggota / Kwitansi:</span>
+                  <span className="font-mono font-bold text-slate-800 text-right">
+                    {cancelVerifyModalPayment.memberNumber} • {cancelVerifyModalPayment.receiptNumber || '-'}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">Jenis & Periode:</span>
+                  <span className="font-bold text-slate-800 text-right">
+                    {cancelVerifyModalPayment.paymentType} ({getEffectivePaymentPeriod(cancelVerifyModalPayment, settings)})
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">Nominal Kas Terverifikasi:</span>
+                  <span className="font-mono font-black text-amber-800 text-right tabular-nums">
+                    {formatIDR(cancelVerifyModalPayment.amount)}
+                  </span>
+                </div>
+                {cancelVerifyModalPayment.verifiedBy && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-500">Diverifikasi Sebelumnya:</span>
+                    <span className="text-slate-700 font-semibold text-right">
+                      {cancelVerifyModalPayment.verifiedBy}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-950 space-y-1 leading-relaxed">
+                <p className="font-bold">Dampak Pembatalan Verifikasi:</p>
+                <ul className="list-disc pl-4 space-y-0.5 text-amber-900">
+                  <li>
+                    Status pembayaran kembali ke <strong>Pending</strong> dan saldo kas terverifikasi otomatis berkurang{' '}
+                    <strong className="tabular-nums">{formatIDR(cancelVerifyModalPayment.amount)}</strong>.
+                  </li>
+                  <li>Tanda tangan & waktu pengesahan kwitansi pada transaksi ini akan direset.</li>
+                  {willRevertMember && (
+                    <li>
+                      Status warga <strong>{targetMem?.name}</strong> dikembalikan dari{' '}
+                      <em>Menunggu Persetujuan Ketua Paguyuban</em> ke{' '}
+                      <strong>Menunggu Validasi Bendahara</strong>.
+                    </li>
+                  )}
+                  {isAlreadyActiveKta && !hasOtherVerified && (
+                    <li>
+                      <strong>Catatan:</strong> KTA warga saat ini sudah berstatus <strong>Aktif</strong> (disahkan Ketua Paguyuban). Koordinasikan dengan Ketua Paguyuban bila status KTA ikut perlu ditinjau.
+                    </li>
+                  )}
+                </ul>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-700 block">
+                  Alasan Pembatalan Verifikasi
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    'Salah klik verifikasi',
+                    'Dana belum masuk mutasi rekening',
+                    'Nominal atau periode tidak sesuai',
+                  ].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setCancelVerifyReason(preset)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
+                        cancelVerifyReason === preset
+                          ? 'bg-amber-600 text-white border-amber-600'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  rows={2}
+                  placeholder="Contoh: Salah klik setujui pada transaksi warga lain / mutasi bank belum cocok"
+                  value={cancelVerifyReason}
+                  onChange={(e) => setCancelVerifyReason(e.target.value)}
+                  className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCancelVerifyModalPayment(null);
+                    setCancelVerifyReason('');
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  Tutup
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmCancelVerify}
+                  className="px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition-colors inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Ya, Batalkan Verifikasi</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* POST-VERIFICATION WHATSAPP SEND RECEIPT MODAL (KHUSUS BENDAHARA) */}
       <PostVerifyWhatsAppModal
         isOpen={Boolean(postVerifyPayment)}
@@ -1379,7 +1631,27 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
         settings={settings}
         onClose={() => setPostVerifyPayment(null)}
         onViewReceipt={onViewReceipt}
+        onCancelVerification={
+          canApprovePayments && onCancelVerifyPayment
+            ? (pay) => {
+                setCancelVerifyReason('');
+                setCancelVerifyModalPayment(pay);
+              }
+            : undefined
+        }
       />
+
+      {/* MODAL PENELUSURAN ANOMALI & AUDIT STATUS SISTEM (KHUSUS ADMIN) */}
+      {activeUser?.authority === 'Admin' && (
+        <SystemStatusTraceModal
+          isOpen={isSystemTraceModalOpen}
+          onClose={() => setIsSystemTraceModalOpen(false)}
+          members={members}
+          payments={payments}
+          notifications={notifications}
+          onRepairMemberStatus={onRepairMemberStatus}
+        />
+      )}
     </div>
   );
 };

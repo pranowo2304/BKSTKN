@@ -13,6 +13,7 @@ import {
   UserCheck,
   LayoutDashboard,
   Boxes,
+  ShieldAlert,
 } from 'lucide-react';
 import { AppUser, UserAuthority, Member, Payment, BenefitClaim } from '../types';
 import { MobileAppNavAction } from '../components/RoleMobileAppMenu';
@@ -147,6 +148,19 @@ export function getAllNavigationActionsForUser(params: NavigationActionParams): 
       gradient: overdueGraceCount > 0 ? 'from-rose-600 to-red-600' : 'from-emerald-600 to-teal-500',
       icon: CheckSquare,
       onClick: () => setCurrentTab('validation'),
+    });
+  }
+
+  // 5b. Audit Status (Khusus Admin)
+  if (authority === 'Admin' && permittedTabs.includes('audit-status')) {
+    actions.push({
+      id: 'audit-status',
+      label: 'Audit Status',
+      subLabel: 'Anomali Antrean & NPA Kembar',
+      gradient: 'from-rose-600 to-amber-600',
+      icon: ShieldAlert,
+      isActive: currentTab === 'audit-status',
+      onClick: () => setCurrentTab('audit-status'),
     });
   }
 

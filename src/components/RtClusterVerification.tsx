@@ -37,9 +37,11 @@ import {
   CreditCard,
   ArrowRight,
   Trash2,
+  HelpCircle,
 } from 'lucide-react';
 import { FamilyCardModal } from './FamilyCardModal';
 import { RoleMobileAppMenu } from './RoleMobileAppMenu';
+import { RtOnboardingHelpModal, hasSeenRtOnboarding, markRtOnboardingSeen } from './RtOnboardingHelpModal';
 import { useRolePermissions } from '../lib/permissions';
 import { formatIDR } from '../lib/storage';
 
@@ -127,6 +129,16 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
   const [rtNotes, setRtNotes] = useState<string>('Data KTP dan domisili terverifikasi sah.');
   const [rejectionReason, setRejectionReason] = useState<string>('Data domisili/NIK tidak terdaftar di wilayah RT.');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isOnboardingHelpOpen, setIsOnboardingHelpOpen] = useState<boolean>(false);
+  const [isFirstTimeAutoOpen, setIsFirstTimeAutoOpen] = useState<boolean>(false);
+
+  // Auto-open interactive onboarding modal once for first-time Ketua RT users entering the portal
+  useEffect(() => {
+    if (isRtRole && canVerifyRt && activeUser?.id && !hasSeenRtOnboarding(activeUser.id)) {
+      setIsFirstTimeAutoOpen(true);
+      setIsOnboardingHelpOpen(true);
+    }
+  }, [isRtRole, canVerifyRt, activeUser?.id]);
 
   // BASE SCOPE: Ketua RT can ONLY see data of their own cluster
   const baseMembers = useMemo(() => {
@@ -398,7 +410,19 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => {
+              setIsFirstTimeAutoOpen(false);
+              setIsOnboardingHelpOpen(true);
+            }}
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 shadow-xs"
+            title="Buka Panduan & Alur Kerja Verifikasi RT"
+          >
+            <HelpCircle className="w-3.5 h-3.5" />
+            <span>Panduan Verifikasi RT</span>
+          </button>
           <span className="px-3 py-1 rounded-xl bg-indigo-950 text-indigo-300 border border-indigo-700/60 font-semibold">
             {officerName}
           </span>
@@ -538,6 +562,18 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
 
         {/* RT Officer In-Charge Badge & Quick Switch */}
         <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setIsFirstTimeAutoOpen(false);
+              setIsOnboardingHelpOpen(true);
+            }}
+            className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl transition-colors inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <HelpCircle className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Panduan Alur RT</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setIsRtClaimModalOpen(true)}
@@ -721,7 +757,7 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
       )}
 
       {/* Control Bar: Status Tabs, Search, & Batch Action */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm space-y-3">
+      <div id="rt-verification-tabs" className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm space-y-3">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
           
           {/* Status Tabs */}
@@ -1866,6 +1902,31 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
           </div>
         </div>
       )}
+      {/* Interactive Onboarding & Help Modal for RT Users */}
+      <RtOnboardingHelpModal
+        isOpen={isOnboardingHelpOpen}
+        onClose={(dontShowAgain) => {
+          setIsOnboardingHelpOpen(false);
+          if (activeUser?.id) {
+            markRtOnboardingSeen(activeUser.id, dontShowAgain);
+          }
+        }}
+        activeUser={activeUser}
+        clusterName={isRtRole && userCluster ? userCluster : selectedCluster !== 'Semua' ? selectedCluster : 'Semua Cluster'}
+        pendingCount={pendingMembers.length}
+        verifiedCount={verifiedMembers.length}
+        rejectedCount={rejectedMembers.length}
+        totalCount={baseMembers.length}
+        claimsCount={relevantRtClaims.length}
+        isFirstTimeAutoOpen={isFirstTimeAutoOpen}
+        onSelectFilterTab={(tab) => {
+          setStatusFilter(tab);
+          setTimeout(() => {
+            const el = document.getElementById('rt-verification-tabs');
+            el?.scrollIntoView({ behavior: 'smooth' });
+          }, 80);
+        }}
+      />
     </div>
   );
 };

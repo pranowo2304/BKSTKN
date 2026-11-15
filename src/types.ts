@@ -334,6 +334,9 @@ export interface Payment {
   adminSignerName?: string; // Nama pengesah tanda tangan (e.g. Ibu Hj. Siti Aminah)
   adminSignerTitle?: string; // Jabatan pengesah (e.g. Bendahara Paguyuban)
   adminSignatureDate?: string; // Tanggal & waktu penandatanganan digital
+  verificationCancelledAt?: string; // Waktu pembatalan verifikasi oleh Bendahara
+  verificationCancelledBy?: string; // Nama petugas yang membatalkan verifikasi
+  verificationCancelReason?: string; // Alasan pembatalan verifikasi pembayaran
 }
 
 export interface ExpenseDetail {

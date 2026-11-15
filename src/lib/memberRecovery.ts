@@ -1,10 +1,10 @@
 import { Member, AppUser, AppNotification, Payment } from '../types';
 import { getWhatsAppLogs } from './whatsappService';
 import { doesPaymentBelongToMember } from './ktaUtils';
+import { generateNextMemberNumber, recordSystemTrace } from './systemAuditLog';
 
 const DELETED_MEMBERS_KEY = 'dana_kematian_deleted_member_ids_v1';
 const SUPARDI_RECOVERED_FLAG_KEY = 'dana_kematian_supardi_recovered_v1';
-const WASISTO_RESET_FLAG_KEY = 'dana_kematian_wasisto_reset_rt_v1';
 const PENDING_MEMBERS_SYNC_KEY = 'dana_kematian_pending_members_sync_v1';
 
 export function getExplicitlyDeletedMemberIds(): Set<string> {
@@ -50,15 +50,12 @@ export function hasSyntheticApprovalFields(member: Member | null | undefined): b
  */
 export function getMemberStatusRank(member: Member | null | undefined, payments: Payment[] = []): number {
   if (!member) return 0;
-  const cleanName = (member.name || '').toLowerCase().trim();
   const hasVerifiedPayment = payments.some((p) => p.status === 'Verified' && doesPaymentBelongToMember(p, member));
   const hasPendingPayment = payments.some((p) => p.status === 'Pending' && doesPaymentBelongToMember(p, member));
 
-  // If member is Wasisto Trianggono without payment, or has synthetic approval without payment, rank is 1 (Menunggu Verifikasi RT)
-  if (!hasVerifiedPayment && !hasPendingPayment) {
-    if (cleanName.includes('wasisto') || hasSyntheticApprovalFields(member)) {
-      return 1;
-    }
+  // Only ignore synthetic auto-repair approval if member actually has no payment at all
+  if (!hasVerifiedPayment && !hasPendingPayment && hasSyntheticApprovalFields(member)) {
+    return 1;
   }
 
   if (member.status === 'Meninggal') return 6;
@@ -114,8 +111,6 @@ export function cleanCorruptedPendingSyncQueue(): void {
       if (!m || !m.id) return false;
       const cleanName = (m.name || '').toLowerCase().trim();
       if (cleanName.includes('supardi')) return true;
-      // If Wasisto is in pending sync with 'Aktif', remove the stale 'Aktif' entry
-      if (cleanName.includes('wasisto') && m.status === 'Aktif') return false;
       if (isCorruptedByUserTraceRecovery(m) || hasSyntheticApprovalFields(m)) {
         return false;
       }
@@ -140,9 +135,18 @@ export function mergeMemberRecords(cloudMem: Member, localMem: Member, payments:
 
   const cloudRank = getMemberStatusRank(cloudMem, payments);
   const localRank = getMemberStatusRank(localMem, payments);
+  const hasVerifiedPay = payments.some((p) => p.status === 'Verified' && doesPaymentBelongToMember(p, cloudMem));
+  const isCloudStaleAfterPaymentCancel =
+    cloudMem.status === 'Menunggu Persetujuan Ketua Paguyuban' &&
+    localMem.status === 'Menunggu Validasi Bendahara' &&
+    !hasVerifiedPay;
 
   const bioSource = !cloudCorrupted ? cloudMem : !localCorrupted ? localMem : cloudMem;
-  const statusSource = cloudRank >= localRank ? cloudMem : localMem;
+  const statusSource = isCloudStaleAfterPaymentCancel
+    ? localMem
+    : cloudRank >= localRank
+    ? cloudMem
+    : localMem;
 
   return {
     ...localMem,
@@ -214,7 +218,6 @@ export function recoverMissingMembersFromTraces(params: {
     if (!m) return m;
     const cleanName = (m.name || '').toLowerCase().replace(/^alm\.\s*(bpk\.\s*)?/i, '').trim();
     const isSupardi = cleanName.includes('supardi');
-    const isWasisto = cleanName.includes('wasisto');
 
     // Never alter deceased/rejected/inactive members
     if (m.status === 'Meninggal' || m.status === 'Ditolak' || m.status === 'Non-Aktif') {
@@ -225,53 +228,7 @@ export function recoverMissingMembersFromTraces(params: {
     const hasVerifiedPayment = memberPayments.some((p) => p.status === 'Verified');
     const hasPendingPayment = memberPayments.some((p) => p.status === 'Pending');
 
-    // RULE A: Specifically return "Wasisto Trianggono" to 'Menunggu Verifikasi RT' if he has not paid
-    if (isWasisto && !hasVerifiedPayment && !hasPendingPayment) {
-      const wasResetBefore =
-        typeof window !== 'undefined' && localStorage.getItem(WASISTO_RESET_FLAG_KEY) === 'true';
-      const hasInvalidActiveOrSyntheticState =
-        !wasResetBefore ||
-        m.status === 'Aktif' ||
-        m.status === 'Menunggu Persetujuan Ketua Paguyuban' ||
-        m.isPaguyubanApproved === true ||
-        m.isKtaIssued === true ||
-        Boolean(m.approvedByPaguyuban) ||
-        hasSyntheticApprovalFields(m);
-
-      if (hasInvalidActiveOrSyntheticState) {
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(WASISTO_RESET_FLAG_KEY, 'true');
-        }
-        const cleanedAddress =
-          (m.address || '').startsWith('Warga ') && m.cluster
-            ? `Lingkungan ${m.cluster}`
-            : m.address;
-
-        const resetWasisto: Member = {
-          ...m,
-          address: cleanedAddress,
-          status: 'Menunggu Verifikasi RT',
-          verificationStatus: 'Pending',
-          verifiedByRt: '',
-          verifiedAt: '',
-          rtVerifiedBy: '',
-          rtVerifiedAt: '',
-          rtNotes: '',
-          isPaguyubanApproved: false,
-          approvedByPaguyuban: '',
-          approvedByPaguyubanAt: '',
-          paguyubanNotes: '',
-          isKtaIssued: false,
-          ktaIssuedBy: '',
-          ktaIssuedAt: '',
-        };
-        recoveredOrRepairedMembers.push(resetWasisto);
-        return resetWasisto;
-      }
-      return m;
-    }
-
-    // RULE B: No member without a Verified payment can ever have synthetic 'Aktif' approval!
+    // RULE A/B: Only reset members who genuinely carry synthetic auto-repair 'Ketua Paguyuban' approval without any payment
     if (!hasVerifiedPayment && !hasPendingPayment && hasSyntheticApprovalFields(m) && !isSupardi) {
       const cleanedAddress =
         (m.address || '').startsWith('Warga ') && m.cluster
@@ -297,6 +254,17 @@ export function recoverMissingMembersFromTraces(params: {
         ktaIssuedAt: '',
       };
       recoveredOrRepairedMembers.push(resetUnpaidMember);
+      recordSystemTrace({
+        source: 'memberRecovery.RULE_A_B',
+        action: 'AUTO_RESET_SYNTHETIC_APPROVAL',
+        severity: 'warning',
+        memberId: m.id,
+        memberName: m.name,
+        memberNumber: m.memberNumber,
+        previousStatus: m.status,
+        newStatus: resetUnpaidMember.status,
+        detail: 'Reset otomatis field persetujuan sintetis karena tidak ditemukan pembayaran Pending maupun Verified milik warga ini.',
+      });
       return resetUnpaidMember;
     }
 
@@ -307,16 +275,13 @@ export function recoverMissingMembersFromTraces(params: {
           ? `Lingkungan ${m.cluster}`
           : m.address;
 
-      const wasOfficialOrDowngraded =
+      const hasPaguyubanApproval =
         m.status === 'Aktif' ||
         m.isPaguyubanApproved === true ||
         m.isKtaIssued === true ||
-        Boolean(m.approvedByPaguyuban || m.ktaIssuedAt) ||
-        isCorruptedByUserTraceRecovery(m) ||
-        m.status === 'Menunggu Verifikasi RT' ||
-        m.status === 'Menunggu Pembayaran';
+        Boolean(m.approvedByPaguyuban || m.approvedByPaguyubanAt || m.ktaIssuedAt);
 
-      if (wasOfficialOrDowngraded) {
+      if (hasPaguyubanApproval) {
         const needsRepair =
           m.status !== 'Aktif' ||
           m.verificationStatus !== 'Verified' ||
@@ -348,12 +313,49 @@ export function recoverMissingMembersFromTraces(params: {
           recoveredOrRepairedMembers.push(repaired);
           return repaired;
         }
+      } else {
+        // Payment is Verified by Bendahara, awaiting final Ketua Paguyuban approval:
+        // Ensure status is never stuck at 'Menunggu Verifikasi RT', 'Menunggu Pembayaran', or 'Menunggu Validasi Bendahara'
+        const needsBendaharaStageRepair =
+          m.status !== 'Menunggu Persetujuan Ketua Paguyuban' ||
+          m.verificationStatus !== 'Verified' ||
+          cleanedAddress !== m.address;
+
+        if (needsBendaharaStageRepair) {
+          const repaired: Member = {
+            ...m,
+            address: cleanedAddress,
+            status: 'Menunggu Persetujuan Ketua Paguyuban',
+            verificationStatus: 'Verified',
+            verifiedByRt: m.verifiedByRt || m.rtVerifiedBy || `Ketua RT ${m.cluster || ''}`,
+            verifiedAt: m.verifiedAt || m.rtVerifiedAt || m.joinDate || '',
+            rtVerifiedBy: m.rtVerifiedBy || m.verifiedByRt || `Ketua RT ${m.cluster || ''}`,
+            rtVerifiedAt: m.rtVerifiedAt || m.verifiedAt || m.joinDate || '',
+            isPaguyubanApproved: false,
+            isKtaIssued: false,
+          };
+          recoveredOrRepairedMembers.push(repaired);
+          recordSystemTrace({
+            source: 'memberRecovery.RULE_C_STAGE',
+            action: 'REPAIR_TO_AWAITING_PAGUYUBAN',
+            severity: 'info',
+            memberId: m.id,
+            memberName: m.name,
+            memberNumber: m.memberNumber,
+            previousStatus: m.status,
+            newStatus: repaired.status,
+            matchedBy: 'doesPaymentBelongToMember(Verified)',
+            detail: `Rekonsiliasi startup menaikkan status ke "${repaired.status}" karena ditemukan pembayaran terverifikasi.`,
+          });
+          return repaired;
+        }
       }
       return m;
     }
 
     // RULE D: If member has a pending payment, they have passed RT verification and are awaiting Bendahara validation
     if (hasPendingPayment && (m.status === 'Menunggu Verifikasi RT' || m.verificationStatus === 'Pending')) {
+      const pendingPay = memberPayments.find((p) => p.status === 'Pending');
       const repaired: Member = {
         ...m,
         status: 'Menunggu Validasi Bendahara',
@@ -361,6 +363,19 @@ export function recoverMissingMembersFromTraces(params: {
         verifiedByRt: m.verifiedByRt || `Ketua RT ${m.cluster || ''}`,
       };
       recoveredOrRepairedMembers.push(repaired);
+      recordSystemTrace({
+        source: 'memberRecovery.RULE_D',
+        action: 'AUTO_PROMOTE_AWAITING_BENDAHARA',
+        severity: 'warning',
+        memberId: m.id,
+        memberName: m.name,
+        memberNumber: m.memberNumber,
+        paymentId: pendingPay?.id,
+        previousStatus: m.status,
+        newStatus: repaired.status,
+        matchedBy: pendingPay?.memberId === m.id ? 'memberId' : 'fallback_NPA_or_Name',
+        detail: `Startup recovery (RULE D) mempromosikan warga dari "${m.status}" ke "Menunggu Validasi Bendahara" berdasarkan pembayaran Pending ${pendingPay?.receiptNumber || pendingPay?.id || '-'}.`,
+      });
       return repaired;
     }
 
@@ -411,12 +426,11 @@ export function recoverMissingMembersFromTraces(params: {
       }
     }
 
-    const nextSeq = repairedCurrentMembers.length + newlyRecoveredList.length + 1;
     const memberNumber =
       supardiUser?.memberNumber ||
       (supardiWa?.memberNumber && supardiWa.memberNumber !== 'TEST-SYS'
         ? supardiWa.memberNumber
-        : `ADK-2026-${String(nextSeq).padStart(3, '0')}`);
+        : generateNextMemberNumber(repairedCurrentMembers, newlyRecoveredList.length));
 
     const verifiedTimestamp =
       supardiWa?.timestamp ||

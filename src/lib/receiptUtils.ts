@@ -50,15 +50,48 @@ export const findMemberForPayment = (
   payment: Payment,
   members: Member[] = []
 ): Member | undefined => {
-  if (!payment || !Array.isArray(members)) return undefined;
-  return members.find(
-    (m) =>
-      m && (
-        (payment.memberId && m.id === payment.memberId) ||
-        (payment.memberNumber && m.memberNumber && m.memberNumber.toLowerCase() === payment.memberNumber.toLowerCase()) ||
-        (payment.memberName && m.name && m.name.toLowerCase().trim() === payment.memberName.toLowerCase().trim())
-      )
-  );
+  if (!payment || !Array.isArray(members) || members.length === 0) return undefined;
+
+  // Pass 1: Strict exact ID match across all members
+  if (payment.memberId) {
+    const byId = members.find((m) => m && m.id === payment.memberId);
+    if (byId) return byId;
+  }
+
+  // Pass 2: Fallback by memberNumber ONLY if exact memberId was not found.
+  // Disambiguate duplicate NPAs using memberName so a new member never steals another member's receipt.
+  if (payment.memberNumber) {
+    const pNum = payment.memberNumber.toLowerCase().trim();
+    const numCandidates = members.filter(
+      (m) => m && m.memberNumber && m.memberNumber.toLowerCase().trim() === pNum
+    );
+    if (numCandidates.length === 1) {
+      return numCandidates[0];
+    }
+    if (numCandidates.length > 1 && payment.memberName) {
+      const pName = payment.memberName.toLowerCase().trim();
+      const matchedNameCandidate = numCandidates.find(
+        (m) => m.name && m.name.toLowerCase().trim() === pName
+      );
+      if (matchedNameCandidate) return matchedNameCandidate;
+    }
+    if (numCandidates.length > 0 && !payment.memberId) {
+      return numCandidates[0];
+    }
+  }
+
+  // Pass 3: Fallback by unique exact name ONLY when memberId is missing/unmatched
+  if (payment.memberName) {
+    const pName = payment.memberName.toLowerCase().trim();
+    const nameCandidates = members.filter(
+      (m) => m && m.name && m.name.toLowerCase().trim() === pName
+    );
+    if (nameCandidates.length === 1) {
+      return nameCandidates[0];
+    }
+  }
+
+  return undefined;
 };
 
 /**

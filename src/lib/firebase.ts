@@ -891,17 +891,77 @@ export function sanitizeFirestoreData<T = any>(data: T): T {
   return data;
 }
 
-export async function syncPaymentToCloud(payment: Payment): Promise<void> {
+const PENDING_PAYMENTS_SYNC_KEY = 'dana_kematian_pending_payments_sync_v1';
+
+export function getPendingUnsyncedPayments(): Payment[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(PENDING_PAYMENTS_SYNC_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function markPaymentPendingSync(payment: Payment): void {
+  if (typeof window === 'undefined' || !payment?.id) return;
+  try {
+    const current = getPendingUnsyncedPayments();
+    const updated = [payment, ...current.filter((p) => p && p.id !== payment.id)];
+    localStorage.setItem(PENDING_PAYMENTS_SYNC_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function clearPaymentPendingSync(paymentId: string): void {
+  if (typeof window === 'undefined' || !paymentId) return;
+  try {
+    const current = getPendingUnsyncedPayments();
+    const updated = current.filter((p) => p && p.id !== paymentId);
+    localStorage.setItem(PENDING_PAYMENTS_SYNC_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export async function syncPaymentToCloud(payment: Payment): Promise<boolean> {
+  markPaymentPendingSync(payment);
   const ref = doc(db, COLLECTIONS.PAYMENTS, payment.id);
   try {
     const sanitized = sanitizeFirestoreData(payment);
-    await setDoc(ref, sanitized, { merge: true });
+    let safeData = { ...sanitized };
+    if (safeData.proofImageUrl && typeof safeData.proofImageUrl === 'string' && safeData.proofImageUrl.length > 500000) {
+      safeData.proofImageUrl = safeData.proofImageUrl.slice(0, 300000);
+    }
+    await setDoc(ref, safeData, { merge: true });
+    clearPaymentPendingSync(payment.id);
     recordFirebaseWrite(COLLECTIONS.PAYMENTS, 1);
+    return true;
   } catch (error: any) {
-    if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
-      handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.PAYMENTS}/${payment.id}`);
-    } else {
-      console.warn(`Firestore syncPaymentToCloud notice for payment ${payment.id}:`, error?.message);
+    console.warn(`Firestore syncPaymentToCloud initial attempt notice for payment ${payment.id}:`, error?.message);
+    try {
+      const sanitized = sanitizeFirestoreData(payment);
+      const strippedData = {
+        ...sanitized,
+        proofImageUrl:
+          sanitized.proofImageUrl && typeof sanitized.proofImageUrl === 'string'
+            ? sanitized.proofImageUrl.slice(0, 40000)
+            : '',
+      };
+      await setDoc(ref, strippedData, { merge: true });
+      clearPaymentPendingSync(payment.id);
+      recordFirebaseWrite(COLLECTIONS.PAYMENTS, 1);
+      return true;
+    } catch (retryErr: any) {
+      if (retryErr?.code === 'permission-denied' || retryErr?.message?.includes('insufficient permissions')) {
+        handleFirestoreError(retryErr, OperationType.WRITE, `${COLLECTIONS.PAYMENTS}/${payment.id}`);
+      } else {
+        console.warn(`Firestore syncPaymentToCloud notice for payment ${payment.id} (kept in pending sync queue):`, retryErr?.message);
+      }
+      return false;
     }
   }
 }
@@ -1103,6 +1163,7 @@ export function markPaymentExplicitlyDeleted(paymentId: string): void {
 }
 
 export async function deletePaymentFromCloud(paymentId: string): Promise<void> {
+  clearPaymentPendingSync(paymentId);
   markPaymentExplicitlyDeleted(paymentId);
   const ref = doc(db, COLLECTIONS.PAYMENTS, paymentId);
   try {

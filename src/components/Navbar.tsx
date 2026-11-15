@@ -3,6 +3,7 @@ import { SystemSettings, Payment, AppUser, UserAuthority, Member, AppNotificatio
 import { formatIDR } from '../lib/storage';
 import { calculatePendingGracePeriod, getGracePeriodSummary } from '../lib/gracePeriodUtils';
 import { isMemberAwaitingPaguyubanApproval } from '../lib/ktaUtils';
+import { analyzeMemberStatusAnomalies } from '../lib/systemAuditLog';
 import { useRolePermissions, isAuthorizedForFuneralInventory } from '../lib/permissions';
 import { 
   HeartHandshake, 
@@ -165,6 +166,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   const pendingPaguyubanMembers = useMemo(() => {
     return members.filter((m) => isMemberAwaitingPaguyubanApproval(m, payments));
   }, [members, payments]);
+
+  const unpaidBendaharaAnomalyCount = useMemo(() => {
+    if (!isAdminRole) return 0;
+    return analyzeMemberStatusAnomalies({ members, payments, notifications }).filter((a) =>
+      a.categories.includes('UNPAID_AWAITING_BENDAHARA')
+    ).length;
+  }, [isAdminRole, members, payments, notifications]);
 
   const pendingAmbulanceList = useMemo(() => {
     if (!ambulanceOrders) return [];
@@ -1155,6 +1163,28 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {pendingCount > 0 && (
                     <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black bg-amber-500 text-slate-950">
                       {pendingCount}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {/* 1b. AUDIT STATUS (KHUSUS ADMIN) */}
+              {authority === 'Admin' && (
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('audit-status')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 whitespace-nowrap ${
+                    currentTab === 'audit-status'
+                      ? 'bg-rose-600 text-white shadow-md shadow-rose-950/50 ring-1 ring-rose-400'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
+                  }`}
+                  title="Audit Status (Khusus Admin): Deteksi & perbaiki anomali status maupun NPA kembar"
+                >
+                  <ShieldAlert className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                  <span>Audit Status</span>
+                  {unpaidBendaharaAnomalyCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black bg-rose-500 text-white tabular-nums">
+                      {unpaidBendaharaAnomalyCount}
                     </span>
                   )}
                 </button>

@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Member, SystemSettings } from '../types';
+import { generateNextMemberNumber } from '../lib/systemAuditLog';
 import { 
   X, 
   UploadCloud, 
@@ -310,10 +311,8 @@ export const CsvMemberImportModal: React.FC<CsvMemberImportModalProps> = ({
   const handleExecuteImport = () => {
     if (validRows.length === 0) return;
 
-    let baseNumber = existingMembers.length;
     const newMembersList: Member[] = validRows.map((row, idx) => {
-      const num = (baseNumber + idx + 1).toString().padStart(3, '0');
-      const memberNumber = `ADK-2026-${num}`;
+      const memberNumber = generateNextMemberNumber(existingMembers, idx);
 
       return {
         id: 'mem-imp-' + Date.now() + '-' + idx,

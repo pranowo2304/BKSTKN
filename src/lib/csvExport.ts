@@ -1,5 +1,6 @@
 import { Member, Payment, BenefitClaim, SystemSettings } from '../types';
 import { formatIDR } from './storage';
+import { MemberForensicReport, MemberStatusAnomaly } from './systemAuditLog';
 
 // Helper to escape CSV cell fields safely (handles quotes, commas, newlines)
 export const escapeCSV = (value: string | number | null | undefined): string => {
@@ -536,6 +537,122 @@ export const exportMemberComplianceCSV = (
   const csvContent = rows.map((r) => r.map(escapeCSV).join(',')).join('\r\n');
   const safePeriodName = periodMonth.replace(/\s+/g, '_');
   const filename = `Rekap_Kepatuhan_Iuran_${safePeriodName}.csv`;
+
+  downloadCSVFile(filename, csvContent);
+};
+
+// Export Audit Status: Members in 'Menunggu Validasi Bendahara' without any active valid payment
+export const exportStatusAuditCSV = (params: {
+  anomalies: MemberStatusAnomaly[];
+  forensicByMemberId: Map<string, MemberForensicReport>;
+  settings?: SystemSettings;
+}): void => {
+  const { anomalies, forensicByMemberId, settings } = params;
+  const orgName =
+    settings?.organizationName || settings?.communityName || 'Paguyuban Dana Kematian';
+  const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const dateSlug = nowStr.substring(0, 10);
+
+  const rows: string[][] = [
+    ['LAPORAN AUDIT STATUS — ANGGOTA "MENUNGGU VALIDASI BENDAHARA" TANPA PEMBAYARAN'],
+    [`Organisasi / Paguyuban: ${orgName}`],
+    [`Waktu Cetak Audit: ${nowStr}`],
+    [`Total Temuan Anomali: ${anomalies.length} Anggota`],
+    [''],
+    [
+      'No',
+      'ID Anggota',
+      'NPA',
+      'Nama Lengkap',
+      'NIK',
+      'No. HP / WhatsApp',
+      'Cluster / RT',
+      'Alamat',
+      'Tanggal Daftar',
+      'Status Saat Ini',
+      'Status Verifikasi RT',
+      'Verifikator RT',
+      'Pembayaran Valid (Pending/Verified)',
+      'Pembayaran Ditolak (Rejected)',
+      'NPA Kembar Dengan',
+      'Diagnosa Sumber Anomali',
+      'Bukti Forensik Sistem',
+      'Rekomendasi Perbaikan Status',
+    ],
+  ];
+
+  let withRejectedCount = 0;
+  let withDuplicateNpaCount = 0;
+
+  if (anomalies.length === 0) {
+    rows.push([
+      '0',
+      '-',
+      '-',
+      'Tidak ada anggota bermasalah pada kategori ini',
+      '-',
+      '-',
+      '-',
+      '-',
+      '-',
+      '-',
+      '-',
+      '-',
+      '0',
+      '0',
+      '-',
+      'Seluruh antrean Validasi Bendahara memiliki entri pembayaran aktif yang sah',
+      '-',
+      '-',
+    ]);
+  } else {
+    anomalies.forEach((item, idx) => {
+      const m = item.member;
+      const report = forensicByMemberId.get(m.id);
+      const validCount = report?.activePaymentsStrict.length ?? 0;
+      const rejectedCount = report?.rejectedPayments.length ?? 0;
+      const npaPeers = report?.collisionPeers.sameNpa || [];
+      const topCause = item.probableCauses[0];
+
+      if (rejectedCount > 0) withRejectedCount++;
+      if (npaPeers.length > 0) withDuplicateNpaCount++;
+
+      rows.push([
+        String(idx + 1),
+        m.id,
+        m.memberNumber || '-',
+        m.name || '-',
+        m.nik || '-',
+        m.phone || '-',
+        m.cluster || '-',
+        m.address || '-',
+        m.joinDate || '-',
+        m.status,
+        m.verificationStatus || 'Pending',
+        m.verifiedByRt || m.rtVerifiedBy || '-',
+        String(validCount),
+        String(rejectedCount),
+        npaPeers.length > 0
+          ? npaPeers.map((p) => `${p.name} (${p.id})`).join('; ')
+          : '-',
+        topCause?.title || item.headline,
+        topCause?.evidence || '-',
+        item.recommendedStatus,
+      ]);
+    });
+  }
+
+  rows.push(['']);
+  rows.push(['RINGKASAN LAPORAN AUDIT INTERNAL', '']);
+  rows.push([
+    'Anggota Status "Menunggu Validasi Bendahara" Tanpa Pembayaran Valid',
+    `${anomalies.length} Orang`,
+  ]);
+  rows.push(['Memiliki Riwayat Pembayaran Rejected', `${withRejectedCount} Orang`]);
+  rows.push(['Terkait Benturan NPA Kembar', `${withDuplicateNpaCount} Orang`]);
+
+  const csvContent = rows.map((r) => r.map(escapeCSV).join(',')).join('\r\n');
+  const filename = `Laporan_Audit_Status_Tanpa_Pembayaran_${dateSlug}.csv`;
 
   downloadCSVFile(filename, csvContent);
 };

@@ -26,13 +26,13 @@ export interface KtaIssuanceInfo {
 
 export function doesPaymentBelongToMember(p: Payment | null | undefined, m: Member | null | undefined): boolean {
   if (!p || !m) return false;
-  if (p.memberId && m.id && p.memberId === m.id) {
-    return true;
+  if (p.memberId && m.id) {
+    return p.memberId === m.id;
   }
   const pName = (p.memberName || '').trim().toLowerCase();
   const mName = (m.name || '').trim().toLowerCase();
-  if (pName && mName) {
-    return pName === mName;
+  if (pName && mName && pName === mName) {
+    return true;
   }
   const pNum = (p.memberNumber || '').trim().toLowerCase();
   const mNum = (m.memberNumber || '').trim().toLowerCase();

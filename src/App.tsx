@@ -1,6 +1,8 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import {
   Member,
+  MemberStatus,
+  MemberVerificationStatus,
   Payment,
   BenefitClaim,
   SystemSettings,
@@ -94,9 +96,11 @@ import {
   restoreDemoDataToCloud,
   getPendingUnsyncedMembers,
   clearMemberPendingSync,
+  getPendingUnsyncedPayments,
+  clearPaymentPendingSync,
 } from './lib/firebase';
 import { checkDuplicateMember } from './lib/duplicateValidator';
-import { isMemberAwaitingPaguyubanApproval } from './lib/ktaUtils';
+import { isMemberAwaitingPaguyubanApproval, doesPaymentBelongToMember } from './lib/ktaUtils';
 import { syncAndFilterPaymentsWithMembers } from './lib/receiptUtils';
 import { recordAppVisit } from './lib/firebaseTelemetry';
 import {
@@ -106,6 +110,11 @@ import {
   getMemberStatusRank,
   cleanCorruptedPendingSyncQueue,
 } from './lib/memberRecovery';
+import {
+  recordSystemTrace,
+  buildDuplicateNpaResolutionPlan,
+  NpaReassignmentPlanItem,
+} from './lib/systemAuditLog';
 import { initialUsers } from './data/initialData';
 
 import { Navbar } from './components/Navbar';
@@ -121,6 +130,7 @@ const LazyMemberRegistration = lazy(() =>
 import { PaguyubanApproval } from './components/PaguyubanApproval';
 import { PaymentForm } from './components/PaymentForm';
 import { AdminValidation } from './components/AdminValidation';
+import { StatusAuditPage } from './components/StatusAuditPage';
 import { BenefitRealization } from './components/BenefitRealization';
 import { AmbulanceManagement } from './components/AmbulanceManagement';
 import { FuneralScheduleSection } from './components/FuneralSchedule';
@@ -223,12 +233,8 @@ export default function App() {
     });
     const effectiveInitialM = initialRecovery.mergedMembers;
     if (initialRecovery.recoveredMembers.length > 0) {
+      // Hanya simpan ke state & cache lokal saat startup; sinkronisasi ke Cloud dilakukan setelah data Cloud diterima
       saveMembers(effectiveInitialM);
-      initialRecovery.recoveredMembers.forEach((recMem) => {
-        syncMemberToCloud(recMem).catch(() => {});
-        const recUser = createMemberUser(recMem);
-        syncUserToCloud(recUser).catch(() => {});
-      });
     }
     const initialN = initialRecovery.restoredNotification
       ? [initialRecovery.restoredNotification, ...rawInitialN]
@@ -430,8 +436,16 @@ export default function App() {
                     const existingCloud = mergedCloudMembers[existingIdx];
                     const cloudRank = getMemberStatusRank(existingCloud, currentPayments);
                     const pendingRank = getMemberStatusRank(pendingMem, currentPayments);
-                    // Jangan pernah menimpa status anggota yang sudah lebih tinggi (mis. Aktif) dengan antrean lama (Menunggu Verifikasi RT)
-                    if (cloudRank > pendingRank) {
+                    const hasVerifiedPayForMember = currentPayments.some(
+                      (p) => p.status === 'Verified' && doesPaymentBelongToMember(p, existingCloud)
+                    );
+                    const isCloudStaleAwaitingPaguyuban =
+                      existingCloud.status === 'Menunggu Persetujuan Ketua Paguyuban' &&
+                      pendingMem.status === 'Menunggu Validasi Bendahara' &&
+                      !hasVerifiedPayForMember;
+                    // Jangan pernah menimpa status anggota yang sudah lebih tinggi (mis. Aktif) dengan antrean lama (Menunggu Verifikasi RT),
+                    // kecuali saat cloud masih memuat status Menunggu Persetujuan Ketua Paguyuban setelah verifikasi pembayaran dibatalkan
+                    if (cloudRank > pendingRank && !isCloudStaleAwaitingPaguyuban) {
                       mergedCloudMembers[existingIdx] = mergeMemberRecords(existingCloud, pendingMem, currentPayments);
                       clearMemberPendingSync(pendingMem.id);
                     } else {
@@ -513,8 +527,39 @@ export default function App() {
           },
           onPaymentsChange: (cloudPayments) => {
             if (cloudPayments && Array.isArray(cloudPayments)) {
-              setPayments(cloudPayments);
-              savePayments(cloudPayments);
+              const pendingLocalPayments = getPendingUnsyncedPayments();
+              const mergedPayments = [...cloudPayments];
+
+              if (pendingLocalPayments.length > 0) {
+                pendingLocalPayments.forEach((pendingPay) => {
+                  if (!pendingPay || !pendingPay.id) return;
+                  const existingIdx = mergedPayments.findIndex((cp) => cp && cp.id === pendingPay.id);
+                  if (existingIdx === -1) {
+                    mergedPayments.unshift(pendingPay);
+                    syncPaymentToCloud(pendingPay).catch(() => {});
+                  } else {
+                    const existingCloudPay = mergedPayments[existingIdx];
+                    const cloudIsVerified = existingCloudPay.status === 'Verified';
+                    const localIsVerified = pendingPay.status === 'Verified';
+                    const isLocalNewerCancellation =
+                      pendingPay.status === 'Pending' &&
+                      Boolean(pendingPay.verificationCancelledAt) &&
+                      cloudIsVerified &&
+                      (!existingCloudPay.verifiedAt ||
+                        pendingPay.verificationCancelledAt! >= existingCloudPay.verifiedAt);
+
+                    if ((localIsVerified && !cloudIsVerified) || isLocalNewerCancellation) {
+                      mergedPayments[existingIdx] = pendingPay;
+                      syncPaymentToCloud(pendingPay).catch(() => {});
+                    } else {
+                      clearPaymentPendingSync(pendingPay.id);
+                    }
+                  }
+                });
+              }
+
+              setPayments(mergedPayments);
+              savePayments(mergedPayments);
 
               // Rekonsiliasi ulang status anggota terhadap data pembayaran terbaru dari Cloud
               setMembers((prevMembers) => {
@@ -522,7 +567,7 @@ export default function App() {
                   currentMembers: prevMembers,
                   users: getStoredUsers(),
                   notifications: getStoredNotifications(),
-                  payments: cloudPayments,
+                  payments: mergedPayments,
                 });
                 if (reconciled.recoveredMembers.length > 0) {
                   saveMembers(reconciled.mergedMembers);
@@ -1028,6 +1073,18 @@ export default function App() {
       linkTab: 'rt-verification',
     });
 
+    recordSystemTrace({
+      source: 'App.handlePublicRegisterMember',
+      action: 'REGISTER_PUBLIC_MEMBER',
+      severity: 'info',
+      actor: newMember.name,
+      memberId: newMember.id,
+      memberName: newMember.name,
+      memberNumber: newMember.memberNumber,
+      newStatus: newMember.status,
+      detail: `Pendaftaran mandiri warga baru masuk (${newMember.cluster || 'Cluster'}). Status awal: ${newMember.status}.`,
+    });
+
     // Arahkan calon anggota baru ke jendela Login agar dapat memonitor progres pendaftarannya
     setRegisteredMemberForLogin(newMember);
     if (!activeUser) {
@@ -1088,6 +1145,18 @@ export default function App() {
       linkTab: 'rt-verification',
     });
 
+    recordSystemTrace({
+      source: 'App.handleAddMember',
+      action: 'REGISTER_MEMBER',
+      severity: 'info',
+      actor: activeUser?.name || newMember.name,
+      memberId: newMember.id,
+      memberName: newMember.name,
+      memberNumber: newMember.memberNumber,
+      newStatus: newMember.status,
+      detail: `Pendaftaran anggota baru disimpan (${newMember.cluster || 'Cluster'}). Status awal: ${newMember.status}.`,
+    });
+
     // Jika calon anggota baru mendaftar mandiri (belum login), arahkan langsung ke Login untuk monitor progres pendaftaran
     if (!activeUser) {
       setRegisteredMemberForLogin(newMember);
@@ -1111,6 +1180,21 @@ export default function App() {
     saveMembers(updatedMembers);
     syncMemberToCloud(updatedMember).catch((e) => console.warn('Cloud sync updated member error:', e));
 
+    if (statusChanged && oldMember) {
+      recordSystemTrace({
+        source: 'App.handleUpdateMember',
+        action: 'UPDATE_MEMBER_STATUS',
+        severity: updatedMember.status === 'Menunggu Validasi Bendahara' ? 'warning' : 'info',
+        actor: activeUser?.name || 'Pengurus',
+        memberId: updatedMember.id,
+        memberName: updatedMember.name,
+        memberNumber: updatedMember.memberNumber,
+        previousStatus: oldMember.status,
+        newStatus: updatedMember.status,
+        detail: `Perubahan status via Edit/Update Data Anggota (${oldMember.status} -> ${updatedMember.status}).`,
+      });
+    }
+
     // Sinkronkan nama & NPA pada riwayat pembayaran milik anggota ini jika berubah
     if (oldMember && (oldMember.name !== updatedMember.name || oldMember.memberNumber !== updatedMember.memberNumber)) {
       setPayments((prevPayments) => {
@@ -1118,7 +1202,7 @@ export default function App() {
         const nextPayments = prevPayments.map((p) => {
           if (
             p.memberId === updatedMember.id ||
-            (oldMember.memberNumber && p.memberNumber === oldMember.memberNumber)
+            (!p.memberId && oldMember.memberNumber && p.memberNumber === oldMember.memberNumber)
           ) {
             changed = true;
             const updatedPay: Payment = {
@@ -1405,6 +1489,19 @@ export default function App() {
         linkTab: 'registration',
       });
 
+      recordSystemTrace({
+        source: 'App.handleVerifyMember',
+        action: 'RT_VERIFY_APPROVED',
+        severity: 'info',
+        actor: rtOfficerName,
+        memberId: mem.id,
+        memberName: mem.name,
+        memberNumber: mem.memberNumber,
+        previousStatus: 'Menunggu Verifikasi RT',
+        newStatus: mem.status,
+        detail: `Verifikasi RT disetujui oleh ${rtOfficerName}. Catatan: ${rtNotes || '-'}.`,
+      });
+
       // Auto-send WhatsApp notification to member on RT Approval
       if (settings.autoNotifyOnRtVerification !== false && mem.phone) {
         const msg = buildRtVerificationMessage({
@@ -1533,10 +1630,17 @@ export default function App() {
     savePayments(updatedPayments);
     syncPaymentToCloud(newPayment).catch((e) => console.warn('Cloud sync payment error:', e));
 
+    // Strict ID match first; only fallback to memberNumber if memberId is absent or missing in members
+    const hasExactMemberId = Boolean(newPayment.memberId && members.some((m) => m.id === newPayment.memberId));
+    const isTargetMember = (m: Member) =>
+      hasExactMemberId
+        ? m.id === newPayment.memberId
+        : Boolean(newPayment.memberNumber && m.memberNumber === newPayment.memberNumber && (!newPayment.memberName || m.name.trim().toLowerCase() === newPayment.memberName.trim().toLowerCase()));
+
     // If target member was in 'Menunggu Pembayaran', update status to 'Menunggu Validasi Bendahara'
     let updatedMemberObj: Member | null = null;
     const updatedMembers = members.map((m) => {
-      if (m.id === newPayment.memberId || m.memberNumber === newPayment.memberNumber) {
+      if (isTargetMember(m)) {
         if (m.status === 'Menunggu Pembayaran') {
           const mUpdated: Member = {
             ...m,
@@ -1552,9 +1656,23 @@ export default function App() {
       setMembers(updatedMembers);
       saveMembers(updatedMembers);
       syncMemberToCloud(updatedMemberObj).catch((e) => console.warn('Cloud sync member status error:', e));
+      recordSystemTrace({
+        source: 'App.handleAddPayment',
+        action: 'PAYMENT_SUBMITTED_ADVANCE_STATUS',
+        severity: 'info',
+        actor: activeUser?.name || newPayment.memberName,
+        memberId: updatedMemberObj.id,
+        memberName: updatedMemberObj.name,
+        memberNumber: updatedMemberObj.memberNumber,
+        paymentId: newPayment.id,
+        previousStatus: 'Menunggu Pembayaran',
+        newStatus: 'Menunggu Validasi Bendahara',
+        matchedBy: hasExactMemberId ? 'memberId' : 'memberNumber+name',
+        detail: `Konfirmasi pembayaran ${newPayment.receiptNumber} (${formatIDR(newPayment.amount)}) diunggah.`,
+      });
     }
 
-    const targetMem = members.find((m) => m.id === newPayment.memberId || m.memberNumber === newPayment.memberNumber);
+    const targetMem = members.find((m) => isTargetMember(m));
     addNotification({
       type: 'info',
       category: 'payment',
@@ -1600,6 +1718,9 @@ export default function App() {
           adminSignerName: verifierName,
           adminSignerTitle: sigTitle,
           adminSignatureDate: sigUrl ? timestampNow : p.adminSignatureDate,
+          verificationCancelledAt: '',
+          verificationCancelledBy: '',
+          verificationCancelReason: '',
         };
         verifiedPaymentObj = updated;
         targetMemberId = p.memberId;
@@ -1615,7 +1736,10 @@ export default function App() {
       const pay = verifiedPaymentObj as Payment;
       syncPaymentToCloud(pay).catch((e) => console.warn('Cloud sync payment error:', e));
 
-      const targetMem = members.find((m) => m.id === pay.memberId || m.memberNumber === pay.memberNumber);
+      const hasExactId = Boolean(pay.memberId && members.some((m) => m.id === pay.memberId));
+      const targetMem = members.find((m) =>
+        hasExactId ? m.id === pay.memberId : Boolean(pay.memberNumber && m.memberNumber === pay.memberNumber)
+      );
       const isMemAlreadyApproved = Boolean(targetMem?.isPaguyubanApproved === true && targetMem?.status === 'Aktif');
 
       // Alert in dashboard: Payment verified
@@ -1638,10 +1762,16 @@ export default function App() {
     }
 
     // When payment is verified by Bendahara, advance status
-    if (targetMemberId) {
+    if (targetMemberId || verifiedPaymentObj?.memberNumber) {
+      const hasExactId = Boolean(targetMemberId && members.some((m) => m.id === targetMemberId));
       let updatedMemberObj: Member | null = null;
+      let prevMemberStatus = '';
       const updatedMembers = members.map((m) => {
-        if (m.id === targetMemberId || m.memberNumber === verifiedPaymentObj?.memberNumber) {
+        const isMatch = hasExactId
+          ? m.id === targetMemberId
+          : Boolean(verifiedPaymentObj?.memberNumber && m.memberNumber === verifiedPaymentObj.memberNumber);
+        if (isMatch) {
+          prevMemberStatus = m.status;
           const isAlreadyApproved = Boolean(m.isPaguyubanApproved === true && m.status === 'Aktif');
           const nextStatus = isAlreadyApproved ? ('Aktif' as const) : ('Menunggu Persetujuan Ketua Paguyuban' as const);
           const nextKtaIssued = isAlreadyApproved;
@@ -1665,6 +1795,20 @@ export default function App() {
       if (updatedMemberObj) {
         const activeMem = updatedMemberObj as Member;
         syncMemberToCloud(activeMem).catch((e) => console.warn('Cloud sync member status error:', e));
+        recordSystemTrace({
+          source: 'App.handleVerifyPayment',
+          action: 'BENDAHARA_VERIFY_PAYMENT',
+          severity: 'info',
+          actor: verifierName,
+          memberId: activeMem.id,
+          memberName: activeMem.name,
+          memberNumber: activeMem.memberNumber,
+          paymentId,
+          previousStatus: prevMemberStatus,
+          newStatus: activeMem.status,
+          matchedBy: hasExactId ? 'memberId' : 'memberNumber',
+          detail: `Pembayaran ${verifiedPaymentObj?.receiptNumber || paymentId} divalidasi Bendahara.`,
+        });
 
         if (activeMem.isPaguyubanApproved) {
           // Auto-send WhatsApp notification to member's registered phone if already approved
@@ -1720,6 +1864,134 @@ export default function App() {
     }
   };
 
+  // CANCEL PAYMENT VERIFICATION BY BENDAHARA (REVERT VERIFIED -> PENDING)
+  const handleCancelVerifyPayment = (paymentId: string, cancelReason?: string) => {
+    if (!can(activeUser?.authority, 'approve_payments')) {
+      alert(
+        `Akses Ditolak: Akun Anda (${activeUser?.authority || 'Pengguna'}) tidak memiliki wewenang membatalkan verifikasi pembayaran kas (Wewenang Bendahara).`
+      );
+      return;
+    }
+
+    const targetPayment = payments.find((p) => p.id === paymentId);
+    if (!targetPayment || targetPayment.status !== 'Verified') {
+      return;
+    }
+
+    const timestampNow = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const cancellerName = activeUser?.name || settings.treasurerName || 'Bendahara Paguyuban';
+    const cleanReason =
+      (cancelReason || '').trim() || 'Verifikasi dibatalkan oleh Bendahara untuk pemeriksaan ulang.';
+
+    let cancelledPaymentObj: Payment | null = null;
+    const updatedPayments = payments.map((p) => {
+      if (p.id === paymentId) {
+        const reverted: Payment = {
+          ...p,
+          status: 'Pending' as const,
+          verifiedAt: '',
+          verifiedBy: '',
+          adminSignature: '',
+          adminSignerName: '',
+          adminSignerTitle: '',
+          adminSignatureDate: '',
+          adminNotes: `[Verifikasi Dibatalkan ${timestampNow} oleh ${cancellerName}] Alasan: ${cleanReason}`,
+          verificationCancelledAt: timestampNow,
+          verificationCancelledBy: cancellerName,
+          verificationCancelReason: cleanReason,
+        };
+        cancelledPaymentObj = reverted;
+        return reverted;
+      }
+      return p;
+    });
+
+    setPayments(updatedPayments);
+    savePayments(updatedPayments);
+
+    if (cancelledPaymentObj) {
+      const pay = cancelledPaymentObj as Payment;
+      syncPaymentToCloud(pay).catch((e) => console.warn('Cloud sync cancel verification payment error:', e));
+
+      if (selectedReceiptPayment?.id === pay.id) {
+        setSelectedReceiptPayment(null);
+      }
+
+      const hasExactId = Boolean(pay.memberId && members.some((m) => m.id === pay.memberId));
+      const targetMem = members.find((m) =>
+        hasExactId ? m.id === pay.memberId : Boolean(pay.memberNumber && m.memberNumber === pay.memberNumber)
+      );
+
+      if (targetMem) {
+        const hasOtherVerifiedPayment = updatedPayments.some(
+          (otherPay) =>
+            otherPay.id !== pay.id &&
+            otherPay.status === 'Verified' &&
+            doesPaymentBelongToMember(otherPay, targetMem)
+        );
+
+        const shouldRevertMemberToAwaitingBendahara =
+          !hasOtherVerifiedPayment &&
+          (targetMem.status === 'Menunggu Persetujuan Ketua Paguyuban' ||
+            (targetMem.status === 'Aktif' && targetMem.isPaguyubanApproved !== true));
+
+        if (shouldRevertMemberToAwaitingBendahara) {
+          let updatedMemberObj: Member | null = null;
+          const updatedMembers = members.map((m) => {
+            if (m.id === targetMem.id) {
+              const revertedMember: Member = {
+                ...m,
+                status: 'Menunggu Validasi Bendahara' as const,
+                verificationStatus: 'Verified' as const,
+                isPaguyubanApproved: false,
+                isKtaIssued: false,
+                ktaIssuedAt: '',
+                ktaIssuedBy: '',
+              };
+              updatedMemberObj = revertedMember;
+              return revertedMember;
+            }
+            return m;
+          });
+          setMembers(updatedMembers);
+          saveMembers(updatedMembers);
+          if (updatedMemberObj) {
+            syncMemberToCloud(updatedMemberObj).catch((e) =>
+              console.warn('Cloud sync member rollback on cancel payment verification error:', e)
+            );
+            recordSystemTrace({
+              source: 'App.handleCancelVerifyPayment',
+              action: 'CANCEL_PAYMENT_VERIFICATION_REVERT',
+              severity: 'warning',
+              actor: cancellerName,
+              memberId: targetMem.id,
+              memberName: targetMem.name,
+              memberNumber: targetMem.memberNumber,
+              paymentId: pay.id,
+              previousStatus: targetMem.status,
+              newStatus: 'Menunggu Validasi Bendahara',
+              matchedBy: hasExactId ? 'memberId' : 'memberNumber',
+              detail: `Verifikasi pembayaran ${pay.receiptNumber} dibatalkan Bendahara. Alasan: ${cleanReason}. Status warga dikembalikan ke Menunggu Validasi Bendahara.`,
+            });
+          }
+        }
+      }
+
+      addNotification({
+        type: 'warning',
+        category: 'payment',
+        title: 'Verifikasi Pembayaran Dibatalkan',
+        message: `Verifikasi pembayaran ${pay.paymentType} (${pay.periodMonth}) sebesar ${formatIDR(
+          pay.amount
+        )} atas nama ${pay.memberName} (${pay.memberNumber}) telah dibatalkan oleh ${cancellerName} dan dikembalikan ke antrean Pending. Alasan: ${cleanReason}`,
+        cluster: targetMem?.cluster,
+        paymentId: pay.id,
+        memberId: pay.memberId,
+        linkTab: 'validation',
+      });
+    }
+  };
+
   // APPROVE MEMBER BY KETUA PAGUYUBAN (OFFICIALLY ISSUES KTA)
   const handleApproveByKetuaPaguyuban = (
     memberId: string,
@@ -1734,8 +2006,8 @@ export default function App() {
 
     // Validasi mutlak: Persetujuan Ketua Paguyuban HANYA bisa dilakukan bila sudah ada validasi pembayaran dari bendahara
     const targetMember = members.find((m) => m.id === memberId);
-    const hasVerifiedPayment = targetMember && payments.some(
-      (p) => (p.memberId === targetMember.id || p.memberNumber === targetMember.memberNumber) && p.status === 'Verified'
+    const hasVerifiedPayment = Boolean(
+      targetMember && payments.some((p) => p.status === 'Verified' && doesPaymentBelongToMember(p, targetMember))
     );
 
     if (!hasVerifiedPayment) {
@@ -1783,6 +2055,19 @@ export default function App() {
         cluster: mem.cluster,
         memberId: mem.id,
         linkTab: 'registration',
+      });
+
+      recordSystemTrace({
+        source: 'App.handleApproveByKetuaPaguyuban',
+        action: 'PAGUYUBAN_FINAL_APPROVAL',
+        severity: 'info',
+        actor: approverName,
+        memberId: mem.id,
+        memberName: mem.name,
+        memberNumber: mem.memberNumber,
+        previousStatus: targetMember?.status || 'Menunggu Persetujuan Ketua Paguyuban',
+        newStatus: mem.status,
+        detail: `Pengesahan akhir Ketua Paguyuban oleh ${approverName}. KTA resmi diterbitkan.`,
       });
 
       // Auto-send WhatsApp notification to member on Paguyuban Approval
@@ -1932,10 +2217,15 @@ export default function App() {
       const pay = rejectedPaymentObj as Payment;
       syncPaymentToCloud(pay).catch((e) => console.warn('Cloud sync rejected payment error:', e));
 
+      // Strict ID match first; only fallback to memberNumber if memberId is absent
+      const hasExactId = Boolean(pay.memberId && members.some((m) => m.id === pay.memberId));
+      const isPayTargetMember = (m: Member) =>
+        hasExactId ? m.id === pay.memberId : Boolean(pay.memberNumber && m.memberNumber === pay.memberNumber);
+
       // If target member was awaiting treasurer validation, revert status to Menunggu Pembayaran
       let updatedMemberObj: Member | null = null;
       const updatedMembers = members.map((m) => {
-        if (m.id === pay.memberId || m.memberNumber === pay.memberNumber) {
+        if (isPayTargetMember(m)) {
           if (m.status === 'Menunggu Validasi Bendahara') {
             const mUpdated: Member = {
               ...m,
@@ -1951,9 +2241,23 @@ export default function App() {
         setMembers(updatedMembers);
         saveMembers(updatedMembers);
         syncMemberToCloud(updatedMemberObj).catch((e) => console.warn('Cloud sync member status error:', e));
+        recordSystemTrace({
+          source: 'App.handleRejectPayment',
+          action: 'PAYMENT_REJECTED_REVERT_STATUS',
+          severity: 'warning',
+          actor: activeUser?.name || 'Bendahara',
+          memberId: updatedMemberObj.id,
+          memberName: updatedMemberObj.name,
+          memberNumber: updatedMemberObj.memberNumber,
+          paymentId: pay.id,
+          previousStatus: 'Menunggu Validasi Bendahara',
+          newStatus: 'Menunggu Pembayaran',
+          matchedBy: hasExactId ? 'memberId' : 'memberNumber',
+          detail: `Pembayaran ${pay.receiptNumber} ditolak (${notes || 'bukti tidak valid'}). Status warga dikembalikan ke Menunggu Pembayaran.`,
+        });
       }
 
-      const targetMem = members.find((m) => m.id === pay.memberId || m.memberNumber === pay.memberNumber);
+      const targetMem = members.find((m) => isPayTargetMember(m));
       // Alert in dashboard: Payment rejected
       addNotification({
         type: 'warning',
@@ -1987,16 +2291,19 @@ export default function App() {
       setSelectedReceiptPayment(null);
     }
 
+    const hasExactId = Boolean(targetPayment.memberId && members.some((m) => m.id === targetPayment.memberId));
+    const isDeleteTargetMember = (m: Member) =>
+      hasExactId
+        ? m.id === targetPayment.memberId
+        : Boolean(targetPayment.memberNumber && m.memberNumber === targetPayment.memberNumber);
+
     // Cek apakah warga terkait masih memiliki pembayaran lain yang aktif (Verified / Pending)
+    const targetMemberRef = members.find((m) => isDeleteTargetMember(m));
     const memberRemainingPayments = remainingPayments.filter(
       (p) =>
         p &&
         p.status !== 'Rejected' &&
-        (p.memberId === targetPayment.memberId ||
-          (targetPayment.memberNumber && p.memberNumber === targetPayment.memberNumber) ||
-          (targetPayment.memberName &&
-            p.memberName &&
-            p.memberName.toLowerCase().trim() === targetPayment.memberName.toLowerCase().trim()))
+        (targetMemberRef ? doesPaymentBelongToMember(p, targetMemberRef) : p.memberId === targetPayment.memberId)
     );
 
     const hasRemainingVerified = memberRemainingPayments.some((p) => p.status === 'Verified');
@@ -2007,10 +2314,7 @@ export default function App() {
     if (!hasRemainingVerified && !hasRemainingPending) {
       let updatedMemberObj: Member | null = null;
       const updatedMembers = members.map((m) => {
-        if (
-          m.id === targetPayment.memberId ||
-          (targetPayment.memberNumber && m.memberNumber === targetPayment.memberNumber)
-        ) {
+        if (isDeleteTargetMember(m)) {
           if (m.status === 'Menunggu Validasi Bendahara') {
             const mUpdated: Member = {
               ...m,
@@ -2026,6 +2330,20 @@ export default function App() {
         setMembers(updatedMembers);
         saveMembers(updatedMembers);
         syncMemberToCloud(updatedMemberObj).catch((e) => console.warn('Cloud sync member status error:', e));
+        recordSystemTrace({
+          source: 'App.handleDeletePayment',
+          action: 'PAYMENT_DELETED_REVERT_STATUS',
+          severity: 'warning',
+          actor: activeUser?.name || 'Admin',
+          memberId: updatedMemberObj.id,
+          memberName: updatedMemberObj.name,
+          memberNumber: updatedMemberObj.memberNumber,
+          paymentId: targetPayment.id,
+          previousStatus: 'Menunggu Validasi Bendahara',
+          newStatus: 'Menunggu Pembayaran',
+          matchedBy: hasExactId ? 'memberId' : 'memberNumber',
+          detail: `Transaksi ${targetPayment.receiptNumber || targetPayment.id} dihapus Admin. Status warga dikembalikan ke Menunggu Pembayaran.`,
+        });
       }
     }
 
@@ -2038,15 +2356,351 @@ export default function App() {
       return filtered;
     });
 
-    const targetMem = members.find(
-      (m) => m.id === targetPayment.memberId || m.memberNumber === targetPayment.memberNumber
-    );
+    const targetMem = members.find((m) => isDeleteTargetMember(m));
     addNotification({
       type: 'warning',
       category: 'system',
       title: 'Data Pembayaran Dihapus oleh Admin',
       message: `Data pembayaran ${targetPayment.paymentType} (${targetPayment.periodMonth}) sebesar ${formatIDR(targetPayment.amount)} atas nama "${targetPayment.memberName}" (${targetPayment.receiptNumber || targetPayment.memberNumber}) telah dihapus oleh ${activeUser?.name || 'Admin'}.`,
       cluster: targetMem?.cluster,
+    });
+  };
+
+  // REPAIR ANOMALOUS MEMBER STATUS FROM SYSTEM TRACE INSPECTOR
+  const handleRepairMemberStatusAnomaly = (
+    memberId: string,
+    targetStatus: MemberStatus,
+    targetVerificationStatus: MemberVerificationStatus,
+    reason: string
+  ) => {
+    const canRepair = activeUser?.authority === 'Admin';
+
+    if (!canRepair) {
+      alert(
+        `Akses Ditolak: Akun Anda (${activeUser?.authority || 'Pengguna'}) tidak memiliki izin koreksi Audit Status. Fitur ini hanya untuk Admin.`
+      );
+      return;
+    }
+
+    const oldMem = members.find((m) => m.id === memberId);
+    if (!oldMem) return;
+
+    const resetRtFields = targetStatus === 'Menunggu Verifikasi RT';
+    const resetPaguyubanFields =
+      targetStatus === 'Menunggu Verifikasi RT' ||
+      targetStatus === 'Menunggu Pembayaran' ||
+      targetStatus === 'Menunggu Validasi Bendahara';
+
+    let repairedMemberObj: Member | null = null;
+    const updatedMembers = members.map((m) => {
+      if (m.id === memberId) {
+        const updated: Member = {
+          ...m,
+          status: targetStatus,
+          verificationStatus: targetVerificationStatus,
+          ...(resetRtFields
+            ? {
+                verifiedByRt: '',
+                verifiedAt: '',
+                rtVerifiedBy: '',
+                rtVerifiedAt: '',
+              }
+            : {}),
+          ...(resetPaguyubanFields
+            ? {
+                isPaguyubanApproved: false,
+                approvedByPaguyuban: '',
+                approvedByPaguyubanAt: '',
+                isKtaIssued: false,
+                ktaIssuedAt: '',
+                ktaIssuedBy: '',
+              }
+            : {}),
+          notes: `[Koreksi Anomali Sistem] ${reason}`,
+        };
+        repairedMemberObj = updated;
+        return updated;
+      }
+      return m;
+    });
+
+    setMembers(updatedMembers);
+    saveMembers(updatedMembers);
+
+    if (repairedMemberObj) {
+      const mem = repairedMemberObj as Member;
+      syncMemberToCloud(mem).catch((e) => console.warn('Cloud sync anomaly repair error:', e));
+
+      recordSystemTrace({
+        source: 'SystemRepair.AnomalyFix',
+        action: 'MANUAL_REPAIR_ANOMALY_STATUS',
+        severity: 'warning',
+        actor: activeUser?.name || activeUser?.authority || 'Pengurus',
+        memberId: mem.id,
+        memberName: mem.name,
+        memberNumber: mem.memberNumber,
+        previousStatus: oldMem.status,
+        newStatus: targetStatus,
+        detail: `Perbaikan status via Penelusuran Anomali: "${oldMem.status}" -> "${targetStatus}". Alasan: ${reason}`,
+      });
+
+      addNotification({
+        type: 'info',
+        category: 'system',
+        title: 'Status Warga Dikoreksi (Audit Sistem)',
+        message: `Status warga ${mem.name} (${mem.memberNumber}) dikoreksi dari "${oldMem.status}" menjadi "${targetStatus}". Alasan: ${reason}`,
+        cluster: mem.cluster,
+        memberId: mem.id,
+        linkTab: 'registration',
+      });
+    }
+  };
+
+  // BATCH REPAIR ANOMALOUS MEMBER STATUSES FROM ADMIN AUDIT STATUS PAGE
+  const handleBatchRepairMemberStatusAnomalies = (
+    repairs: Array<{
+      memberId: string;
+      targetStatus: MemberStatus;
+      targetVerificationStatus: MemberVerificationStatus;
+      reason: string;
+    }>
+  ) => {
+    const canRepair = activeUser?.authority === 'Admin';
+
+    if (!canRepair) {
+      alert(
+        `Akses Ditolak: Akun Anda (${activeUser?.authority || 'Pengguna'}) tidak memiliki izin perbaikan massal Audit Status. Fitur ini hanya untuk Admin.`
+      );
+      return;
+    }
+
+    if (!repairs || repairs.length === 0) return;
+
+    const repairById = new Map(repairs.map((r) => [r.memberId, r]));
+    const updatedObjs: Member[] = [];
+
+    const updatedMembers = members.map((m) => {
+      const req = repairById.get(m.id);
+      if (!req) return m;
+
+      const resetRtFields = req.targetStatus === 'Menunggu Verifikasi RT';
+      const resetPaguyubanFields =
+        req.targetStatus === 'Menunggu Verifikasi RT' ||
+        req.targetStatus === 'Menunggu Pembayaran' ||
+        req.targetStatus === 'Menunggu Validasi Bendahara';
+
+      const updated: Member = {
+        ...m,
+        status: req.targetStatus,
+        verificationStatus: req.targetVerificationStatus,
+        ...(resetRtFields
+          ? {
+              verifiedByRt: '',
+              verifiedAt: '',
+              rtVerifiedBy: '',
+              rtVerifiedAt: '',
+            }
+          : {}),
+        ...(resetPaguyubanFields
+          ? {
+              isPaguyubanApproved: false,
+              approvedByPaguyuban: '',
+              approvedByPaguyubanAt: '',
+              isKtaIssued: false,
+              ktaIssuedAt: '',
+              ktaIssuedBy: '',
+            }
+          : {}),
+        notes: `[Koreksi Massal Audit Status] ${req.reason}`,
+      };
+
+      updatedObjs.push(updated);
+      recordSystemTrace({
+        source: 'SystemRepair.BatchAuditFix',
+        action: 'BATCH_REPAIR_ANOMALY_STATUS',
+        severity: 'warning',
+        actor: activeUser?.name || activeUser?.authority || 'Pengurus',
+        memberId: m.id,
+        memberName: m.name,
+        memberNumber: m.memberNumber,
+        previousStatus: m.status,
+        newStatus: req.targetStatus,
+        detail: `Perbaikan massal Audit Status: "${m.status}" -> "${req.targetStatus}". Alasan: ${req.reason}`,
+      });
+
+      return updated;
+    });
+
+    if (updatedObjs.length === 0) return;
+
+    setMembers(updatedMembers);
+    saveMembers(updatedMembers);
+    syncMembersBatchToCloud(updatedObjs).catch((e) =>
+      console.warn('Cloud batch sync anomaly repair error:', e)
+    );
+
+    addNotification({
+      type: 'success',
+      category: 'system',
+      title: `Audit Status: ${updatedObjs.length} Data Anomali Diperbaiki`,
+      message: `${updatedObjs.length} anggota yang berada di antrean Bendahara tanpa pembayaran valid telah dikembalikan ke status semestinya dan disinkronkan ke Cloud.`,
+      linkTab: 'audit-status',
+    });
+  };
+
+  // RESOLVE DUPLICATE MEMBER NUMBERS (NPA KEMBAR) SAFELY ACROSS MEMBERS, PAYMENTS, USERS, AND CLAIMS
+  const handleResolveDuplicateNpas = (customPlan?: NpaReassignmentPlanItem[]) => {
+    const canRepair = activeUser?.authority === 'Admin';
+
+    if (!canRepair) {
+      alert(
+        `Akses Ditolak: Akun Anda (${activeUser?.authority || 'Pengguna'}) tidak memiliki izin merapikan NPA kembar. Fitur Audit Status hanya untuk Admin.`
+      );
+      return;
+    }
+
+    const planItems =
+      customPlan && customPlan.length > 0
+        ? customPlan
+        : buildDuplicateNpaResolutionPlan(members, payments).flatMap((g) => g.duplicates);
+
+    if (planItems.length === 0) return;
+
+    const planByMemberId = new Map(planItems.map((item) => [item.member.id, item]));
+    const updatedMemberObjs: Member[] = [];
+
+    const nextMembers = members.map((m) => {
+      const item = planByMemberId.get(m.id);
+      if (!item) return m;
+
+      const updatedMember: Member = {
+        ...m,
+        memberNumber: item.newNpa,
+        notes: m.notes
+          ? `${m.notes} | [Audit NPA Kembar: ${item.oldNpa} -> ${item.newNpa}]`
+          : `[Audit NPA Kembar: ${item.oldNpa} -> ${item.newNpa}]`,
+      };
+      updatedMemberObjs.push(updatedMember);
+
+      recordSystemTrace({
+        source: 'SystemRepair.DuplicateNpaFix',
+        action: 'REASSIGN_DUPLICATE_NPA',
+        severity: 'warning',
+        actor: activeUser?.name || activeUser?.authority || 'Pengurus',
+        memberId: m.id,
+        memberName: m.name,
+        memberNumber: item.newNpa,
+        previousStatus: `${m.status} (NPA: ${item.oldNpa})`,
+        newStatus: `${m.status} (NPA: ${item.newNpa})`,
+        matchedBy: 'memberId',
+        detail: item.reason,
+      });
+
+      return updatedMember;
+    });
+
+    if (updatedMemberObjs.length === 0) return;
+
+    setMembers(nextMembers);
+    saveMembers(nextMembers);
+    syncMembersBatchToCloud(updatedMemberObjs).catch((e) =>
+      console.warn('Cloud batch sync duplicate NPA members error:', e)
+    );
+
+    // Update linked payments strictly by p.memberId (never overwrite peer's payment by old NPA!)
+    setPayments((prevPayments) => {
+      let changed = false;
+      const nextPayments = prevPayments.map((p) => {
+        const item = p.memberId ? planByMemberId.get(p.memberId) : undefined;
+        if (!item) return p;
+        changed = true;
+        const updatedPay: Payment = {
+          ...p,
+          memberNumber: item.newNpa,
+        };
+        syncPaymentToCloud(updatedPay).catch((e) =>
+          console.warn('Cloud sync reassigned payment NPA error:', e)
+        );
+        return updatedPay;
+      });
+      if (changed) {
+        savePayments(nextPayments);
+        return nextPayments;
+      }
+      return prevPayments;
+    });
+
+    // Update linked AppUser accounts strictly by u.memberId
+    const updatedUserObjs: AppUser[] = [];
+    setUsers((prevUsers) => {
+      let changed = false;
+      const nextUsers = prevUsers.map((u) => {
+        const item = u.memberId ? planByMemberId.get(u.memberId) : undefined;
+        if (!item) return u;
+        changed = true;
+        const updatedU: AppUser = {
+          ...u,
+          memberNumber: item.newNpa,
+        };
+        updatedUserObjs.push(updatedU);
+        return updatedU;
+      });
+      if (changed) {
+        saveUsers(nextUsers);
+        return nextUsers;
+      }
+      return prevUsers;
+    });
+    if (updatedUserObjs.length > 0) {
+      syncUsersBatchToCloud(updatedUserObjs).catch((e) =>
+        console.warn('Cloud batch sync reassigned user NPA error:', e)
+      );
+    }
+
+    if (activeUser?.memberId && planByMemberId.has(activeUser.memberId)) {
+      const myPlan = planByMemberId.get(activeUser.memberId)!;
+      const updatedActive: AppUser = {
+        ...activeUser,
+        memberNumber: myPlan.newNpa,
+      };
+      setActiveUser(updatedActive);
+      saveStoredActiveUser(updatedActive);
+    }
+
+    // Update linked claims strictly by c.memberId
+    setClaims((prevClaims) => {
+      let changed = false;
+      const nextClaims = prevClaims.map((c) => {
+        const item = c.memberId ? planByMemberId.get(c.memberId) : undefined;
+        if (!item) return c;
+        changed = true;
+        const updatedClaim: BenefitClaim = {
+          ...c,
+          memberNumber: item.newNpa,
+        };
+        syncClaimToCloud(updatedClaim).catch((e) =>
+          console.warn('Cloud sync reassigned claim NPA error:', e)
+        );
+        return updatedClaim;
+      });
+      if (changed) {
+        saveClaims(nextClaims);
+        return nextClaims;
+      }
+      return prevClaims;
+    });
+
+    const summaryText = updatedMemberObjs
+      .slice(0, 4)
+      .map((m) => `${m.name} (${m.memberNumber})`)
+      .join(', ');
+
+    addNotification({
+      type: 'success',
+      category: 'system',
+      title: `Audit NPA Kembar: ${updatedMemberObjs.length} NPA Baru Diterbitkan`,
+      message: `${updatedMemberObjs.length} data warga dengan NPA kembar kini memiliki NPA unik masing-masing (${summaryText}${updatedMemberObjs.length > 4 ? ', ...' : ''}). Pemilik awal tetap mempertahankan NPA aslinya.`,
+      linkTab: 'audit-status',
     });
   };
 
@@ -2982,6 +3636,7 @@ export default function App() {
               settings={settings}
               benefits={benefits}
               users={users}
+              notifications={notifications}
               activeUser={activeUser}
               initialMode={activeUser ? 'directory' : 'form'}
               initialPageSize={memberPageSize}
@@ -2990,6 +3645,7 @@ export default function App() {
               onPaginationModeChange={setMemberPaginationMode}
               onAddMember={handleAddMember}
               onUpdateMember={handleUpdateMember}
+              onRepairMemberStatus={activeUser?.authority === 'Admin' ? handleRepairMemberStatusAnomaly : undefined}
               onDeleteMember={activeUser?.authority === 'Admin' ? handleDeleteMember : undefined}
               onImportBatchMembers={handleImportBatchMembers}
               onSelectMemberForPayment={handleSelectMemberForPayment}
@@ -3077,15 +3733,59 @@ export default function App() {
           <AdminValidation
             payments={synchronizedPayments}
             members={members}
+            notifications={notifications}
             settings={settings}
             activeUser={activeUser}
             setCurrentTab={setCurrentTab}
             onVerifyPayment={handleVerifyPayment}
+            onCancelVerifyPayment={handleCancelVerifyPayment}
             onRejectPayment={handleRejectPayment}
             onDeletePayment={activeUser?.authority === 'Admin' ? handleDeletePayment : undefined}
+            onRepairMemberStatus={activeUser?.authority === 'Admin' ? handleRepairMemberStatusAnomaly : undefined}
             onViewReceipt={(p) => setSelectedReceiptPayment(p)}
             onSaveDefaultSignature={handleSaveDefaultSignature}
           />
+        )}
+
+        {currentTab === 'audit-status' && (
+          activeUser?.authority === 'Admin' ? (
+            <StatusAuditPage
+              members={members}
+              payments={synchronizedPayments}
+              notifications={notifications}
+              settings={settings}
+              activeUser={activeUser}
+              setCurrentTab={setCurrentTab}
+              onRepairMemberStatus={handleRepairMemberStatusAnomaly}
+              onBatchRepairMemberStatus={handleBatchRepairMemberStatusAnomalies}
+              onResolveDuplicateNpas={handleResolveDuplicateNpas}
+              onSelectMemberForPayment={handleSelectMemberForPayment}
+            />
+          ) : (
+            <div className="max-w-xl mx-auto py-12 px-4">
+              <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-xl text-center space-y-4">
+                <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto border border-rose-200">
+                  <Lock className="w-7 h-7" />
+                </div>
+                <span className="inline-block px-3 py-1 bg-rose-100 text-rose-800 rounded-full text-xs font-black uppercase tracking-wider border border-rose-200">
+                  Akses Terbatas: Khusus Admin
+                </span>
+                <h3 className="text-xl font-black text-slate-900">
+                  Fitur Audit Status Hanya Bisa Diakses oleh Admin
+                </h3>
+                <p className="text-sm text-slate-600 leading-relaxed">
+                  Halaman Audit Status, pelacakan anomali mutasi status, dan perbaikan NPA kembar hanya diperuntukkan bagi Administrator sistem.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab(activeUser ? (activeUser.authority === 'Anggota' ? 'member-portal' : 'dashboard') : 'public')}
+                  className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl cursor-pointer transition-colors"
+                >
+                  Kembali ke Halaman Utama
+                </button>
+              </div>
+            </div>
+          )
         )}
 
         {currentTab === 'realization' && (
