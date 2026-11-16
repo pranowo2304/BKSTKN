@@ -3368,7 +3368,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
         </div>
 
-        {/* Total Anggota Aktif */}
+        {/* Total Anggota Terdaftar (Sinkron dengan Database) */}
         <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow group">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Anggota Terdaftar</span>
@@ -3377,9 +3377,20 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             </div>
           </div>
           <p className="text-2xl sm:text-3xl font-black text-slate-900 font-mono mt-3">
-            {activeMembersCount} <span className="text-sm font-normal text-slate-500">Anggota</span>
+            {members.length} <span className="text-sm font-normal text-slate-500">Anggota</span>
           </p>
-          <p className="mt-2 text-xs text-slate-500">Iuran Rutin: {formatIDR(settings.monthlyFeeAmount)}/bln</p>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5 text-xs text-slate-500">
+            <span>
+              Jumlah Iuran Ditetapkan:{' '}
+              <strong className="text-slate-700 font-semibold">
+                {formatIDR(settings.annualFeeAmount || 300000)}
+              </strong>{' '}
+              per periode
+            </span>
+            <span className="bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-md text-[10px] border border-blue-100">
+              {activeMembersCount} Aktif
+            </span>
+          </div>
         </div>
 
         {/* Total Iuran Verified Masuk */}
