@@ -19,7 +19,7 @@ import { formatIDR, getRtUserForCluster } from '../lib/storage';
 import { calculateMemberExpiry } from '../lib/expiryUtils';
 import { getMemberKtaIssuanceInfo } from '../lib/ktaUtils';
 import { checkDuplicateMember, findDuplicateNikMember, findDuplicateKkMember } from '../lib/duplicateValidator';
-import { getSystemConfiguredPeriod, cleanPhoneNumberForWhatsApp } from '../lib/receiptUtils';
+import { getSystemConfiguredPeriod, cleanPhoneNumberForWhatsApp, findMemberForPayment } from '../lib/receiptUtils';
 import { FamilyCardUploader } from './FamilyCardUploader';
 import {
   HeartHandshake,
@@ -483,10 +483,26 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
     return Math.max(...effectiveLandingBenefits.map((b) => b.maxCashAmount || 0), 5000000);
   }, [effectiveLandingBenefits]);
 
-  // Statistics calculation (strictly synchronized with active members in database)
-  const totalVerifiedMembers = members.filter(
-    (m) => m.status === 'Aktif'
-  ).length;
+  // Statistics calculation (synchronized with unique members/KK who have Verified payments)
+  const totalVerifiedMembers = useMemo(() => {
+    const uniquePaidMembers = new Set<string>();
+    (payments || []).forEach((p) => {
+      if (!p || p.status !== 'Verified') return;
+      const matchedMember = findMemberForPayment(p, members);
+      if (matchedMember?.id) {
+        uniquePaidMembers.add(`id:${matchedMember.id}`);
+      } else if (p.memberId) {
+        uniquePaidMembers.add(`id:${p.memberId}`);
+      } else if (p.memberNumber) {
+        uniquePaidMembers.add(`num:${p.memberNumber.trim().toLowerCase()}`);
+      } else if (p.memberName) {
+        uniquePaidMembers.add(`name:${p.memberName.trim().toLowerCase()}`);
+      } else {
+        uniquePaidMembers.add(`pay:${p.id}`);
+      }
+    });
+    return uniquePaidMembers.size;
+  }, [payments, members]);
   const totalClaimsPaid = claims.reduce((acc, c) => acc + (c.amount || 0), 0);
 
 
@@ -1028,7 +1044,10 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
 
           {/* Card Bottom Row: 3 Mini Metrics */}
           <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-800/80 text-center">
-            <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+            <div
+              className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800"
+              title="Jumlah KK unik dengan pembayaran iuran berstatus Terverifikasi (Lunas) pada data pembayaran"
+            >
               <p className="text-[10px] text-slate-400 font-semibold">Warga Terdaftar</p>
               <p className="text-sm sm:text-base font-black text-white mt-0.5">
                 {totalVerifiedMembers} <span className="text-[10px] font-normal text-slate-400">KK</span>
