@@ -1,10 +1,8 @@
 import { Member, AppUser, AppNotification, Payment } from '../types';
-import { getWhatsAppLogs } from './whatsappService';
 import { doesPaymentBelongToMember } from './ktaUtils';
-import { generateNextMemberNumber, recordSystemTrace } from './systemAuditLog';
+import { recordSystemTrace } from './systemAuditLog';
 
 const DELETED_MEMBERS_KEY = 'dana_kematian_deleted_member_ids_v1';
-const SUPARDI_RECOVERED_FLAG_KEY = 'dana_kematian_supardi_recovered_v1';
 const PENDING_MEMBERS_SYNC_KEY = 'dana_kematian_pending_members_sync_v1';
 
 export function getExplicitlyDeletedMemberIds(): Set<string> {
@@ -19,12 +17,11 @@ export function getExplicitlyDeletedMemberIds(): Set<string> {
   }
 }
 
-export function markMemberExplicitlyDeleted(memberId: string, memberName?: string): void {
-  if (typeof window === 'undefined') return;
+export function markMemberExplicitlyDeleted(memberId: string, _memberName?: string): void {
+  if (typeof window === 'undefined' || !memberId) return;
   try {
     const set = getExplicitlyDeletedMemberIds();
-    if (memberId) set.add(memberId);
-    if (memberName) set.add(`name:${memberName.toLowerCase().trim()}`);
+    set.add(memberId);
     localStorage.setItem(DELETED_MEMBERS_KEY, JSON.stringify(Array.from(set)));
   } catch {
     // ignore storage error
@@ -107,10 +104,10 @@ export function cleanCorruptedPendingSyncQueue(): void {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return;
 
+    const deletedSet = getExplicitlyDeletedMemberIds();
     const cleaned = parsed.filter((m: Member) => {
       if (!m || !m.id) return false;
-      const cleanName = (m.name || '').toLowerCase().trim();
-      if (cleanName.includes('supardi')) return true;
+      if (deletedSet.has(m.id)) return false;
       if (isCorruptedByUserTraceRecovery(m) || hasSyntheticApprovalFields(m)) {
         return false;
       }
@@ -191,10 +188,8 @@ export function mergeMemberRecords(cloudMem: Member, localMem: Member, payments:
 }
 
 /**
- * 1. Returns "Wasisto Trianggono" (and any other unpaid member who was synthetically promoted to 'Aktif')
- *    back to 'Menunggu Verifikasi RT' ('Pending') because they have not paid yet.
- * 2. Repairs official members ONLY when they actually have a Verified payment in `payments` (`hasVerifiedPayment`).
- * 3. Specifically recovers "Supardi" (with status 'Menunggu Pembayaran', verified by 'Admin') if missing.
+ * Reconciles official member statuses strictly against actual payment records & explicit rules.
+ * Never resurrects explicitly deleted members.
  */
 export function recoverMissingMembersFromTraces(params: {
   currentMembers: Member[];
@@ -206,30 +201,27 @@ export function recoverMissingMembersFromTraces(params: {
   mergedMembers: Member[];
   restoredNotification?: AppNotification;
 } {
-  const { currentMembers = [], users = [], notifications = [], payments = [] } = params;
+  const { currentMembers = [], payments = [] } = params;
   cleanCorruptedPendingSyncQueue();
 
   const deletedSet = getExplicitlyDeletedMemberIds();
   const recoveredOrRepairedMembers: Member[] = [];
-  const waLogs = getWhatsAppLogs();
 
-  // Step 1: Reconcile member status strictly against actual payment records & explicit rules
-  const repairedCurrentMembers = currentMembers.map((m) => {
-    if (!m) return m;
-    const cleanName = (m.name || '').toLowerCase().replace(/^alm\.\s*(bpk\.\s*)?/i, '').trim();
-    const isSupardi = cleanName.includes('supardi');
+  // Step 1: Exclude explicitly deleted member IDs & reconcile remaining member statuses against payments
+  const repairedCurrentMembers = currentMembers
+    .filter((m) => m && !deletedSet.has(m.id))
+    .map((m) => {
+      // Never alter deceased/rejected/inactive members
+      if (m.status === 'Meninggal' || m.status === 'Ditolak' || m.status === 'Non-Aktif') {
+        return m;
+      }
 
-    // Never alter deceased/rejected/inactive members
-    if (m.status === 'Meninggal' || m.status === 'Ditolak' || m.status === 'Non-Aktif') {
-      return m;
-    }
+      const memberPayments = payments.filter((p) => doesPaymentBelongToMember(p, m));
+      const hasVerifiedPayment = memberPayments.some((p) => p.status === 'Verified');
+      const hasPendingPayment = memberPayments.some((p) => p.status === 'Pending');
 
-    const memberPayments = payments.filter((p) => doesPaymentBelongToMember(p, m));
-    const hasVerifiedPayment = memberPayments.some((p) => p.status === 'Verified');
-    const hasPendingPayment = memberPayments.some((p) => p.status === 'Pending');
-
-    // RULE A/B: Only reset members who genuinely carry synthetic auto-repair 'Ketua Paguyuban' approval without any payment
-    if (!hasVerifiedPayment && !hasPendingPayment && hasSyntheticApprovalFields(m) && !isSupardi) {
+      // RULE A/B: Only reset members who genuinely carry synthetic auto-repair 'Ketua Paguyuban' approval without any payment
+      if (!hasVerifiedPayment && !hasPendingPayment && hasSyntheticApprovalFields(m)) {
       const cleanedAddress =
         (m.address || '').startsWith('Warga ') && m.cluster
           ? `Lingkungan ${m.cluster}`
@@ -382,116 +374,9 @@ export function recoverMissingMembersFromTraces(params: {
     return m;
   });
 
-  const existingIds = new Set(repairedCurrentMembers.filter(Boolean).map((m) => m.id));
-  const existingNames = new Set(
-    repairedCurrentMembers
-      .filter(Boolean)
-      .map((m) => (m.name || '').toLowerCase().replace(/^alm\.\s*(bpk\.\s*)?/i, '').trim())
-      .filter(Boolean)
-  );
-
-  const newlyRecoveredList: Member[] = [];
-
-  // Step 2: Specifically check if "Supardi" is missing from currentMembers
-  const hasSupardi = existingNames.has('supardi') || Array.from(existingNames).some((n) => n.includes('supardi'));
-  const isSupardiDeleted = deletedSet.has('name:supardi') || deletedSet.has('mem-supardi-recovered');
-
-  let restoredNotification: AppNotification | undefined;
-
-  if (!hasSupardi && !isSupardiDeleted) {
-    const supardiUser = users.find(
-      (u) => u && u.authority === 'Anggota' && (u.name || '').toLowerCase().includes('supardi')
-    );
-    const supardiWa = waLogs.find(
-      (l) =>
-        (l.recipientName && l.recipientName.toLowerCase().includes('supardi')) ||
-        (l.message && l.message.toLowerCase().includes('supardi'))
-    );
-    const supardiNotif = notifications.find(
-      (n) =>
-        (n.message && n.message.toLowerCase().includes('supardi')) ||
-        (n.title && n.title.toLowerCase().includes('supardi'))
-    );
-
-    let detectedCluster = supardiUser?.cluster || supardiNotif?.cluster || 'Cluster Sanur';
-    if (supardiWa?.message) {
-      const matchCluster = supardiWa.message.match(/untuk\s+\*([^*]+)\*\s+telah diverifikasi/i);
-      if (matchCluster && matchCluster[1]) {
-        detectedCluster = matchCluster[1].trim();
-      }
-    } else if (supardiNotif?.message) {
-      const matchCluster = supardiNotif.message.match(/\((Cluster[^)]+)\)/i);
-      if (matchCluster && matchCluster[1]) {
-        detectedCluster = matchCluster[1].trim();
-      }
-    }
-
-    const memberNumber =
-      supardiUser?.memberNumber ||
-      (supardiWa?.memberNumber && supardiWa.memberNumber !== 'TEST-SYS'
-        ? supardiWa.memberNumber
-        : generateNextMemberNumber(repairedCurrentMembers, newlyRecoveredList.length));
-
-    const verifiedTimestamp =
-      supardiWa?.timestamp ||
-      supardiNotif?.timestamp ||
-      new Date().toISOString().replace('T', ' ').substring(0, 19);
-
-    const supardiMember: Member = {
-      id: supardiUser?.memberId || supardiNotif?.memberId || 'mem-supardi-recovered',
-      memberNumber,
-      name: supardiUser?.name || supardiWa?.recipientName || 'Supardi',
-      nik: '3171010101600005',
-      familyCardNumber: '3171010505880005',
-      phone: supardiUser?.phone || supardiWa?.recipientPhone || '081599887766',
-      email: supardiUser?.email || 'supardi@warga.danakematian.org',
-      password: supardiUser?.password || 'password123',
-      cluster: detectedCluster,
-      address: `Blok S-03 No. 07, ${detectedCluster}`,
-      joinDate: supardiUser?.createdAt || verifiedTimestamp.split(' ')[0] || new Date().toISOString().split('T')[0],
-      status: 'Menunggu Pembayaran',
-      verificationStatus: 'Verified',
-      verifiedByRt: 'Admin',
-      verifiedAt: verifiedTimestamp,
-      rtVerifiedBy: 'Admin',
-      rtVerifiedAt: verifiedTimestamp,
-      rtNotes: 'Pendaftaran telah diverifikasi oleh Admin. Data warga dipulihkan ke daftar anggota terdaftar.',
-      isPaguyubanApproved: false,
-      isKtaIssued: false,
-      dependentsCount: 1,
-      notes: 'Pendaftaran diverifikasi oleh Admin (Menunggu Pembayaran Iuran).',
-    };
-
-    newlyRecoveredList.push(supardiMember);
-    recoveredOrRepairedMembers.push(supardiMember);
-    existingIds.add(supardiMember.id);
-    existingNames.add('supardi');
-
-    if (typeof window !== 'undefined' && localStorage.getItem(SUPARDI_RECOVERED_FLAG_KEY) !== 'true') {
-      localStorage.setItem(SUPARDI_RECOVERED_FLAG_KEY, 'true');
-      restoredNotification = {
-        id: `notif-recover-supardi-${Date.now()}`,
-        type: 'success',
-        category: 'registration',
-        title: 'Pendaftaran Warga Disetujui RT (Data Dipulihkan)',
-        message: `Data pendaftaran warga ${supardiMember.name} (${supardiMember.memberNumber} - ${supardiMember.cluster}) yang telah diverifikasi oleh Admin berhasil dipulihkan ke Database Warga Terdaftar. Status: Menunggu Pembayaran.`,
-        timestamp: verifiedTimestamp,
-        read: false,
-        cluster: supardiMember.cluster,
-        memberId: supardiMember.id,
-        linkTab: 'registration',
-      };
-    }
-  }
-
-  const mergedMembers =
-    newlyRecoveredList.length > 0
-      ? [...newlyRecoveredList, ...repairedCurrentMembers]
-      : repairedCurrentMembers;
-
   return {
     recoveredMembers: recoveredOrRepairedMembers,
-    mergedMembers,
-    restoredNotification,
+    mergedMembers: repairedCurrentMembers,
+    restoredNotification: undefined,
   };
 }

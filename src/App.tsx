@@ -106,6 +106,7 @@ import { recordAppVisit } from './lib/firebaseTelemetry';
 import {
   recoverMissingMembersFromTraces,
   markMemberExplicitlyDeleted,
+  getExplicitlyDeletedMemberIds,
   mergeMemberRecords,
   getMemberStatusRank,
   cleanCorruptedPendingSyncQueue,
@@ -417,18 +418,25 @@ export default function App() {
 
               // Bersihkan antrean sinkronisasi lokal dari data korup sebelum digabungkan
               cleanCorruptedPendingSyncQueue();
-              const pendingLocalMembers = getPendingUnsyncedMembers();
-              const storedLocalMembers = getStoredMembers();
+              const deletedMemberIds = getExplicitlyDeletedMemberIds();
+              const pendingLocalMembers = getPendingUnsyncedMembers().filter(
+                (m) => m && m.id && !deletedMemberIds.has(m.id)
+              );
+              const storedLocalMembers = getStoredMembers().filter(
+                (m) => m && m.id && !deletedMemberIds.has(m.id)
+              );
               const currentPayments = getStoredPayments();
 
               // Jika snapshot Cloud kosong padahal penyimpanan lokal memiliki daftar anggota (mis. saat kuota habis), pertahankan data lokal
               const baseMembers =
                 normalizedCloudMembers.length === 0 && storedLocalMembers.length > 0
                   ? [...storedLocalMembers]
-                  : normalizedCloudMembers.map((cm) => {
-                      const localMatch = storedLocalMembers.find((lm) => lm && lm.id === cm.id);
-                      return localMatch ? mergeMemberRecords(cm, localMatch, currentPayments) : cm;
-                    });
+                  : normalizedCloudMembers
+                      .filter((cm) => cm && cm.id && !deletedMemberIds.has(cm.id))
+                      .map((cm) => {
+                        const localMatch = storedLocalMembers.find((lm) => lm && lm.id === cm.id);
+                        return localMatch ? mergeMemberRecords(cm, localMatch, currentPayments) : cm;
+                      });
 
               const mergedCloudMembers = [...baseMembers];
               if (pendingLocalMembers.length > 0) {
@@ -1307,7 +1315,9 @@ export default function App() {
     const updatedMembers = members.filter((m) => m.id !== memberId);
     setMembers(updatedMembers);
     saveMembers(updatedMembers);
-    deleteMemberFromCloud(memberId).catch((e) => console.warn('Cloud delete member error:', e));
+    deleteMemberFromCloud(memberId, { email: targetMember.email }).catch((e) =>
+      console.warn('Cloud delete member error:', e)
+    );
 
     // Hapus akun login anggota terkait dari daftar users
     setUsers((prevUsers) => {
@@ -1329,14 +1339,9 @@ export default function App() {
       return updatedUsersList;
     });
 
-    // Bersihkan seluruh pembayaran milik record anggota yang dihapus agar tidak tertinggal sebagai data yatim
+    // Bersihkan seluruh pembayaran milik record anggota yang dihapus secara ketat berdasarkan identitas anggota
     setPayments((prevPayments) => {
-      const memberPaymentsToRemove = prevPayments.filter(
-        (p) =>
-          p.memberId === memberId ||
-          (targetMember.memberNumber && p.memberNumber === targetMember.memberNumber) ||
-          (targetMember.name && p.memberName && p.memberName.toLowerCase().trim() === targetMember.name.toLowerCase().trim())
-      );
+      const memberPaymentsToRemove = prevPayments.filter((p) => doesPaymentBelongToMember(p, targetMember));
       if (memberPaymentsToRemove.length === 0) return prevPayments;
       const remainingPayments = prevPayments.filter((p) => !memberPaymentsToRemove.some((rem) => rem.id === p.id));
       savePayments(remainingPayments);

@@ -22,6 +22,7 @@ import firebaseConfig from '../../firebase-applet-config.json';
 import { Member, Payment, BenefitClaim, SystemSettings, AppUser, ClusterMaster, DEFAULT_CLUSTERS, BenefitMaster, DEFAULT_BENEFITS, AmbulanceOrder, FuneralSchedule, FuneralInventoryItem, FuneralInventoryLoan } from '../types';
 import { recordFirebaseRead, recordFirebaseWrite, setCloudConnectionDiagnostics } from './firebaseTelemetry';
 import { sortPaymentsByNewest } from './receiptUtils';
+import { getExplicitlyDeletedMemberIds, markMemberExplicitlyDeleted } from './memberRecovery';
 import {
   initialMembers,
   initialPayments,
@@ -396,8 +397,13 @@ export function subscribeToFirestore(callbacks: {
         if (!snapshot.metadata.fromCache) {
           recordFirebaseRead(COLLECTIONS.MEMBERS, Math.max(1, snapshot.docChanges().length));
         }
+        const deletedMemberIds = getExplicitlyDeletedMemberIds();
         const membersList: Member[] = [];
         snapshot.forEach((d) => {
+          if (deletedMemberIds.has(d.id)) {
+            deleteDoc(doc(db, COLLECTIONS.MEMBERS, d.id)).catch(() => {});
+            return;
+          }
           membersList.push({ ...d.data(), id: d.id } as Member);
         });
         callbacks.onMembersChange?.(membersList);
@@ -1098,8 +1104,12 @@ export async function syncUsersBatchToCloud(users: AppUser[]): Promise<void> {
 /**
  * Delete single entity from Firestore
  */
-export async function deleteMemberFromCloud(memberId: string): Promise<void> {
+export async function deleteMemberFromCloud(
+  memberId: string,
+  memberMeta?: { email?: string }
+): Promise<void> {
   clearMemberPendingSync(memberId);
+  markMemberExplicitlyDeleted(memberId);
   const ref = doc(db, COLLECTIONS.MEMBERS, memberId);
   try {
     await deleteDoc(ref);
@@ -1107,15 +1117,18 @@ export async function deleteMemberFromCloud(memberId: string): Promise<void> {
 
     // Also remove associated user account from Firestore
     try {
+      const targetEmail = memberMeta?.email?.trim().toLowerCase();
       const usersSnap = await getDocs(collection(db, COLLECTIONS.USERS));
       recordFirebaseRead(COLLECTIONS.USERS, Math.max(1, usersSnap.size));
       const userBatch = writeBatch(db);
       let deletedCount = 0;
       usersSnap.forEach((uDoc) => {
         const uData = uDoc.data();
+        const uEmail = typeof uData.email === 'string' ? uData.email.trim().toLowerCase() : '';
         if (
           uDoc.id === `usr-mem-${memberId}` ||
-          uData.memberId === memberId
+          uData.memberId === memberId ||
+          (uData.authority === 'Anggota' && targetEmail && uEmail === targetEmail)
         ) {
           userBatch.delete(uDoc.ref);
           deletedCount++;
