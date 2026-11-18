@@ -29,6 +29,9 @@ service cloud.firestore {
     match /test/{docId=**} {
       allow read, write: if true;
     }
+    match /transaction_backups/{backupId=**} {
+      allow read, write: if true;
+    }
     // Global fallback for all sub-collections
     match /{document=**} {
       allow read, write: if true;

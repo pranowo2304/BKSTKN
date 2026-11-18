@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { SystemSettings, ClusterMaster, BenefitMaster, AppUser } from '../types';
+import { SystemSettings, ClusterMaster, BenefitMaster, AppUser, Member, Payment, BenefitClaim } from '../types';
 import { 
   Settings, 
   Save, 
@@ -36,17 +36,23 @@ import { DigitalSignatureModal } from './DigitalSignatureModal';
 import { SignatureData } from './DigitalSignaturePad';
 import { WhatsAppApiSettingsManager } from './WhatsAppApiSettingsManager';
 import { MembershipPeriodManager } from './MembershipPeriodManager';
-import { MessageSquare } from 'lucide-react';
+import { BackupAutomationManager } from './BackupAutomationManager';
+import { MessageSquare, FileJson } from 'lucide-react';
 
 interface FundSettingsProps {
   settings: SystemSettings;
   clusters?: ClusterMaster[];
   benefits?: BenefitMaster[];
+  members?: Member[];
+  payments?: Payment[];
+  claims?: BenefitClaim[];
+  baseFundBalance?: number;
   memberCount?: number;
   paymentCount?: number;
   claimCount?: number;
   activeUser?: AppUser | null;
   onSaveSettings: (newSettings: SystemSettings) => void;
+  onNotifyBackupResult?: (title: string, message: string, isError?: boolean) => void;
   onSaveCluster?: (cluster: ClusterMaster) => void;
   onDeleteCluster?: (clusterId: string) => void;
   onSaveBenefit?: (benefit: BenefitMaster) => void;
@@ -64,11 +70,16 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
   settings,
   clusters = [],
   benefits = [],
+  members = [],
+  payments = [],
+  claims = [],
+  baseFundBalance = 0,
   memberCount = 0,
   paymentCount = 0,
   claimCount = 0,
   activeUser,
   onSaveSettings,
+  onNotifyBackupResult,
   onSaveCluster,
   onDeleteCluster,
   onSaveBenefit,
@@ -82,10 +93,10 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
   onClose,
 }) => {
   const isAdmin = activeUser?.authority === 'Admin';
-  const [activeSubTab, setActiveSubTab] = useState<'general' | 'period' | 'clusters' | 'benefits' | 'whatsapp' | 'database'>('general');
+  const [activeSubTab, setActiveSubTab] = useState<'general' | 'period' | 'clusters' | 'benefits' | 'whatsapp' | 'backup' | 'database'>('general');
 
   useEffect(() => {
-    if (!isAdmin && activeSubTab === 'database') {
+    if (!isAdmin && (activeSubTab === 'database' || activeSubTab === 'backup')) {
       setActiveSubTab('general');
     }
   }, [isAdmin, activeSubTab]);
@@ -364,6 +375,21 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
           <MessageSquare className="w-4 h-4 text-emerald-600" />
           <span>WhatsApp API Gateway</span>
         </button>
+
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('backup')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeSubTab === 'backup'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+            }`}
+          >
+            <FileJson className="w-4 h-4 text-sky-600" />
+            <span>Backup JSON 00:00</span>
+          </button>
+        )}
 
         {isAdmin && (
           <button
@@ -967,6 +993,22 @@ export const FundSettings: React.FC<FundSettingsProps> = ({
           <WhatsAppApiSettingsManager
             settings={settings}
             onSaveSettings={onSaveSettings}
+          />
+        </div>
+      )}
+
+      {/* TAB 5: Daily 00:00 WIB JSON Backup Automation */}
+      {isAdmin && activeSubTab === 'backup' && (
+        <div className="animate-in fade-in">
+          <BackupAutomationManager
+            settings={settings}
+            payments={payments}
+            claims={claims}
+            members={members}
+            baseFundBalance={baseFundBalance}
+            activeUser={activeUser}
+            onSaveSettings={onSaveSettings}
+            onNotifyBackupResult={onNotifyBackupResult}
           />
         </div>
       )}

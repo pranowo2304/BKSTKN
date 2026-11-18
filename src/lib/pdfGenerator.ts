@@ -3,6 +3,7 @@ import { Payment, Member, SystemSettings } from '../types';
 import { formatIDR } from './storage';
 import { terbilang } from './terbilang';
 import { getEffectivePaymentPeriod } from './receiptUtils';
+import { formatStoredPaymentDateTime, getIndonesiaTimestamp } from './indonesianTime';
 
 interface GenerateReceiptPdfParams {
   payment: Payment;
@@ -169,7 +170,7 @@ export function generateReceiptPdf({
   doc.text(payment.receiptNumber || 'KW-OFFICIAL', startX + 8, metaY + 9);
 
   // Tanggal Transaksi
-  const txDate = payment.verifiedAt || payment.createdAt || '-';
+  const txDate = formatStoredPaymentDateTime(payment.verifiedAt || payment.createdAt, true);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(100, 116, 139);
@@ -500,7 +501,7 @@ export function generateReceiptPdf({
   doc.setFont('courier', 'normal');
   doc.setFontSize(5.5);
   doc.setTextColor(140, 140, 140);
-  const printTimestamp = new Date().toLocaleString('id-ID');
+  const printTimestamp = `${getIndonesiaTimestamp()} WIB`;
   const auditLine = `Keaslian Dokumen: #${(payment.receiptNumber || 'KW').toUpperCase()}-${(payment.memberNumber || 'NPA').toUpperCase()} • Dicetak: ${printTimestamp}`;
   const splitAudit = doc.splitTextToSize(auditLine, contentWidth - 16);
   doc.text(splitAudit, pageWidth / 2, footerY + (splitDisclaimer.length * 3) + 0.8, { align: 'center' });

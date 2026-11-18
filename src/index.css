@@ -109,9 +109,147 @@ body {
 }
 
 /* ========================================================================= */
+/* MEMBER STATUS TRANSITION ANIMATIONS (TABEL REGISTRASI & AUDIT VISUAL)     */
+/* ========================================================================= */
+@keyframes statusBadgeMorph {
+  0% {
+    opacity: 0.25;
+    transform: scale(0.84) translateY(3px);
+    filter: brightness(1.08);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.07) translateY(-1px);
+    filter: brightness(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: brightness(1);
+  }
+}
+
+.animate-status-badge-morph {
+  display: inline-block;
+  transform-origin: left center;
+  animation: statusBadgeMorph 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes statusSubtextSlide {
+  0% {
+    opacity: 0;
+    transform: translateY(-5px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-status-subtext-slide {
+  animation: statusSubtextSlide 380ms cubic-bezier(0.22, 1, 0.36, 1) 80ms both;
+}
+
+@keyframes statusRowFlashAmber {
+  0% {
+    background-color: rgba(254, 243, 199, 0.95);
+    box-shadow: inset 4px 0 0 0 #d97706;
+  }
+  35% {
+    background-color: rgba(254, 243, 199, 0.72);
+    box-shadow: inset 4px 0 0 0 #f59e0b;
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+}
+
+@keyframes statusRowFlashEmerald {
+  0% {
+    background-color: rgba(209, 250, 229, 0.95);
+    box-shadow: inset 4px 0 0 0 #059669;
+  }
+  35% {
+    background-color: rgba(209, 250, 229, 0.72);
+    box-shadow: inset 4px 0 0 0 #10b981;
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+}
+
+@keyframes statusRowFlashRose {
+  0% {
+    background-color: rgba(255, 228, 230, 0.95);
+    box-shadow: inset 4px 0 0 0 #e11d48;
+  }
+  35% {
+    background-color: rgba(255, 228, 230, 0.72);
+    box-shadow: inset 4px 0 0 0 #f43f5e;
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+}
+
+@keyframes statusRowFlashSlate {
+  0% {
+    background-color: rgba(226, 232, 240, 0.95);
+    box-shadow: inset 4px 0 0 0 #475569;
+  }
+  35% {
+    background-color: rgba(226, 232, 240, 0.7);
+    box-shadow: inset 4px 0 0 0 #64748b;
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+}
+
+.animate-status-row-amber {
+  animation: statusRowFlashAmber 3.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-status-row-emerald {
+  animation: statusRowFlashEmerald 3.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-status-row-rose {
+  animation: statusRowFlashRose 3.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-status-row-slate {
+  animation: statusRowFlashSlate 3.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-status-badge-morph,
+  .animate-status-subtext-slide,
+  .animate-status-row-amber,
+  .animate-status-row-emerald,
+  .animate-status-row-rose,
+  .animate-status-row-slate {
+    animation: none !important;
+  }
+}
+
+/* ========================================================================= */
 /* PRINT MEDIA STYLES (LAPORAN KAS, DAFTAR ANGGOTA, KWITANSI, KTA)          */
 /* ========================================================================= */
 @media print {
+  .animate-status-badge-morph,
+  .animate-status-subtext-slide,
+  .animate-status-row-amber,
+  .animate-status-row-emerald,
+  .animate-status-row-rose,
+  .animate-status-row-slate {
+    animation: none !important;
+    transition: none !important;
+  }
   @page {
     size: auto;
     margin: 12mm 10mm 15mm 10mm;

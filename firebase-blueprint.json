@@ -101,6 +101,25 @@
         "isActive": { "type": "boolean" }
       },
       "required": ["id", "name", "amount", "isActive"]
+    },
+    "TransactionBackup": {
+      "title": "TransactionBackup",
+      "description": "Arsip harian salinan data transaksi JSON otomatis jam 00:00 WIB",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "backupDate": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "triggerType": { "type": "string" },
+        "triggeredBy": { "type": "string" },
+        "destination": { "type": "string" },
+        "cloudSaved": { "type": "boolean" },
+        "emailDispatched": { "type": "boolean" },
+        "emailTarget": { "type": "string" },
+        "sizeBytes": { "type": "number" },
+        "checksumSha256": { "type": "string" }
+      },
+      "required": ["id", "backupDate", "createdAt", "triggerType"]
     }
   },
   "firestore": {
@@ -135,6 +154,10 @@
     "/meta/{docId}": {
       "schema": "object",
       "description": "Metadata sistem dan status database"
+    },
+    "/transaction_backups/{backupId}": {
+      "schema": "TransactionBackup",
+      "description": "Salinan cadangan data transaksi JSON harian"
     }
   }
 }

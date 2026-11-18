@@ -467,6 +467,69 @@ export interface SystemSettings {
   autoNotifyOnPaymentValidated?: boolean; // Kirim saat pembayaran divalidasi dan KTA aktif (default: true)
   autoNotifyOnRtVerification?: boolean; // Kirim saat verifikasi RT disetujui / ditolak (default: true)
   whatsappCustomFooter?: string; // Footer / tanda tangan pesan WA
+
+  // Otomatisasi Backup Data Transaksi JSON Harian (Jam 00:00 WIB)
+  backupAutomation?: BackupAutomationSettings;
+}
+
+export type BackupDestination = 'cloud_and_email' | 'cloud_only' | 'email_only';
+
+export interface BackupAutomationSettings {
+  enabled: boolean;
+  scheduleTimeWib: string; // "00:00"
+  destination: BackupDestination;
+  adminEmail: string;
+  webhookUrl?: string; // Opsional webhook HTTPS (misal Google Apps Script / Drive / Email Relay)
+  includeMembersSummary?: boolean;
+  lastBackupDate?: string; // YYYY-MM-DD (WIB)
+  lastBackupAt?: string; // YYYY-MM-DD HH:mm:ss
+  lastBackupStatus?: 'success' | 'partial' | 'failed';
+  lastBackupMessage?: string;
+}
+
+export interface TransactionBackupSummary {
+  paymentCount: number;
+  verifiedPaymentCount: number;
+  pendingPaymentCount: number;
+  rejectedPaymentCount: number;
+  claimCount: number;
+  approvedClaimCount: number;
+  memberCount: number;
+  baseFundBalance: number;
+  totalVerifiedAmount: number;
+  totalClaimAmount: number;
+}
+
+export interface TransactionBackupSnapshot {
+  schemaVersion: string;
+  generatedAtWib: string;
+  backupDateWib: string;
+  timezone: 'Asia/Jakarta';
+  organizationName: string;
+  summary: TransactionBackupSummary;
+  payments: Array<Record<string, unknown>>;
+  claims: Array<Record<string, unknown>>;
+  membersSummary?: Array<Record<string, unknown>>;
+}
+
+export interface TransactionBackupRecord {
+  id: string; // e.g. backup-2026-11-18 or backup-manual-2026-11-18-220510
+  backupDate: string; // YYYY-MM-DD (WIB)
+  createdAt: string; // YYYY-MM-DD HH:mm:ss (WIB)
+  triggerType: 'scheduled_00_00' | 'manual';
+  triggeredBy: string;
+  destination: BackupDestination;
+  cloudSaved: boolean;
+  emailDispatched: boolean;
+  emailTarget?: string;
+  emailDispatchChannel?: 'smtp_server' | 'resend_api' | 'webhook' | 'mailto_draft' | 'none';
+  emailStatusNote?: string;
+  webhookDispatched?: boolean;
+  serverFileSaved?: boolean;
+  sizeBytes: number;
+  checksumSha256?: string;
+  summary: TransactionBackupSummary;
+  snapshot: TransactionBackupSnapshot;
 }
 
 export type WhatsAppTriggerEvent =

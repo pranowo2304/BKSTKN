@@ -15,6 +15,7 @@ import {
   getEffectivePaymentPeriod,
   getSystemConfiguredPeriod,
 } from '../lib/receiptUtils';
+import { getIndonesiaTimestamp, formatStoredPaymentDateTime } from '../lib/indonesianTime';
 import {
   X,
   Printer,
@@ -118,7 +119,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
       adminSignerName: data.signerName,
       adminSignerTitle: data.signerTitle,
       adminSignatureDate: data.signedAt,
-      verifiedAt: activePayment.verifiedAt || new Date().toISOString().replace('T', ' ').substring(0, 19),
+      verifiedAt: activePayment.verifiedAt || getIndonesiaTimestamp(),
       verifiedBy: activePayment.verifiedBy || data.signerName,
     };
     setCurrentPayment(updated);
@@ -670,7 +671,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                     KWITANSI RESMI
                   </div>
                   <p className="font-mono text-sm font-black text-black">No. {activePayment.receiptNumber}</p>
-                  <p className="text-[11px] text-black font-semibold mt-0.5">Tgl: {activePayment.verifiedAt || activePayment.createdAt}</p>
+                  <p className="text-[11px] text-black font-semibold mt-0.5">Tgl: {formatStoredPaymentDateTime(activePayment.verifiedAt || activePayment.createdAt, true)}</p>
                 </div>
               </div>
 

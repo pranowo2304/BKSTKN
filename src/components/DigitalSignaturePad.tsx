@@ -15,6 +15,7 @@ import {
   Redo2,
   Image as ImageIcon
 } from 'lucide-react';
+import { INDONESIA_TIMEZONE } from '../lib/indonesianTime';
 
 export interface SignatureData {
   signatureUrl: string; // Base64 Data URL (PNG)
@@ -304,10 +305,16 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
 
     const now = new Date();
     const formattedDate = `${now.toLocaleDateString('id-ID', {
+      timeZone: INDONESIA_TIMEZONE,
       day: 'numeric',
       month: 'long',
       year: 'numeric',
-    })} • ${now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB`;
+    })} • ${now.toLocaleTimeString('id-ID', {
+      timeZone: INDONESIA_TIMEZONE,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })} WIB`;
 
     onSave({
       signatureUrl: finalSignatureUrl,

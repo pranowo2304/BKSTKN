@@ -590,11 +590,11 @@ export const saveMembers = (members: Member[]) => {
     // If quota exceeded due to large photo base64 strings, save members safely
     try {
       const compactMembers = members.map((m) => {
-        if (m.familyCardPhotoUrl && m.familyCardPhotoUrl.length > 300000) {
-          // Keep a compressed placeholder in local storage while cloud Firestore holds the full record
+        if (m.familyCardPhotoUrl && m.familyCardPhotoUrl.length > 450000) {
+          // Omit oversized base64 payload from local fallback rather than slicing mid-stream while cloud Firestore holds the full record
           return {
             ...m,
-            familyCardPhotoUrl: m.familyCardPhotoUrl.substring(0, 100000),
+            familyCardPhotoUrl: '',
           };
         }
         return m;

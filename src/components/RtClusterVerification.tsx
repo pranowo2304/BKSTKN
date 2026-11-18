@@ -40,17 +40,27 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { FamilyCardModal } from './FamilyCardModal';
+import { KkFamilySummaryCard, KkFamilyDraftData } from './KkFamilySummaryCard';
 import { RoleMobileAppMenu } from './RoleMobileAppMenu';
 import { RtOnboardingHelpModal, hasSeenRtOnboarding, markRtOnboardingSeen } from './RtOnboardingHelpModal';
 import { useRolePermissions } from '../lib/permissions';
 import { formatIDR } from '../lib/storage';
+import { findDuplicateKkMember } from '../lib/duplicateValidator';
 
 interface RtClusterVerificationProps {
   members: Member[];
   activeUser?: AppUser | null;
   claims?: BenefitClaim[];
-  onVerifyMember: (memberId: string, rtOfficerName: string, rtNotes?: string) => void;
+  onVerifyMember: (
+    memberId: string,
+    rtOfficerName: string,
+    rtNotes?: string,
+    updatedFields?: Partial<
+      Pick<Member, 'name' | 'nik' | 'address' | 'familyCardNumber' | 'dependentsList' | 'dependentsCount'>
+    >
+  ) => void;
   onRejectMember: (memberId: string, rejectionReason: string) => void;
+  onUpdateMember?: (updatedMember: Member) => void;
   onDeleteMember?: (memberId: string) => void;
   onUpdateMemberCluster?: (memberId: string, newCluster: ClusterType) => void;
   onViewMemberDetail?: (member: Member) => void;
@@ -66,6 +76,7 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
   claims = [],
   onVerifyMember,
   onRejectMember,
+  onUpdateMember,
   onDeleteMember,
   onUpdateMemberCluster,
   onViewMemberDetail,
@@ -124,6 +135,13 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
 
   // Modal States
   const [verifyingMember, setVerifyingMember] = useState<Member | null>(null);
+  const [draftFamily, setDraftFamily] = useState<KkFamilyDraftData>({
+    headName: '',
+    headNik: '',
+    familyCardNumber: '',
+    dependents: [],
+  });
+  const [isFamilyChecklistChecked, setIsFamilyChecklistChecked] = useState<boolean>(false);
   const [rejectingMember, setRejectingMember] = useState<Member | null>(null);
   const [selectedKkViewerMember, setSelectedKkViewerMember] = useState<Member | null>(null);
   const [rtNotes, setRtNotes] = useState<string>('Data KTP dan domisili terverifikasi sah.');
@@ -131,6 +149,25 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isOnboardingHelpOpen, setIsOnboardingHelpOpen] = useState<boolean>(false);
   const [isFirstTimeAutoOpen, setIsFirstTimeAutoOpen] = useState<boolean>(false);
+
+  const openVerificationModal = (member: Member) => {
+    setVerifyingMember(member);
+    setDraftFamily({
+      headName: member.name || '',
+      headNik: member.nik || '',
+      familyCardNumber: member.familyCardNumber || '',
+      dependents: member.dependentsList ? member.dependentsList.map((d) => ({ ...d })) : [],
+    });
+    setIsFamilyChecklistChecked(
+      member.verificationStatus === 'Verified' && member.status !== 'Menunggu Verifikasi RT'
+    );
+    setRtNotes(member.rtNotes || 'Data KTP, KK, dan domisili terverifikasi sah.');
+  };
+
+  const duplicateModalKkMember = useMemo(() => {
+    if (!verifyingMember || !draftFamily.familyCardNumber) return undefined;
+    return findDuplicateKkMember(members, draftFamily.familyCardNumber, verifyingMember.id);
+  }, [members, verifyingMember, draftFamily.familyCardNumber]);
 
   // Auto-open interactive onboarding modal once for first-time Ketua RT users entering the portal
   useEffect(() => {
@@ -313,9 +350,37 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
     return true;
   });
 
+  const handleSaveFamilyCorrectionsOnly = () => {
+    if (!verifyingMember || !onUpdateMember) return;
+    if (!canVerifyRt) {
+      alert(`Akses Ditolak: Akun Anda (${activeUser?.authority || 'Pengguna'}) tidak memiliki izin mengedit data warga RT.`);
+      return;
+    }
+    if (duplicateModalKkMember) {
+      alert(`Nomor KK sudah terdaftar atas nama "${duplicateModalKkMember.name}". Periksa kembali Nomor KK sebelum menyimpan.`);
+      return;
+    }
+
+    const updatedMember: Member = {
+      ...verifyingMember,
+      name: draftFamily.headName.trim() || verifyingMember.name,
+      nik: draftFamily.headNik.trim() || verifyingMember.nik,
+      familyCardNumber: draftFamily.familyCardNumber.trim() || undefined,
+      dependentsList: draftFamily.dependents,
+      dependentsCount: draftFamily.dependents.length,
+    };
+
+    onUpdateMember(updatedMember);
+    setVerifyingMember(updatedMember);
+    setToastMessage(
+      `Perubahan data KK & ${updatedMember.dependentsCount} anggota keluarga untuk "${updatedMember.name}" berhasil disimpan.`
+    );
+    setTimeout(() => setToastMessage(null), 5000);
+  };
+
   const handleConfirmVerify = () => {
     if (!verifyingMember) return;
-    
+
     // Granular authority guard
     if (!canVerifyRt) {
       alert(`Akses Ditolak: Akun Anda (${activeUser?.authority || 'Pengguna'}) tidak memiliki izin granular 'Verifikasi Berkas Warga Cluster RT'.`);
@@ -330,8 +395,29 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
       return;
     }
 
-    onVerifyMember(verifyingMember.id, officerName, rtNotes);
-    setToastMessage(`Sukses! Pendaftaran warga "${verifyingMember.name}" di ${verifyingMember.cluster || 'Cluster'} berhasil disetujui RT. Status saat ini "Menunggu Pembayaran". Calon anggota sekarang dapat melakukan konfirmasi pembayaran & upload bukti transfer.`);
+    if (duplicateModalKkMember) {
+      alert(`Nomor KK sudah terdaftar atas nama "${duplicateModalKkMember.name}". Periksa kembali Nomor KK sebelum menyetujui.`);
+      return;
+    }
+
+    const editedFields: Partial<
+      Pick<Member, 'name' | 'nik' | 'familyCardNumber' | 'dependentsList' | 'dependentsCount'>
+    > = {
+      name: draftFamily.headName.trim() || verifyingMember.name,
+      nik: draftFamily.headNik.trim() || verifyingMember.nik,
+      familyCardNumber: draftFamily.familyCardNumber.trim() || undefined,
+      dependentsList: draftFamily.dependents,
+      dependentsCount: draftFamily.dependents.length,
+    };
+
+    const finalRtNotes = isFamilyChecklistChecked
+      ? `${rtNotes.trim()} (KK & ${draftFamily.dependents.length} anggota keluarga terverifikasi RT)`.trim()
+      : rtNotes.trim();
+
+    onVerifyMember(verifyingMember.id, officerName, finalRtNotes, editedFields);
+    setToastMessage(
+      `Sukses! Pendaftaran warga "${editedFields.name}" (${draftFamily.dependents.length + 1} jiwa terlindungi) di ${verifyingMember.cluster || 'Cluster'} berhasil disetujui RT. Status saat ini "Menunggu Pembayaran".`
+    );
     setVerifyingMember(null);
     setRtNotes('Data KTP dan domisili terverifikasi sah.');
     setTimeout(() => setToastMessage(null), 5000);
@@ -1274,6 +1360,18 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
                   </div>
                 </div>
 
+                {/* Ringkasan Anggota Keluarga Hasil Ekstraksi KK */}
+                <KkFamilySummaryCard
+                  mode="summary"
+                  headName={member.name}
+                  headNik={member.nik}
+                  familyCardNumber={member.familyCardNumber}
+                  dependents={member.dependentsList || []}
+                  isVerifiedRt={isVerified && !isPending}
+                  canEdit={!isReadOnlyRole}
+                  onOpenVerifyEdit={!isReadOnlyRole ? () => openVerificationModal(member) : undefined}
+                />
+
                 {/* Lampiran Kartu Keluarga (KK) */}
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-3 text-xs">
                   <div className="flex items-center gap-2 min-w-0">
@@ -1373,7 +1471,7 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
                         </button>
                         <button
                           type="button"
-                          onClick={() => setVerifyingMember(member)}
+                          onClick={() => openVerificationModal(member)}
                           className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold rounded-xl shadow-md shadow-emerald-900/20 transition-all inline-flex items-center gap-1.5"
                         >
                           <CheckCircle className="w-3.5 h-3.5 text-white" />
@@ -1383,7 +1481,7 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
                     ) : isRejected ? (
                       <button
                         type="button"
-                        onClick={() => setVerifyingMember(member)}
+                        onClick={() => openVerificationModal(member)}
                         className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-extrabold rounded-xl transition-colors"
                       >
                         Tinjau Ulang / Setujui
@@ -1402,66 +1500,59 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
         </div>
       ))}
 
-      {/* APPROVAL MODAL */}
+      {/* APPROVAL & KK FAMILY VERIFICATION MODAL */}
       {verifyingMember && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-5 shadow-2xl border border-slate-200 animate-in zoom-in-95">
-            <div className="flex items-start justify-between">
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-7 space-y-5 shadow-2xl border border-slate-200 animate-in zoom-in-95 max-h-[92vh] overflow-y-auto my-auto">
+            <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
                   <ShieldCheck className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-slate-900">Verifikasi & Setujui Warga</h3>
-                  <p className="text-xs text-slate-500">Persetujuan pendaftaran oleh Ketua RT {verifyingMember.cluster}</p>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900">
+                    {verifyingMember.status === 'Menunggu Verifikasi RT' || verifyingMember.verificationStatus === 'Pending' || verifyingMember.status === 'Ditolak'
+                      ? 'Verifikasi KK & Setujui Warga'
+                      : 'Periksa & Edit Data KK Keluarga'}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {verifyingMember.cluster} • {verifyingMember.address}
+                  </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setVerifyingMember(null)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-2">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Nama Calon Warga:</span>
-                <span className="font-extrabold text-slate-900">{verifyingMember.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">NIK KTP:</span>
-                <span className="font-mono font-bold text-slate-900">{verifyingMember.nik}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Cluster & Alamat:</span>
-                <span className="font-semibold text-slate-800">{verifyingMember.cluster} - {verifyingMember.address}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Jumlah Tanggungan:</span>
-                <span className="font-bold text-slate-800">{verifyingMember.dependentsCount} Jiwa</span>
-              </div>
-
-              {/* Lampiran KK Preview in Modal */}
-              <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
-                <div>
-                  <span className="text-slate-500 block">Lampiran Kartu Keluarga:</span>
-                  <span className="font-bold text-slate-900">
-                    {verifyingMember.familyCardFileName || (verifyingMember.familyCardPhotoUrl ? 'KK Terlampir' : 'Tidak ada foto KK')}
-                  </span>
-                </div>
-                {verifyingMember.familyCardPhotoUrl && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedKkViewerMember(verifyingMember)}
-                    className="px-3 py-1 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-lg transition-colors inline-flex items-center gap-1 shadow-xs"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>Lihat Foto KK</span>
-                  </button>
-                )}
-              </div>
-            </div>
+            {/* Ringkasan & Editor Daftar Anggota Keluarga Hasil Ekstraksi KK */}
+            <KkFamilySummaryCard
+              mode="verify"
+              headName={draftFamily.headName}
+              headNik={draftFamily.headNik}
+              familyCardNumber={draftFamily.familyCardNumber}
+              familyCardPhotoUrl={verifyingMember.familyCardPhotoUrl}
+              familyCardFileName={verifyingMember.familyCardFileName}
+              dependents={draftFamily.dependents}
+              canEdit={canVerifyRt}
+              isChecklistChecked={isFamilyChecklistChecked}
+              duplicateKkError={
+                duplicateModalKkMember
+                  ? `Nomor KK ini sudah digunakan oleh ${duplicateModalKkMember.name} (${duplicateModalKkMember.cluster || 'Cluster'})`
+                  : null
+              }
+              onChecklistChange={setIsFamilyChecklistChecked}
+              onDraftChange={setDraftFamily}
+              onInspectKkPhoto={
+                verifyingMember.familyCardPhotoUrl
+                  ? () => setSelectedKkViewerMember(verifyingMember)
+                  : undefined
+              }
+            />
 
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -1471,32 +1562,56 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
                 rows={2}
                 value={rtNotes}
                 onChange={(e) => setRtNotes(e.target.value)}
-                placeholder="Contoh: Sudah konfirmasi KK dan domisili sah di RT 03."
+                placeholder="Contoh: Sudah konfirmasi KK, anggota keluarga, dan domisili sah di RT setempat."
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none"
               />
             </div>
 
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-[11px] font-medium flex items-center gap-2">
-              <Info className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>Setelah disetujui Ketua RT, status warga menjadi <strong>Menunggu Pembayaran</strong>. Warga kemudian dapat melakukan konfirmasi pembayaran & mengunggah bukti transfer untuk divalidasi Bendahara.</span>
-            </div>
+            {(verifyingMember.status === 'Menunggu Verifikasi RT' ||
+              verifyingMember.verificationStatus === 'Pending' ||
+              verifyingMember.status === 'Ditolak') && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-[11px] font-medium flex items-center gap-2">
+                <Info className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>
+                  Saat Anda klik <strong>Konfirmasi Setujui Warga</strong>, seluruh koreksi data KK &amp; anggota keluarga di atas ikut tersimpan dan status warga berubah menjadi <strong>Menunggu Pembayaran</strong>.
+                </span>
+              </div>
+            )}
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setVerifyingMember(null)}
-                className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 rounded-xl"
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl cursor-pointer"
               >
-                Batal
+                Tutup
               </button>
-              <button
-                type="button"
-                onClick={handleConfirmVerify}
-                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-md shadow-emerald-950/20 transition-all flex items-center gap-1.5"
-              >
-                <CheckCircle className="w-4 h-4" />
-                <span>Konfirmasi Setujui Warga</span>
-              </button>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {onUpdateMember && (
+                  <button
+                    type="button"
+                    onClick={handleSaveFamilyCorrectionsOnly}
+                    className="px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 font-bold text-xs rounded-xl transition-all inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Simpan Koreksi Data Saja</span>
+                  </button>
+                )}
+
+                {(verifyingMember.status === 'Menunggu Verifikasi RT' ||
+                  verifyingMember.verificationStatus === 'Pending' ||
+                  verifyingMember.status === 'Ditolak') && (
+                  <button
+                    type="button"
+                    onClick={handleConfirmVerify}
+                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-md shadow-emerald-950/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Konfirmasi Setujui Warga</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

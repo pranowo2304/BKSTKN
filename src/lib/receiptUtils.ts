@@ -1,6 +1,7 @@
 import { Payment, Member, SystemSettings } from '../types';
 import { formatIDR } from './storage';
 import { terbilang } from './terbilang';
+import { parseIndonesiaTimestamp, formatStoredPaymentDateTime } from './indonesianTime';
 
 /**
  * Normalizes an Indonesian phone number to international WhatsApp format (e.g., 6281234567890).
@@ -108,6 +109,10 @@ export const getPaymentTimestamp = (payment?: Payment | null): number => {
     '';
 
   if (rawDateStr && typeof rawDateStr === 'string') {
+    const parsedIndonesia = parseIndonesiaTimestamp(rawDateStr);
+    if (parsedIndonesia) {
+      return parsedIndonesia.getTime();
+    }
     const clean = rawDateStr.trim().replace(' ', 'T');
     const parsed = new Date(clean).getTime();
     if (!isNaN(parsed) && parsed > 0) {
@@ -131,7 +136,7 @@ export const getPaymentTimestamp = (payment?: Payment | null): number => {
 };
 
 /**
- * Returns a clean, user-friendly date string for a Payment object.
+ * Returns a clean, user-friendly date string in Indonesian local time (WIB) for a Payment object.
  */
 export const getPaymentDisplayDate = (payment?: Payment | null): string => {
   if (!payment) return '-';
@@ -142,7 +147,7 @@ export const getPaymentDisplayDate = (payment?: Payment | null): string => {
     (payment as any).paymentDate ||
     '';
   if (!raw || typeof raw !== 'string') return '-';
-  return raw.trim();
+  return formatStoredPaymentDateTime(raw, true);
 };
 
 /**
@@ -287,7 +292,7 @@ export const generateReceiptTextMessage = (
   const treasurerName = settings?.treasurerName || 'Bendahara Paguyuban';
   const treasurerPhone = settings?.treasurerPhone || '';
   const terbilangText = terbilang(payment.amount);
-  const tanggalBayar = payment.verifiedAt || payment.createdAt;
+  const tanggalBayar = formatStoredPaymentDateTime(payment.verifiedAt || payment.createdAt, true);
   const clusterName = member?.cluster ? ` (Cluster: ${member.cluster})` : '';
   const effectivePeriod = getEffectivePaymentPeriod(payment, settings);
 

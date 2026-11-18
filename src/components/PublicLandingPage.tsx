@@ -21,6 +21,7 @@ import { getMemberKtaIssuanceInfo } from '../lib/ktaUtils';
 import { checkDuplicateMember, findDuplicateNikMember, findDuplicateKkMember } from '../lib/duplicateValidator';
 import { getSystemConfiguredPeriod, cleanPhoneNumberForWhatsApp, findMemberForPayment } from '../lib/receiptUtils';
 import { FamilyCardUploader } from './FamilyCardUploader';
+import { ExtractedKkResult, mergeExtractedDependents } from '../lib/kkExtractor';
 import {
   HeartHandshake,
   ShieldCheck,
@@ -312,6 +313,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
 
   const [regFamilyCardFile, setRegFamilyCardFile] = useState<File | null>(null);
   const [showPublicRegPassword, setShowPublicRegPassword] = useState(false);
+  const [kkAutoSyncBanner, setKkAutoSyncBanner] = useState<string | null>(null);
 
   // Real-time Duplicate Checking for NIK and Nomor KK
   const duplicateNikMember = useMemo(() => {
@@ -1655,6 +1657,20 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                     </div>
                   </div>
 
+                  {/* Auto-sync notice from KK */}
+                  {kkAutoSyncBanner && (
+                    <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded-xl text-[11px] text-indigo-900 font-medium flex items-center justify-between gap-2">
+                      <span>{kkAutoSyncBanner}</span>
+                      <button
+                        type="button"
+                        onClick={() => setKkAutoSyncBanner(null)}
+                        className="p-0.5 text-indigo-500 hover:text-indigo-800"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
                   {/* Dependents list */}
                   {regForm.dependents.length > 0 && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
@@ -1716,6 +1732,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                       }}
                       onClear={() => {
                         setRegFamilyCardFile(null);
+                        setKkAutoSyncBanner(null);
                         setRegForm((prev) => ({
                           ...prev,
                           familyCardPhotoUrl: '',
@@ -1727,6 +1744,32 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                           ...prev,
                           familyCardNumber: kkNum,
                         }));
+                      }}
+                      onExtractResult={(result: ExtractedKkResult) => {
+                        let addedCountResult = 0;
+                        setRegForm((prev) => {
+                          const { merged, addedCount } = mergeExtractedDependents(
+                            prev.dependents,
+                            result.familyMembers,
+                            result.headOfFamilyName || prev.name,
+                            'landing'
+                          );
+                          addedCountResult = addedCount;
+                          return {
+                            ...prev,
+                            familyCardNumber: result.familyCardNumber || prev.familyCardNumber,
+                            name: prev.name.trim() ? prev.name : result.headOfFamilyName || prev.name,
+                            nik: prev.nik.trim() ? prev.nik : result.headOfFamilyNik || prev.nik,
+                            address: prev.address.trim() ? prev.address : result.address || prev.address,
+                            dependents: merged,
+                          };
+                        });
+                        const parts: string[] = [];
+                        if (result.familyCardNumber) parts.push(`No. KK ${result.familyCardNumber}`);
+                        if (addedCountResult > 0) parts.push(`${addedCountResult} anggota keluarga ditambahkan otomatis`);
+                        if (parts.length > 0) {
+                          setKkAutoSyncBanner(`Terdeteksi dari KK: ${parts.join(' • ')}.`);
+                        }
                       }}
                       duplicateKkError={
                         duplicateKkMember

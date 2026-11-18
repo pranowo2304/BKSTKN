@@ -4,6 +4,7 @@ import { Member, Payment, BenefitClaim, SystemSettings } from '../types';
 import { formatIDR } from '../lib/storage';
 import { calculateMemberExpiry } from '../lib/expiryUtils';
 import { getMemberKtaIssuanceInfo, generateKtaQrPayload, generateKtaSecurityToken } from '../lib/ktaUtils';
+import { formatStoredPaymentDateTime } from '../lib/indonesianTime';
 import {
   X,
   User,
@@ -63,13 +64,13 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
   onOpenPrintCardModal,
   onOpenPreviewKtaModal,
 }) => {
-  if (!member) return null;
-
   const [activeTab, setActiveTab] = useState<'kta' | 'payments' | 'claims' | 'profile' | 'timeline'>('kta');
   const [isKtaFlipped, setIsKtaFlipped] = useState(false);
   const [copiedKta, setCopiedKta] = useState(false);
   const [isKkViewerOpen, setIsKkViewerOpen] = useState(false);
   const [isQrGeneratorModalOpen, setIsQrGeneratorModalOpen] = useState(false);
+
+  if (!member) return null;
 
   const expiry = calculateMemberExpiry(member, payments, new Date(), settings);
   const ktaInfo = getMemberKtaIssuanceInfo(member, payments);
@@ -168,10 +169,10 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
 
     if (status === 'Unpaid' && hasVerifiedAnnual2026) {
       status = 'Verified';
-      amount = settings.monthlyFeeAmount || 25000;
+      amount = settings?.monthlyFeeAmount || 25000;
     } else if (status === 'Unpaid' && hasPendingAnnual2026) {
       status = 'Pending';
-      amount = settings.monthlyFeeAmount || 25000;
+      amount = settings?.monthlyFeeAmount || 25000;
     }
 
     return {
@@ -246,19 +247,34 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
             </div>
           </div>
 
-          {/* Quick Action in Header */}
-          {onSelectMemberForPayment && member.status === 'Aktif' && (
-            <button
-              onClick={() => {
-                onClose();
-                onSelectMemberForPayment(member);
-              }}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-950/50 transition-all flex items-center gap-1.5 shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Bayar Iuran Anggota Ini</span>
-            </button>
-          )}
+          {/* Quick Actions in Header */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0 sm:pr-10">
+            {member.familyCardPhotoUrl && (
+              <button
+                type="button"
+                onClick={() => setIsKkViewerOpen(true)}
+                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/40 font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+                title="Buka & Perbesar Lampiran Kartu Keluarga (KK)"
+              >
+                <FileText className="w-4 h-4 text-emerald-400" />
+                <span>Lihat Kartu Keluarga</span>
+              </button>
+            )}
+
+            {onSelectMemberForPayment && member.status === 'Aktif' && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onSelectMemberForPayment(member);
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-950/50 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Bayar Iuran Anggota Ini</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* SUB NAVIGATION TABS */}
@@ -711,7 +727,7 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                     {lastVerifiedPayment ? lastVerifiedPayment.periodMonth : 'Belum pernah'}
                   </p>
                   <p className="text-[10px] text-slate-400 mt-0.5">
-                    {lastVerifiedPayment ? `Tgl: ${lastVerifiedPayment.createdAt}` : '-'}
+                    {lastVerifiedPayment ? `Tgl: ${formatStoredPaymentDateTime(lastVerifiedPayment.createdAt, true)}` : '-'}
                   </p>
                 </div>
 
@@ -774,7 +790,7 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                               {payment.paymentMethod}
                             </td>
                             <td className="py-3.5 px-4 font-mono text-[11px] text-slate-500 whitespace-nowrap">
-                              {payment.createdAt}
+                              {formatStoredPaymentDateTime(payment.createdAt, true)}
                             </td>
                             <td className="py-3.5 px-4 whitespace-nowrap">
                               {payment.status === 'Verified' ? (
@@ -1058,14 +1074,21 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                     <div className="flex items-center gap-3.5">
                       <div
                         onClick={() => setIsKkViewerOpen(true)}
-                        className="w-20 h-16 rounded-xl overflow-hidden border border-emerald-300 shadow-sm bg-white shrink-0 cursor-pointer group relative"
-                        title="Klik untuk melihat foto KK penuh & perbesar"
+                        className="w-20 h-16 rounded-xl overflow-hidden border border-emerald-300 shadow-sm bg-white shrink-0 cursor-pointer group relative flex items-center justify-center"
+                        title="Klik untuk melihat dokumen KK penuh & perbesar"
                       >
-                        <img
-                          src={member.familyCardPhotoUrl}
-                          alt={`KK ${member.name}`}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                        />
+                        {member.familyCardPhotoUrl.startsWith('data:application/pdf') || member.familyCardFileName?.toLowerCase().endsWith('.pdf') ? (
+                          <div className="flex flex-col items-center justify-center text-emerald-700 p-1">
+                            <FileText className="w-6 h-6" />
+                            <span className="text-[9px] font-black text-slate-600 mt-0.5">PDF</span>
+                          </div>
+                        ) : (
+                          <img
+                            src={member.familyCardPhotoUrl}
+                            alt={`KK ${member.name}`}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          />
+                        )}
                         <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
                           <Eye className="w-4 h-4" />
                         </div>
@@ -1158,10 +1181,13 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
             isOpen={isKkViewerOpen}
             onClose={() => setIsKkViewerOpen(false)}
             photoUrl={member.familyCardPhotoUrl}
+            member={member}
             memberName={member.name}
             kkNumber={member.familyCardNumber}
             cluster={member.cluster}
             fileName={member.familyCardFileName}
+            qualityScore={member.familyCardQualityScore}
+            qualityStatus={member.familyCardQualityStatus}
           />
         )}
 

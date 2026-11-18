@@ -10,6 +10,7 @@ import { EarlyOutreachModal } from './EarlyOutreachModal';
 import { EditMemberBiodataModal } from './EditMemberBiodataModal';
 import { ContactAdminModal } from './ContactAdminModal';
 import { FamilyCardUploader } from './FamilyCardUploader';
+import { ExtractedKkResult, mergeExtractedDependents } from '../lib/kkExtractor';
 import { FamilyCardModal } from './FamilyCardModal';
 import { MemberPhotoCaptureModal } from './MemberPhotoCaptureModal';
 import { calculateMemberExpiry, MemberAnnualExpiryInfo } from '../lib/expiryUtils';
@@ -106,6 +107,74 @@ interface MemberRegistrationProps {
   onNavigateToVerification?: () => void;
   onNavigateToDashboard?: () => void;
   onOpenLoginForMember?: (member: Member) => void;
+}
+
+type StatusVisualTone = 'emerald' | 'amber' | 'rose' | 'slate';
+
+interface ResolvedMemberStatusDisplay {
+  label: string;
+  shortLabel: string;
+  tone: StatusVisualTone;
+}
+
+interface RecentStatusChangeInfo {
+  prevLabel: string;
+  nextLabel: string;
+  prevShortLabel: string;
+  nextShortLabel: string;
+  tone: StatusVisualTone;
+  changeSeq: number;
+}
+
+function resolveMemberStatusDisplay(
+  member: Member,
+  payments: Payment[],
+  exp?: MemberAnnualExpiryInfo
+): ResolvedMemberStatusDisplay {
+  if (member.status === 'Meninggal') {
+    return { label: 'Meninggal', shortLabel: 'Meninggal', tone: 'slate' };
+  }
+  if (member.status === 'Ditolak' || member.verificationStatus === 'Rejected') {
+    return { label: 'Ditolak', shortLabel: 'Ditolak', tone: 'rose' };
+  }
+  if (isMemberAwaitingPaguyubanApproval(member, payments)) {
+    return {
+      label: 'Menunggu Pengesahan Ketua',
+      shortLabel: 'Pengesahan Ketua',
+      tone: 'amber',
+    };
+  }
+  if (member.status === 'Menunggu Validasi Bendahara') {
+    return {
+      label: 'Menunggu Validasi Bendahara',
+      shortLabel: 'Validasi Bendahara',
+      tone: 'amber',
+    };
+  }
+  if (member.status === 'Menunggu Pembayaran') {
+    return {
+      label: 'Menunggu Pembayaran',
+      shortLabel: 'Menunggu Pembayaran',
+      tone: 'amber',
+    };
+  }
+  if (member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending') {
+    return {
+      label: 'Menunggu Verifikasi RT',
+      shortLabel: 'Verifikasi RT',
+      tone: 'amber',
+    };
+  }
+  if (exp?.isExpiringSoon) {
+    return { label: 'Aktif (Segera Habis)', shortLabel: 'Aktif', tone: 'emerald' };
+  }
+  if (exp?.isExpired) {
+    return { label: 'Jatuh Tempo', shortLabel: 'Jatuh Tempo', tone: 'rose' };
+  }
+  if (member.status === 'Aktif') {
+    return { label: 'Aktif', shortLabel: 'Aktif', tone: 'emerald' };
+  }
+  return { label: 'Non-Aktif', shortLabel: 'Non-Aktif', tone: 'rose' };
 }
 
 export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
@@ -456,20 +525,6 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
       return;
     }
 
-    // Real-time Document Quality Warning Confirmation
-    if (familyCardQualityReport && !familyCardQualityReport.isAcceptable) {
-      const confirmSubmit = window.confirm(
-        `PERINGATAN KUALITAS DOKUMEN:\n\n` +
-        `Foto Kartu Keluarga terdeteksi memiliki catatan:\n` +
-        `• ${familyCardQualityReport.headline}: ${familyCardQualityReport.feedbackMessage}\n` +
-        `• Skor Kualitas: ${familyCardQualityReport.overallScore}%\n\n` +
-        `Apakah Anda yakin ingin tetap menyimpan berkas ini, atau ingin memfoto ulang dengan kamera dokumen real-time agar tidak ditolak Ketua RT?`
-      );
-      if (!confirmSubmit) {
-        return;
-      }
-    }
-
     const memberNumber = generateNextMemberNumber(members);
 
     const finalCluster: ClusterType = (isKetuaRt && userRtCluster) ? (userRtCluster as ClusterType) : cluster;
@@ -562,6 +617,72 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
     });
     return map;
   }, [accessibleMembers, payments]);
+
+  // Track status transitions on visible directory rows to trigger CSS highlight & badge morph animations
+  const [recentStatusChanges, setRecentStatusChanges] = useState<Record<string, RecentStatusChangeInfo>>({});
+  const prevMemberStatusMapRef = useRef<Map<string, ResolvedMemberStatusDisplay>>(new Map());
+  const statusSeqMapRef = useRef<Map<string, number>>(new Map());
+  const statusChangeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  useEffect(() => {
+    const prevMap = prevMemberStatusMapRef.current;
+    const nextMap = new Map<string, ResolvedMemberStatusDisplay>();
+    const newlyChanged: Record<string, RecentStatusChangeInfo> = {};
+
+    accessibleMembers.forEach((m) => {
+      const exp = memberExpiryMap.get(m.id);
+      const current = resolveMemberStatusDisplay(m, payments, exp);
+      nextMap.set(m.id, current);
+
+      const previous = prevMap.get(m.id);
+      if (previous && previous.label !== current.label) {
+        const nextSeq = (statusSeqMapRef.current.get(m.id) || 0) + 1;
+        statusSeqMapRef.current.set(m.id, nextSeq);
+
+        newlyChanged[m.id] = {
+          prevLabel: previous.label,
+          nextLabel: current.label,
+          prevShortLabel: previous.shortLabel,
+          nextShortLabel: current.shortLabel,
+          tone: current.tone,
+          changeSeq: nextSeq,
+        };
+
+        const existingTimer = statusChangeTimersRef.current.get(m.id);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+        }
+
+        const timer = setTimeout(() => {
+          statusChangeTimersRef.current.delete(m.id);
+          setRecentStatusChanges((curr) => {
+            if (!curr[m.id]) return curr;
+            const updated = { ...curr };
+            delete updated[m.id];
+            return updated;
+          });
+        }, 3500);
+
+        statusChangeTimersRef.current.set(m.id, timer);
+      }
+    });
+
+    prevMemberStatusMapRef.current = nextMap;
+
+    if (Object.keys(newlyChanged).length > 0) {
+      setRecentStatusChanges((prev) => ({
+        ...prev,
+        ...newlyChanged,
+      }));
+    }
+  }, [accessibleMembers, payments, memberExpiryMap]);
+
+  useEffect(() => {
+    return () => {
+      statusChangeTimersRef.current.forEach((timer) => clearTimeout(timer));
+      statusChangeTimersRef.current.clear();
+    };
+  }, []);
 
   const expiringSoonMembers = accessibleMembers.filter((m) => {
     const exp = memberExpiryMap.get(m.id);
@@ -1568,15 +1689,9 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                     <Camera className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Foto Profil KTA Warga</span>
                   </div>
-                  <h4 className="text-sm font-black text-slate-900 mt-1 flex items-center gap-2 flex-wrap">
-                    <span>Pasfoto Resmi Kartu Anggota (KTA)</span>
-                    <span className="text-[11px] font-medium text-slate-500 font-sans">
-                      (Bisa Difoto Langsung via Kamera Laptop/HP)
-                    </span>
+                  <h4 className="text-sm font-black text-slate-900 mt-1">
+                    Pasfoto Resmi Kartu Anggota (KTA)
                   </h4>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Admin dapat memotret warga langsung menggunakan kamera perangkat. Foto ini akan otomatis tampil di KTA Digital dan kartu fisik.
-                  </p>
                 </div>
 
                 {photoUrl && (
@@ -1689,6 +1804,69 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* LAMPIRAN FOTO KARTU KELUARGA (KK) */}
+            <div className="bg-slate-50/90 border border-slate-200/90 rounded-2xl p-4 sm:p-5 transition-all shadow-xs">
+              <FamilyCardUploader
+                file={familyCardFile}
+                onFileSelect={(f) => setFamilyCardFile(f)}
+                photoUrl={familyCardPhotoUrl}
+                fileName={familyCardFileName}
+                kkNumber={familyCardNumber}
+                memberName={name || 'Calon Anggota'}
+                cluster={cluster}
+                required={true}
+                initialQualityReport={familyCardQualityReport}
+                onChange={({ photoUrl: pUrl, fileName: fName, kkNumber: kNum, file: fObj, qualityReport: qReport }) => {
+                  if (fObj !== undefined) setFamilyCardFile(fObj);
+                  setFamilyCardPhotoUrl(pUrl);
+                  setFamilyCardFileName(fName);
+                  if (kNum !== undefined) setFamilyCardNumber(kNum);
+                  if (qReport !== undefined) setFamilyCardQualityReport(qReport || null);
+                }}
+                onClear={() => {
+                  setFamilyCardFile(null);
+                  setFamilyCardPhotoUrl('');
+                  setFamilyCardFileName('');
+                  setFamilyCardQualityReport(null);
+                }}
+                onKkNumberChange={(num) => setFamilyCardNumber(num)}
+                onExtractResult={(result: ExtractedKkResult) => {
+                  if (result.familyCardNumber) {
+                    setFamilyCardNumber(result.familyCardNumber);
+                  }
+                  if (!name.trim() && result.headOfFamilyName) {
+                    setName(result.headOfFamilyName);
+                  }
+                  if (!nik.trim() && result.headOfFamilyNik) {
+                    setNik(result.headOfFamilyNik);
+                  }
+                  if (!address.trim() && result.address) {
+                    setAddress(result.address);
+                  }
+                  const { merged, addedCount } = mergeExtractedDependents(
+                    dependents,
+                    result.familyMembers,
+                    result.headOfFamilyName,
+                    'admin'
+                  );
+                  setDependents(merged);
+
+                  const parts: string[] = [];
+                  if (result.familyCardNumber) parts.push(`No. KK ${result.familyCardNumber}`);
+                  if (addedCount > 0) parts.push(`${addedCount} anggota keluarga ditambahkan ke daftar tanggungan`);
+                  if (parts.length > 0) {
+                    setNotification(`Deteksi KK berhasil: ${parts.join(' • ')}.`);
+                    setTimeout(() => setNotification(null), 5000);
+                  }
+                }}
+                duplicateKkError={
+                  duplicateKkMember
+                    ? `Nomor KK ini sudah terdaftar atas nama Kepala Keluarga "${duplicateKkMember.name}" (${duplicateKkMember.cluster || 'Cluster'}, No. Anggota: ${duplicateKkMember.memberNumber || '-'}).`
+                    : null
+                }
+              />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1978,40 +2156,6 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                   </div>
                 </div>
               )}
-
-              {/* LAMPIRAN FOTO KARTU KELUARGA (KK) */}
-              <div className="pt-4 border-t border-slate-200 bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80">
-                <FamilyCardUploader
-                  file={familyCardFile}
-                  onFileSelect={(f) => setFamilyCardFile(f)}
-                  photoUrl={familyCardPhotoUrl}
-                  fileName={familyCardFileName}
-                  kkNumber={familyCardNumber}
-                  memberName={name || 'Calon Anggota'}
-                  cluster={cluster}
-                  required={true}
-                  initialQualityReport={familyCardQualityReport}
-                  onChange={({ photoUrl: pUrl, fileName: fName, kkNumber: kNum, file: fObj, qualityReport: qReport }) => {
-                    if (fObj !== undefined) setFamilyCardFile(fObj);
-                    setFamilyCardPhotoUrl(pUrl);
-                    setFamilyCardFileName(fName);
-                    if (kNum !== undefined) setFamilyCardNumber(kNum);
-                    if (qReport !== undefined) setFamilyCardQualityReport(qReport || null);
-                  }}
-                  onClear={() => {
-                    setFamilyCardFile(null);
-                    setFamilyCardPhotoUrl('');
-                    setFamilyCardFileName('');
-                    setFamilyCardQualityReport(null);
-                  }}
-                  onKkNumberChange={(num) => setFamilyCardNumber(num)}
-                  duplicateKkError={
-                    duplicateKkMember
-                      ? `Nomor KK ini sudah terdaftar atas nama Kepala Keluarga "${duplicateKkMember.name}" (${duplicateKkMember.cluster || 'Cluster'}, No. Anggota: ${duplicateKkMember.memberNumber || '-'}).`
-                      : null
-                  }
-                />
-              </div>
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
@@ -2656,13 +2800,24 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
 
                   const exp = memberExpiryMap.get(member.id);
                   const isTimelineExpanded = expandedTimelineMemberIds.has(member.id);
+                  const statusChangeInfo = recentStatusChanges[member.id];
+                  const statusChangeSeq = statusSeqMapRef.current.get(member.id) || 0;
+                  const rowStatusFlashClass = statusChangeInfo
+                    ? statusChangeInfo.tone === 'emerald'
+                      ? 'animate-status-row-emerald'
+                      : statusChangeInfo.tone === 'rose'
+                      ? 'animate-status-row-rose'
+                      : statusChangeInfo.tone === 'slate'
+                      ? 'animate-status-row-slate'
+                      : 'animate-status-row-amber'
+                    : '';
 
                   return (
                     <React.Fragment key={member.id}>
                       <tr 
-                        className={`hover:bg-slate-50/80 transition-colors ${
+                        className={`hover:bg-slate-50/80 transition-all duration-300 ease-out ${
                           exp?.isExpiringSoon ? 'bg-amber-50/30' : ''
-                        } ${isTimelineExpanded ? 'bg-indigo-50/30 font-medium' : ''}`}
+                        } ${isTimelineExpanded ? 'bg-indigo-50/30 font-medium' : ''} ${rowStatusFlashClass}`}
                       >
                         <td className="py-3.5 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
                           <div className="space-y-1">
@@ -2781,16 +2936,22 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                       <td className="py-3.5 px-4 text-slate-600 whitespace-nowrap font-mono text-[11px]">
                         {member.joinDate}
                       </td>
-                      <td className="py-3.5 px-4 whitespace-nowrap">
+                      <td className="py-3.5 px-4 whitespace-nowrap transition-colors duration-300">
+                        <div
+                          key={`status-display-${member.id}-${statusChangeSeq}`}
+                          className={`transition-all duration-300 ease-out ${
+                            statusChangeInfo ? 'animate-status-badge-morph' : ''
+                          }`}
+                        >
                         {member.status === 'Meninggal' ? (
-                          <span className="px-2.5 py-1 bg-slate-200 text-slate-800 border border-slate-300 font-bold text-[10px] rounded-full inline-flex items-center gap-1.5">
+                          <span className="px-2.5 py-1 bg-slate-200 text-slate-800 border border-slate-300 font-bold text-[10px] rounded-full inline-flex items-center gap-1.5 transition-all duration-300">
                             <span className="w-2 h-2 rounded-full bg-slate-600 shrink-0" />
                             <span>Meninggal</span>
                           </span>
                         ) : member.status === 'Ditolak' || member.verificationStatus === 'Rejected' ? (
                           <div className="space-y-0.5">
                             <span
-                              className="px-2.5 py-1 bg-rose-100 text-rose-800 border border-rose-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs"
+                              className="px-2.5 py-1 bg-rose-100 text-rose-800 border border-rose-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs transition-all duration-300"
                               title={member.paguyubanRejectionReason || member.rtVerificationNotes || 'Pendaftaran Ditolak'}
                             >
                               <span className="w-2 h-2 rounded-full bg-rose-600 shrink-0" />
@@ -2806,7 +2967,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                         ) : isMemberAwaitingPaguyubanApproval(member, payments) ? (
                           <div className="space-y-0.5">
                             <span
-                              className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs"
+                              className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs transition-all duration-300"
                               title="Pembayaran telah divalidasi Bendahara, menunggu persetujuan akhir Ketua Paguyuban sebelum KTA terbit"
                             >
                               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
@@ -2818,7 +2979,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                         ) : member.status === 'Menunggu Validasi Bendahara' ? (
                           <div className="space-y-0.5">
                             <span
-                              className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs"
+                              className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs transition-all duration-300"
                               title="Bukti pembayaran diunggah, menunggu validasi Bendahara"
                             >
                               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
@@ -2844,7 +3005,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                         ) : member.status === 'Menunggu Pembayaran' ? (
                           <div className="space-y-0.5">
                             <span
-                              className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs"
+                              className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs transition-all duration-300"
                               title="Lolos verifikasi RT, menunggu pembayaran iuran oleh warga"
                             >
                               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
@@ -2856,7 +3017,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                         ) : member.status === 'Menunggu Verifikasi RT' || member.verificationStatus === 'Pending' ? (
                           <div className="space-y-0.5">
                             <span
-                              className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs"
+                              className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs transition-all duration-300"
                               title="Menunggu verifikasi data warga oleh Ketua RT"
                             >
                               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
@@ -2867,7 +3028,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                           </div>
                         ) : exp?.isExpiringSoon ? (
                           <div className="space-y-1">
-                            <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs">
+                            <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs transition-all duration-300">
                               <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
                               <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
                               <span>Aktif</span>
@@ -2879,7 +3040,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                           </div>
                         ) : exp?.isExpired ? (
                           <div className="space-y-1">
-                            <span className="px-2.5 py-1 bg-rose-100 text-rose-900 border border-rose-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5">
+                            <span className="px-2.5 py-1 bg-rose-100 text-rose-900 border border-rose-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 transition-all duration-300">
                               <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
                               <AlertCircle className="w-3 h-3 text-rose-600 shrink-0" />
                               <span>Jatuh Tempo</span>
@@ -2888,7 +3049,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                           </div>
                         ) : member.status === 'Aktif' ? (
                           <div className="space-y-0.5">
-                            <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs">
+                            <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 shadow-2xs transition-all duration-300">
                               <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
                               <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
                               <span>Aktif</span>
@@ -2898,10 +3059,25 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({
                             )}
                           </div>
                         ) : (
-                          <span className="px-2.5 py-1 bg-rose-100 text-rose-800 border border-rose-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5">
+                          <span className="px-2.5 py-1 bg-rose-100 text-rose-800 border border-rose-300 font-extrabold text-[10px] rounded-full inline-flex items-center gap-1.5 transition-all duration-300">
                             <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
                             <span>Non-Aktif</span>
                           </span>
+                        )}
+                        </div>
+                        {statusChangeInfo && (
+                          <div
+                            key={`status-diff-${member.id}-${statusChangeSeq}`}
+                            className="animate-status-subtext-slide mt-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/95 border border-slate-200 shadow-2xs text-[9px] font-extrabold text-slate-700 print:hidden"
+                            title={`Status diperbarui dari "${statusChangeInfo.prevLabel}" menjadi "${statusChangeInfo.nextLabel}"`}
+                          >
+                            <Sparkles className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                            <span className="text-slate-400 line-through decoration-slate-400/70">
+                              {statusChangeInfo.prevShortLabel}
+                            </span>
+                            <ArrowRight className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                            <span className="text-slate-900">{statusChangeInfo.nextShortLabel}</span>
+                          </div>
                         )}
                         <button
                           type="button"

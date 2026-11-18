@@ -24,6 +24,7 @@ import {
   Mail
 } from 'lucide-react';
 import { FamilyCardUploader } from './FamilyCardUploader';
+import { ExtractedKkResult, mergeExtractedDependents } from '../lib/kkExtractor';
 import { MemberPhotoCaptureModal } from './MemberPhotoCaptureModal';
 import { checkDuplicateMember, findDuplicateNikMember, findDuplicateKkMember } from '../lib/duplicateValidator';
 
@@ -46,27 +47,25 @@ export const EditMemberBiodataModal: React.FC<EditMemberBiodataModalProps> = ({
   onClose,
   onSave,
 }) => {
-  if (!isOpen || !member) return null;
-
   const [activeTab, setActiveTab] = useState<'biodata' | 'dependents' | 'kartu-keluarga'>('biodata');
 
   // Biodata fields
-  const [name, setName] = useState(member.name || '');
-  const [nik, setNik] = useState(member.nik || '');
-  const [phone, setPhone] = useState(member.phone || '');
-  const [email, setEmail] = useState(member.email || '');
-  const [address, setAddress] = useState(member.address || '');
-  const [cluster, setCluster] = useState<string>(member.cluster || 'Cluster Sanur');
-  const [photoUrl, setPhotoUrl] = useState<string>(member.photoUrl || '');
+  const [name, setName] = useState(member?.name || '');
+  const [nik, setNik] = useState(member?.nik || '');
+  const [phone, setPhone] = useState(member?.phone || '');
+  const [email, setEmail] = useState(member?.email || '');
+  const [address, setAddress] = useState(member?.address || '');
+  const [cluster, setCluster] = useState<string>(member?.cluster || 'Cluster Sanur');
+  const [photoUrl, setPhotoUrl] = useState<string>(member?.photoUrl || '');
   const [isPhotoCaptureModalOpen, setIsPhotoCaptureModalOpen] = useState<boolean>(false);
   const [familyCardFile, setFamilyCardFile] = useState<File | null>(null);
-  const [familyCardPhotoUrl, setFamilyCardPhotoUrl] = useState(member.familyCardPhotoUrl || '');
-  const [familyCardFileName, setFamilyCardFileName] = useState(member.familyCardFileName || '');
-  const [familyCardNumber, setFamilyCardNumber] = useState(member.familyCardNumber || '');
+  const [familyCardPhotoUrl, setFamilyCardPhotoUrl] = useState(member?.familyCardPhotoUrl || '');
+  const [familyCardFileName, setFamilyCardFileName] = useState(member?.familyCardFileName || '');
+  const [familyCardNumber, setFamilyCardNumber] = useState(member?.familyCardNumber || '');
 
   // Dependents fields
   const [dependents, setDependents] = useState<Dependent[]>(() => {
-    if (member.dependentsList && member.dependentsList.length > 0) {
+    if (member?.dependentsList && member.dependentsList.length > 0) {
       return [...member.dependentsList];
     }
     return [];
@@ -79,14 +78,14 @@ export const EditMemberBiodataModal: React.FC<EditMemberBiodataModalProps> = ({
 
   // Duplicate checks against other members
   const duplicateNikMember = React.useMemo(() => {
-    if (!members || members.length === 0) return undefined;
+    if (!members || members.length === 0 || !member) return undefined;
     return findDuplicateNikMember(members, nik, member.id);
-  }, [members, nik, member.id]);
+  }, [members, nik, member]);
 
   const duplicateKkMember = React.useMemo(() => {
-    if (!members || members.length === 0) return undefined;
+    if (!members || members.length === 0 || !member) return undefined;
     return findDuplicateKkMember(members, familyCardNumber, member.id);
-  }, [members, familyCardNumber, member.id]);
+  }, [members, familyCardNumber, member]);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -109,6 +108,8 @@ export const EditMemberBiodataModal: React.FC<EditMemberBiodataModalProps> = ({
       setSuccessMessage(null);
     }
   }, [member]);
+
+  if (!isOpen || !member) return null;
 
   const handleAddDependent = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -591,6 +592,28 @@ export const EditMemberBiodataModal: React.FC<EditMemberBiodataModalProps> = ({
                     setFamilyCardFileName('');
                   }}
                   onKkNumberChange={(kkNum) => setFamilyCardNumber(kkNum)}
+                  onExtractResult={(result: ExtractedKkResult) => {
+                    if (result.familyCardNumber) {
+                      setFamilyCardNumber(result.familyCardNumber);
+                    }
+                    if (!nik.trim() && result.headOfFamilyNik) {
+                      setNik(result.headOfFamilyNik);
+                    }
+                    const { merged, addedCount } = mergeExtractedDependents(
+                      dependents,
+                      result.familyMembers,
+                      result.headOfFamilyName,
+                      'edit'
+                    );
+                    setDependents(merged);
+
+                    const parts: string[] = [];
+                    if (result.familyCardNumber) parts.push(`No. KK ${result.familyCardNumber}`);
+                    if (addedCount > 0) parts.push(`${addedCount} anggota keluarga ditambahkan ke Tab 2`);
+                    if (parts.length > 0) {
+                      setSuccessMessage(`Deteksi otomatis KK berhasil: ${parts.join(' • ')}. Klik "Simpan Perubahan" untuk menyimpan.`);
+                    }
+                  }}
                   duplicateKkError={
                     duplicateKkMember
                       ? `Nomor KK ini sudah terdaftar atas nama Kepala Keluarga "${duplicateKkMember.name}" (${duplicateKkMember.cluster || 'Cluster'}, No. Anggota: ${duplicateKkMember.memberNumber || '-'}).`

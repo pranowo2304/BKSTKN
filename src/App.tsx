@@ -60,6 +60,13 @@ import {
   syncMembersToUsers,
   getMemberForUser,
 } from './lib/storage';
+import { getIndonesiaDateString, getIndonesiaTimestamp, normalizeToIndonesiaTimestamp } from './lib/indonesianTime';
+import {
+  executeTransactionBackup,
+  getEffectiveBackupSettings,
+  getNextMidnightWibInfo,
+  hasDailyScheduledBackupRunToday,
+} from './lib/transactionBackup';
 import {
   seedInitialFirestoreData,
   subscribeToFirestore,
@@ -979,7 +986,7 @@ export default function App() {
   const addNotification = (notif: Omit<AppNotification, 'id' | 'timestamp' | 'read'>) => {
     const newNotif: AppNotification = {
       id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      timestamp: getIndonesiaTimestamp(),
       read: false,
       ...notif,
     };
@@ -1445,18 +1452,40 @@ export default function App() {
   };
 
   // VERIFY MEMBER BY RT OFFICER (Approves registration -> Status: Menunggu Pembayaran, KTA not yet issued)
-  const handleVerifyMember = (memberId: string, rtOfficerName: string, rtNotes?: string) => {
+  const handleVerifyMember = (
+    memberId: string,
+    rtOfficerName: string,
+    rtNotes?: string,
+    updatedFields?: Partial<
+      Pick<Member, 'name' | 'nik' | 'address' | 'familyCardNumber' | 'dependentsList' | 'dependentsCount'>
+    >
+  ) => {
     // Granular authority check
     if (!can(activeUser?.authority, 'verify_rt_members')) {
       alert(`Akses Ditolak: Akun Anda (${activeUser?.authority || 'Pengguna'}) tidak memiliki wewenang granular untuk memverifikasi pendaftaran RT warga.`);
       return;
     }
 
+    const target = members.find((m) => m.id === memberId);
+
     // Strict authority guard: Ketua RT can only verify in their own cluster
     if (activeUser?.authority === 'Ketua RT (Cluster)' && activeUser.cluster) {
-      const target = members.find((m) => m.id === memberId);
       if (target && target.cluster !== activeUser.cluster) {
         alert(`Akses ditolak: Ketua RT ${activeUser.cluster} tidak dapat memverifikasi warga di ${target.cluster}`);
+        return;
+      }
+    }
+
+    // Duplicate check if RT edited NIK or No. KK before approving
+    if (target && updatedFields) {
+      const nextNik = updatedFields.nik !== undefined ? updatedFields.nik : target.nik;
+      const nextKk =
+        updatedFields.familyCardNumber !== undefined
+          ? updatedFields.familyCardNumber
+          : target.familyCardNumber;
+      const dupCheck = checkDuplicateMember(members, nextNik, nextKk, target.id);
+      if (dupCheck.isDuplicate) {
+        alert(`VERIFIKASI DITOLAK (DATA DOUBLE TERDETEKSI):\n\n${dupCheck.message}`);
         return;
       }
     }
@@ -1464,14 +1493,22 @@ export default function App() {
     let verifiedMemberObj: Member | null = null;
     const updatedMembers = members.map((m) => {
       if (m.id === memberId) {
+        const nextDependents = updatedFields?.dependentsList ?? m.dependentsList;
+        const nextDependentsCount =
+          updatedFields?.dependentsCount ??
+          (updatedFields?.dependentsList ? updatedFields.dependentsList.length : m.dependentsCount);
+
         const updated: Member = {
           ...m,
+          ...updatedFields,
+          dependentsList: nextDependents,
+          dependentsCount: nextDependentsCount,
           verificationStatus: 'Verified' as const,
           status: 'Menunggu Pembayaran' as const, // Status becomes Menunggu Pembayaran after RT verification
           verifiedByRt: rtOfficerName,
-          verifiedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+          verifiedAt: getIndonesiaTimestamp(),
           rtVerifiedBy: rtOfficerName,
-          rtVerifiedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+          rtVerifiedAt: getIndonesiaTimestamp(),
           rtNotes: rtNotes || m.rtNotes,
           // KTA & Paguyuban approval remain false until Bendahara verifies payment and Ketua Paguyuban approves
           isPaguyubanApproved: false,
@@ -1636,10 +1673,14 @@ export default function App() {
 
   // ADD PAYMENT
   const handleAddPayment = (newPayment: Payment) => {
-    const updatedPayments = [newPayment, ...payments];
+    const normalizedPayment: Payment = {
+      ...newPayment,
+      createdAt: normalizeToIndonesiaTimestamp(newPayment.createdAt),
+    };
+    const updatedPayments = [normalizedPayment, ...payments];
     setPayments(updatedPayments);
     savePayments(updatedPayments);
-    syncPaymentToCloud(newPayment).catch((e) => console.warn('Cloud sync payment error:', e));
+    syncPaymentToCloud(normalizedPayment).catch((e) => console.warn('Cloud sync payment error:', e));
 
     // Strict ID match first; only fallback to memberNumber if memberId is absent or missing in members
     const hasExactMemberId = Boolean(newPayment.memberId && members.some((m) => m.id === newPayment.memberId));
@@ -1712,7 +1753,7 @@ export default function App() {
 
     let verifiedPaymentObj: Payment | null = null;
     let targetMemberId: string | undefined;
-    const timestampNow = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const timestampNow = getIndonesiaTimestamp();
     const verifierName = adminSignerName || activeUser?.name || settings.defaultAdminSignerName || settings.treasurerName || 'Bendahara Paguyuban';
     const sigUrl = adminSignature || settings.defaultAdminSignature;
     const sigTitle = adminSignerTitle || settings.defaultAdminSignerTitle || (activeUser?.authority === 'Bendahara' ? 'Bendahara Paguyuban' : 'Pengurus Paguyuban');
@@ -1889,7 +1930,7 @@ export default function App() {
       return;
     }
 
-    const timestampNow = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const timestampNow = getIndonesiaTimestamp();
     const cancellerName = activeUser?.name || settings.treasurerName || 'Bendahara Paguyuban';
     const cleanReason =
       (cancelReason || '').trim() || 'Verifikasi dibatalkan oleh Bendahara untuk pemeriksaan ulang.';
@@ -2026,7 +2067,7 @@ export default function App() {
       return;
     }
 
-    const timestampNow = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const timestampNow = getIndonesiaTimestamp();
     const approverName = activeUser?.name || 'Bpk. H. Ahmad Fauzi (Ketua Paguyuban)';
 
     let updatedMemberObj: Member | null = null;
@@ -3212,6 +3253,106 @@ export default function App() {
     syncSettingsToCloud(newSettings).catch((e) => console.warn('Cloud sync settings error:', e));
   };
 
+  // DAILY 00:00 WIB AUTOMATED JSON TRANSACTION BACKUP SCHEDULER
+  const backupInFlightRef = React.useRef<boolean>(false);
+  const latestBackupContextRef = React.useRef({
+    payments: [] as Payment[],
+    claims: [] as BenefitClaim[],
+    members: [] as Member[],
+    settings,
+    baseFundBalance,
+    activeUser,
+  });
+
+  latestBackupContextRef.current = {
+    payments: synchronizedPayments,
+    claims,
+    members,
+    settings,
+    baseFundBalance,
+    activeUser,
+  };
+
+  useEffect(() => {
+    if (isInitialLoading || !activeUser || activeUser.authority === 'Anggota') {
+      return;
+    }
+
+    const effectiveCfg = getEffectiveBackupSettings(settings);
+    if (!effectiveCfg.enabled) {
+      return;
+    }
+
+    const runScheduledBackup = async () => {
+      if (backupInFlightRef.current) return;
+      const ctx = latestBackupContextRef.current;
+      if (hasDailyScheduledBackupRunToday(ctx.settings)) return;
+
+      backupInFlightRef.current = true;
+      try {
+        const { record, updatedAutomationSettings } = await executeTransactionBackup({
+          payments: ctx.payments,
+          claims: ctx.claims,
+          members: ctx.members,
+          settings: ctx.settings,
+          baseFundBalance: ctx.baseFundBalance,
+          triggerType: 'scheduled_00_00',
+          triggeredBy: `Sistem Otomatis 00:00 WIB (${ctx.activeUser?.name || 'Admin'})`,
+        });
+
+        const nextSettings: SystemSettings = {
+          ...ctx.settings,
+          backupAutomation: updatedAutomationSettings,
+        };
+        handleSaveSettings(nextSettings);
+
+        addNotification({
+          type: updatedAutomationSettings.lastBackupStatus === 'failed' ? 'warning' : 'success',
+          category: 'system',
+          title: 'Backup Harian Transaksi JSON (00:00 WIB)',
+          message: `Salinan data transaksi tanggal ${record.backupDate} (${record.summary.paymentCount} iuran, ${record.summary.claimCount} santunan) selesai diproses. ${updatedAutomationSettings.lastBackupMessage || ''}`,
+          linkTab: 'settings',
+        });
+      } catch (err) {
+        console.warn('Scheduled 00:00 WIB JSON backup notice:', err);
+      } finally {
+        backupInFlightRef.current = false;
+      }
+    };
+
+    const checkAndRunIfDue = () => {
+      const ctx = latestBackupContextRef.current;
+      const cfg = getEffectiveBackupSettings(ctx.settings);
+      if (!cfg.enabled || hasDailyScheduledBackupRunToday(ctx.settings)) return;
+
+      const todayWib = getIndonesiaDateString();
+      const timeWib = getIndonesiaTimestamp().slice(11, 16); // HH:mm in WIB
+      const isMidnightWindow = timeWib >= '00:00' && timeWib <= '00:15';
+      const missedPreviousDay = Boolean(cfg.lastBackupDate && cfg.lastBackupDate < todayWib);
+
+      if (isMidnightWindow || missedPreviousDay) {
+        runScheduledBackup();
+      }
+    };
+
+    // Check immediately for missed 00:00 catch-up or current 00:00 window
+    checkAndRunIfDue();
+
+    // Schedule exact wake-up right after 00:00:05 WIB
+    const { msUntilMidnightWib } = getNextMidnightWibInfo();
+    const midnightTimer = setTimeout(() => {
+      checkAndRunIfDue();
+    }, Math.min(msUntilMidnightWib, 2147483647));
+
+    // Periodic 30s guard so long-lived tabs never miss 00:00 WIB due to sleep/throttling
+    const intervalTimer = setInterval(checkAndRunIfDue, 30000);
+
+    return () => {
+      clearTimeout(midnightTimer);
+      clearInterval(intervalTimer);
+    };
+  }, [isInitialLoading, activeUser?.id, settings.backupAutomation?.enabled, settings.backupAutomation?.lastBackupDate]);
+
   // HAPUS DATA TRANSAKSI DI DATABASE FIREBASE (Kosongkan riwayat pembayaran iuran & santunan tanpa menghapus data warga)
   const handleClearTransactions = async () => {
     try {
@@ -3698,6 +3839,7 @@ export default function App() {
             claims={claims}
             onVerifyMember={handleVerifyMember}
             onRejectMember={handleRejectMember}
+            onUpdateMember={handleUpdateMember}
             onDeleteMember={activeUser?.authority === 'Admin' ? handleDeleteMember : undefined}
             onUpdateMemberCluster={handleUpdateMemberCluster}
             onAddClaim={handleAddClaim}
@@ -3973,11 +4115,24 @@ export default function App() {
             settings={settings}
             clusters={clusters}
             benefits={benefits}
+            members={members}
+            payments={synchronizedPayments}
+            claims={claims}
+            baseFundBalance={baseFundBalance}
             memberCount={members.length}
             paymentCount={synchronizedPayments.length}
             claimCount={claims.length}
             activeUser={activeUser}
             onSaveSettings={handleSaveSettings}
+            onNotifyBackupResult={(title, message, isError) =>
+              addNotification({
+                type: isError ? 'error' : 'success',
+                category: 'system',
+                title,
+                message,
+                linkTab: 'settings',
+              })
+            }
             onSaveCluster={handleSaveCluster}
             onDeleteCluster={handleDeleteCluster}
             onSaveBenefit={handleSaveBenefit}

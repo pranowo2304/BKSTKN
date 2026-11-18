@@ -176,8 +176,8 @@ export const PrintMemberCardModal: React.FC<PrintMemberCardModalProps> = ({
   const backTheme = getThemeBackStyles();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-1 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto print:p-0 print:bg-white print:static">
-      <div className="bg-slate-900 rounded-3xl border border-slate-700/80 shadow-2xl max-w-5xl w-full my-auto overflow-hidden flex flex-col max-h-[96vh] animate-in zoom-in-95 duration-200 print:shadow-none print:border-none print:max-w-none print:w-full print:bg-white print:max-h-none">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200 overflow-hidden print:p-0 print:bg-white print:static">
+      <div className="bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-700/80 shadow-2xl max-w-5xl w-full my-auto overflow-hidden flex flex-col max-h-[94dvh] sm:max-h-[96vh] animate-in zoom-in-95 duration-200 print:shadow-none print:border-none print:max-w-none print:w-full print:bg-white print:max-h-none">
         
         {/* MODAL HEADER (Compact & Clean) */}
         <div className="bg-slate-950 text-white px-4 sm:px-6 py-2.5 sm:py-3 border-b border-slate-800 flex justify-between items-center print:hidden shrink-0">
@@ -325,7 +325,7 @@ export const PrintMemberCardModal: React.FC<PrintMemberCardModalProps> = ({
         </div>
 
         {/* MODAL MAIN PREVIEW CONTAINER (PRINTABLE AREA) */}
-        <div className="p-2 sm:p-5 overflow-y-auto flex-1 bg-slate-950 print:p-0 print:bg-white print:overflow-visible flex flex-col items-center">
+        <div className="p-2 sm:p-5 overflow-y-auto min-h-0 flex-1 bg-slate-950 print:p-0 print:bg-white print:overflow-visible flex flex-col items-center">
           
           {/* PRINTABLE SHEET CONTAINER (Target of window.print) */}
           <div id="member-card-printable" className="w-full max-w-4xl mx-auto space-y-4 print:m-0 print:p-0 print:max-w-none">

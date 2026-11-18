@@ -3,6 +3,7 @@ import { Payment, Member, SystemSettings } from '../types';
 import { formatIDR } from '../lib/storage';
 import { terbilang } from '../lib/terbilang';
 import { getEffectivePaymentPeriod, buildReceiptValidationUrl } from '../lib/receiptUtils';
+import { formatStoredPaymentDateTime } from '../lib/indonesianTime';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -111,7 +112,7 @@ export const ReceiptAuthenticityVerificationModal: React.FC<ReceiptAuthenticityV
       `• Nama: *${resolvedPayment.memberName}* (${resolvedPayment.memberNumber})\n` +
       `• Jumlah: *${formatIDR(resolvedPayment.amount)}*\n` +
       `• Untuk: *${resolvedPayment.paymentType}* (${effectivePeriod})\n` +
-      `• Tgl: *${resolvedPayment.verifiedAt || resolvedPayment.createdAt}*\n\n` +
+      `• Tgl: *${formatStoredPaymentDateTime(resolvedPayment.verifiedAt || resolvedPayment.createdAt, true)}*\n\n` +
       `Cek keaslian publik real-time:\n${verificationUrl}`;
     
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
@@ -289,7 +290,7 @@ export const ReceiptAuthenticityVerificationModal: React.FC<ReceiptAuthenticityV
                     </button>
                   </div>
                   <span className="text-[11px] text-slate-500 font-medium block">
-                    Tgl: {resolvedPayment.verifiedAt || resolvedPayment.createdAt}
+                    Tgl: {formatStoredPaymentDateTime(resolvedPayment.verifiedAt || resolvedPayment.createdAt, true)}
                   </span>
                 </div>
               </div>

@@ -125,8 +125,8 @@ export function validateFamilyCardFile(
 
 export async function processImageFile(
   file: File,
-  maxDimension = 1280,
-  quality = 0.76
+  maxDimension = 1440,
+  quality = 0.78
 ): Promise<ProcessedImageResult> {
   return new Promise((resolve, reject) => {
     // Timeout safeguard: Ensure process never hangs indefinitely
@@ -160,7 +160,7 @@ export async function processImageFile(
       reject(new Error('Proses pembacaan berkas dibatalkan. Silakan pilih kembali berkas Kartu Keluarga.'));
     };
 
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const rawDataUrl = e.target?.result as string;
       if (!rawDataUrl) {
         cleanup();
@@ -181,31 +181,15 @@ export async function processImageFile(
         return;
       }
 
-      // For image files, compress and resize via HTML5 Canvas
-      const img = new Image();
-
-      img.onerror = () => {
-        cleanup();
-        // If canvas cannot decode (e.g. raw HEIC or corrupted), return raw dataUrl if small enough
-        if (rawDataUrl.length < 800000) {
-          resolve({
-            dataUrl: rawDataUrl,
-            fileName: file.name,
-            fileSizeBytes: file.size,
-            width: 0,
-            height: 0,
-          });
-        } else {
-          reject(new Error('Format foto tidak dapat diproses oleh browser. Silakan simpan sebagai JPG/PNG atau pilih foto lain dari galeri.'));
-        }
-      };
-
-      img.onload = () => {
+      const renderToCanvas = (
+        source: CanvasImageSource,
+        srcWidth: number,
+        srcHeight: number
+      ) => {
         try {
-          let width = img.width || 1200;
-          let height = img.height || 800;
+          let width = srcWidth || 1200;
+          let height = srcHeight || 800;
 
-          // Calculate proportional scale
           if (width > maxDimension || height > maxDimension) {
             if (width > height) {
               height = Math.round((height * maxDimension) / width);
@@ -227,25 +211,24 @@ export async function processImageFile(
               dataUrl: rawDataUrl.length < 700000 ? rawDataUrl : rawDataUrl.substring(0, 700000),
               fileName: file.name,
               fileSizeBytes: file.size,
-              width: img.width,
-              height: img.height,
+              width: srcWidth,
+              height: srcHeight,
             });
             return;
           }
 
-          // Render image with high smoothing quality for crisp document text
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
-          ctx.drawImage(img, 0, 0, width, height);
+          ctx.drawImage(source, 0, 0, width, height);
 
           let outputDataUrl = canvas.toDataURL('image/jpeg', quality);
 
-          // If still over 450KB (~600,000 base64 chars), perform a second lighter pass to protect storage
-          if (outputDataUrl.length > 600000) {
-            outputDataUrl = canvas.toDataURL('image/jpeg', 0.60);
+          // Keep Firestore-stored document copy within safe size bounds (~450-550KB)
+          if (outputDataUrl.length > 620000) {
+            outputDataUrl = canvas.toDataURL('image/jpeg', 0.65);
           }
           if (outputDataUrl.length > 800000) {
-            outputDataUrl = canvas.toDataURL('image/jpeg', 0.48);
+            outputDataUrl = canvas.toDataURL('image/jpeg', 0.52);
           }
 
           const approxBytes = Math.round((outputDataUrl.length - 22) * 0.75);
@@ -261,14 +244,13 @@ export async function processImageFile(
           });
         } catch {
           cleanup();
-          // Fallback if canvas manipulation fails
           if (rawDataUrl.length < 700000) {
             resolve({
               dataUrl: rawDataUrl,
               fileName: file.name,
               fileSizeBytes: file.size,
-              width: img.width,
-              height: img.height,
+              width: srcWidth,
+              height: srcHeight,
             });
           } else {
             reject(new Error('Gagal mengompresi foto Kartu Keluarga. Silakan pilih foto lain dari galeri.'));
@@ -276,6 +258,34 @@ export async function processImageFile(
         }
       };
 
+      // Prefer createImageBitmap with EXIF orientation support when available
+      if (typeof createImageBitmap === 'function') {
+        try {
+          const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+          renderToCanvas(bitmap, bitmap.width, bitmap.height);
+          bitmap.close?.();
+          return;
+        } catch {
+          // Fallback to standard HTMLImageElement below
+        }
+      }
+
+      const img = new Image();
+      img.onerror = () => {
+        cleanup();
+        if (rawDataUrl.length < 800000) {
+          resolve({
+            dataUrl: rawDataUrl,
+            fileName: file.name,
+            fileSizeBytes: file.size,
+            width: 0,
+            height: 0,
+          });
+        } else {
+          reject(new Error('Format foto tidak dapat diproses oleh browser. Silakan simpan sebagai JPG/PNG atau pilih foto lain dari galeri.'));
+        }
+      };
+      img.onload = () => renderToCanvas(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
       img.src = rawDataUrl;
     };
 
@@ -285,6 +295,68 @@ export async function processImageFile(
       cleanup();
       reject(new Error(readErr instanceof Error ? readErr.message : 'Tidak dapat membaca berkas fisik dari perangkat.'));
     }
+  });
+}
+
+/**
+ * Prepares a high-resolution image Data URL (up to 2200px, quality 0.90) specifically
+ * for accurate AI OCR extraction of dense KK tables, without bloating the stored Firestore image.
+ */
+export async function prepareKkImageForOcr(file: File): Promise<string> {
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  const maxDim = 1800;
+  const quality = 0.86;
+
+  const rawDataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Gagal membaca berkas untuk deteksi otomatis.'));
+    reader.readAsDataURL(file);
+  });
+
+  if (isPdf || !rawDataUrl) {
+    return rawDataUrl;
+  }
+
+  const drawHighRes = (source: CanvasImageSource, w: number, h: number): string => {
+    let targetW = w || 1600;
+    let targetH = h || 1000;
+    if (targetW > maxDim || targetH > maxDim) {
+      if (targetW > targetH) {
+        targetH = Math.round((targetH * maxDim) / targetW);
+        targetW = maxDim;
+      } else {
+        targetW = Math.round((targetW * maxDim) / targetH);
+        targetH = maxDim;
+      }
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return rawDataUrl;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(source, 0, 0, targetW, targetH);
+    return canvas.toDataURL('image/jpeg', quality);
+  };
+
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      const result = drawHighRes(bitmap, bitmap.width, bitmap.height);
+      bitmap.close?.();
+      return result;
+    } catch {
+      // fallback to Image
+    }
+  }
+
+  return new Promise<string>((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(drawHighRes(img, img.naturalWidth || img.width, img.naturalHeight || img.height));
+    img.onerror = () => resolve(rawDataUrl);
+    img.src = rawDataUrl;
   });
 }
 

@@ -19,7 +19,7 @@ import {
 // Silence benign internal SDK connection/offline polling messages so they don't trigger error boundaries
 setLogLevel('silent');
 import firebaseConfig from '../../firebase-applet-config.json';
-import { Member, Payment, BenefitClaim, SystemSettings, AppUser, ClusterMaster, DEFAULT_CLUSTERS, BenefitMaster, DEFAULT_BENEFITS, AmbulanceOrder, FuneralSchedule, FuneralInventoryItem, FuneralInventoryLoan } from '../types';
+import { Member, Payment, BenefitClaim, SystemSettings, AppUser, ClusterMaster, DEFAULT_CLUSTERS, BenefitMaster, DEFAULT_BENEFITS, AmbulanceOrder, FuneralSchedule, FuneralInventoryItem, FuneralInventoryLoan, TransactionBackupRecord } from '../types';
 import { recordFirebaseRead, recordFirebaseWrite, setCloudConnectionDiagnostics } from './firebaseTelemetry';
 import { sortPaymentsByNewest } from './receiptUtils';
 import { getExplicitlyDeletedMemberIds, markMemberExplicitlyDeleted } from './memberRecovery';
@@ -113,6 +113,7 @@ export const COLLECTIONS = {
   FUNERAL_SCHEDULES: 'funeral_schedules',
   FUNERAL_INVENTORY: 'funeral_inventory',
   FUNERAL_INVENTORY_LOANS: 'funeral_inventory_loans',
+  TRANSACTION_BACKUPS: 'transaction_backups',
   META: 'meta',
 } as const;
 
@@ -809,12 +810,13 @@ export async function syncMemberToCloud(member: Member): Promise<boolean> {
     let safeData = { ...sanitized };
 
     // Firestore 1MB document limit safeguard:
-    // If familyCardPhotoUrl or photoUrl is a huge dataUrl, constrain it so document saves cleanly
-    if (safeData.familyCardPhotoUrl && typeof safeData.familyCardPhotoUrl === 'string' && safeData.familyCardPhotoUrl.length > 500000) {
-      safeData.familyCardPhotoUrl = safeData.familyCardPhotoUrl.slice(0, 300000);
+    // Only strip oversized attachments that actually risk exceeding Firestore's 1MB doc limit
+    // instead of slicing base64 mid-stream and corrupting valid 500KB-880KB KK documents.
+    if (safeData.familyCardPhotoUrl && typeof safeData.familyCardPhotoUrl === 'string' && safeData.familyCardPhotoUrl.length > 880000) {
+      safeData.familyCardPhotoUrl = '';
     }
-    if (safeData.photoUrl && typeof safeData.photoUrl === 'string' && safeData.photoUrl.length > 300000) {
-      safeData.photoUrl = safeData.photoUrl.slice(0, 150000);
+    if (safeData.photoUrl && typeof safeData.photoUrl === 'string' && safeData.photoUrl.length > 500000) {
+      safeData.photoUrl = '';
     }
 
     await setDoc(ref, safeData, { merge: true });
@@ -824,16 +826,18 @@ export async function syncMemberToCloud(member: Member): Promise<boolean> {
   } catch (error: any) {
     console.warn(`Firestore syncMemberToCloud initial attempt notice for member ${member.id}:`, error?.message);
     try {
-      // Robust fallback retry: compact large attachments if document exceeds size limit
+      // Robust fallback retry: drop oversized binary payloads cleanly instead of truncating base64 mid-stream
       const sanitized = sanitizeFirestoreData(member);
       const strippedData = {
         ...sanitized,
-        familyCardPhotoUrl: sanitized.familyCardPhotoUrl && typeof sanitized.familyCardPhotoUrl === 'string'
-          ? sanitized.familyCardPhotoUrl.slice(0, 40000)
-          : '',
-        photoUrl: sanitized.photoUrl && typeof sanitized.photoUrl === 'string'
-          ? sanitized.photoUrl.slice(0, 30000)
-          : '',
+        familyCardPhotoUrl:
+          sanitized.familyCardPhotoUrl && typeof sanitized.familyCardPhotoUrl === 'string' && sanitized.familyCardPhotoUrl.length <= 400000
+            ? sanitized.familyCardPhotoUrl
+            : '',
+        photoUrl:
+          sanitized.photoUrl && typeof sanitized.photoUrl === 'string' && sanitized.photoUrl.length <= 200000
+            ? sanitized.photoUrl
+            : '',
       };
       await setDoc(ref, strippedData, { merge: true });
       clearMemberPendingSync(member.id);
@@ -856,11 +860,11 @@ export async function syncMembersBatchToCloud(members: Member[]): Promise<void> 
     const ref = doc(db, COLLECTIONS.MEMBERS, m.id);
     const sanitized = sanitizeFirestoreData(m);
     let safeData = { ...sanitized };
-    if (safeData.familyCardPhotoUrl && typeof safeData.familyCardPhotoUrl === 'string' && safeData.familyCardPhotoUrl.length > 500000) {
-      safeData.familyCardPhotoUrl = safeData.familyCardPhotoUrl.slice(0, 300000);
+    if (safeData.familyCardPhotoUrl && typeof safeData.familyCardPhotoUrl === 'string' && safeData.familyCardPhotoUrl.length > 880000) {
+      safeData.familyCardPhotoUrl = '';
     }
-    if (safeData.photoUrl && typeof safeData.photoUrl === 'string' && safeData.photoUrl.length > 300000) {
-      safeData.photoUrl = safeData.photoUrl.slice(0, 150000);
+    if (safeData.photoUrl && typeof safeData.photoUrl === 'string' && safeData.photoUrl.length > 500000) {
+      safeData.photoUrl = '';
     }
     batch.set(ref, safeData, { merge: true });
   });
@@ -1589,4 +1593,76 @@ export async function restoreDemoDataToCloud(): Promise<void> {
     throw error;
   }
 }
+
+/**
+ * Save a structured JSON transaction backup record to Cloud Firestore (`transaction_backups`)
+ */
+export async function syncTransactionBackupToCloud(backup: TransactionBackupRecord): Promise<boolean> {
+  const docPath = `${COLLECTIONS.TRANSACTION_BACKUPS}/${backup.id}`;
+  const ref = doc(db, COLLECTIONS.TRANSACTION_BACKUPS, backup.id);
+  try {
+    const sanitized = sanitizeFirestoreData(backup);
+    const serializedLen = JSON.stringify(sanitized).length;
+
+    let safePayload = sanitized;
+    if (serializedLen > 880000 && safePayload?.snapshot?.membersSummary) {
+      safePayload = {
+        ...safePayload,
+        snapshot: {
+          ...safePayload.snapshot,
+          membersSummary: [],
+        },
+      };
+    }
+
+    await setDoc(ref, safePayload, { merge: true });
+    recordFirebaseWrite(COLLECTIONS.TRANSACTION_BACKUPS, 1);
+    return true;
+  } catch (error: any) {
+    if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
+      handleFirestoreError(error, OperationType.WRITE, docPath);
+    }
+    console.warn(`Firestore syncTransactionBackupToCloud notice for ${backup.id}:`, error?.message);
+    return false;
+  }
+}
+
+/**
+ * Fetch saved daily transaction backups from Cloud Firestore sorted newest-first
+ */
+export async function fetchTransactionBackupsFromCloud(maxItems: number = 30): Promise<TransactionBackupRecord[]> {
+  try {
+    const snapshot = await getDocs(collection(db, COLLECTIONS.TRANSACTION_BACKUPS));
+    recordFirebaseRead(COLLECTIONS.TRANSACTION_BACKUPS, Math.max(1, snapshot.size));
+    const list: TransactionBackupRecord[] = [];
+    snapshot.forEach((docSnap) => {
+      list.push({ ...docSnap.data(), id: docSnap.id } as TransactionBackupRecord);
+    });
+    list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    return list.slice(0, maxItems);
+  } catch (error: any) {
+    if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
+      handleFirestoreError(error, OperationType.LIST, COLLECTIONS.TRANSACTION_BACKUPS);
+    }
+    console.warn('Firestore fetchTransactionBackupsFromCloud notice:', error?.message);
+    return [];
+  }
+}
+
+/**
+ * Delete a specific transaction backup record from Cloud Firestore
+ */
+export async function deleteTransactionBackupFromCloud(backupId: string): Promise<void> {
+  const docPath = `${COLLECTIONS.TRANSACTION_BACKUPS}/${backupId}`;
+  try {
+    await deleteDoc(doc(db, COLLECTIONS.TRANSACTION_BACKUPS, backupId));
+    recordFirebaseWrite(COLLECTIONS.TRANSACTION_BACKUPS, 1, true);
+  } catch (error: any) {
+    if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
+      handleFirestoreError(error, OperationType.DELETE, docPath);
+    }
+    console.warn(`Firestore deleteTransactionBackupFromCloud notice for ${backupId}:`, error?.message);
+  }
+}
+
 

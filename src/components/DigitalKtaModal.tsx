@@ -183,11 +183,11 @@ export const DigitalKtaModal: React.FC<DigitalKtaModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto print:p-0 print:bg-white print:static">
-      <div className="bg-slate-900 rounded-3xl border border-slate-700/80 shadow-2xl max-w-2xl w-full my-auto overflow-hidden flex flex-col max-h-[95vh] animate-in zoom-in-95 duration-200 print:shadow-none print:border-none print:max-w-none print:w-full print:bg-white print:max-h-none">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200 overflow-hidden print:p-0 print:bg-white print:static">
+      <div className="bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-700/80 shadow-2xl max-w-2xl w-full my-auto overflow-hidden flex flex-col max-h-[94dvh] sm:max-h-[95vh] animate-in zoom-in-95 duration-200 print:shadow-none print:border-none print:max-w-none print:w-full print:bg-white print:max-h-none">
         
         {/* MODAL HEADER (Hidden in Print) */}
-        <div className="bg-slate-950 text-white p-5 px-6 border-b border-slate-800 flex justify-between items-center print:hidden">
+        <div className="bg-slate-950 text-white p-4 sm:p-5 px-4 sm:px-6 border-b border-slate-800 flex justify-between items-center gap-2 shrink-0 print:hidden">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold border ${
               ktaInfo.isIssued
@@ -241,7 +241,7 @@ export const DigitalKtaModal: React.FC<DigitalKtaModalProps> = ({
         </div>
 
         {/* MODAL BODY */}
-        <div className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 print:p-0 print:bg-white">
+        <div className="p-3 sm:p-6 overflow-y-auto min-h-0 space-y-5 flex-1 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 print:p-0 print:bg-white">
           
           {/* 3-STEP ISSUANCE ROADMAP PIPELINE */}
           <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3 print:hidden">

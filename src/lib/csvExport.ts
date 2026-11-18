@@ -1,6 +1,7 @@
 import { Member, Payment, BenefitClaim, SystemSettings } from '../types';
 import { formatIDR } from './storage';
 import { MemberForensicReport, MemberStatusAnomaly } from './systemAuditLog';
+import { getIndonesiaTimestamp, formatStoredPaymentDateTime } from './indonesianTime';
 
 // Helper to escape CSV cell fields safely (handles quotes, commas, newlines)
 export const escapeCSV = (value: string | number | null | undefined): string => {
@@ -223,7 +224,7 @@ export const exportMonthlyFinancialStatementCSV = (
 
   filteredPayments.forEach((p) => {
     ledger.push({
-      date: p.verifiedAt || p.createdAt,
+      date: formatStoredPaymentDateTime(p.verifiedAt || p.createdAt, true),
       type: 'Penerimaan Iuran',
       docNo: p.receiptNumber,
       personName: p.memberName,
@@ -341,8 +342,8 @@ export const exportDuesCollectionCSV = (
       p.periodMonth || '-',
       String(p.amount),
       p.paymentMethod,
-      p.createdAt,
-      p.verifiedAt || '-',
+      formatStoredPaymentDateTime(p.createdAt, true),
+      p.verifiedAt ? formatStoredPaymentDateTime(p.verifiedAt, true) : '-',
       p.status === 'Verified' ? 'LUNAS (Terverifikasi)' : p.status === 'Pending' ? 'PENDING (Menunggu Validasi)' : 'DITOLAK',
       p.verifiedBy || (p.status === 'Verified' ? 'Admin Paguyuban' : '-'),
     ]);
@@ -550,13 +551,13 @@ export const exportStatusAuditCSV = (params: {
   const { anomalies, forensicByMemberId, settings } = params;
   const orgName =
     settings?.organizationName || settings?.communityName || 'Paguyuban Dana Kematian';
-  const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const nowStr = getIndonesiaTimestamp();
   const dateSlug = nowStr.substring(0, 10);
 
   const rows: string[][] = [
     ['LAPORAN AUDIT STATUS — ANGGOTA "MENUNGGU VALIDASI BENDAHARA" TANPA PEMBAYARAN'],
     [`Organisasi / Paguyuban: ${orgName}`],
-    [`Waktu Cetak Audit: ${nowStr}`],
+    [`Waktu Cetak Audit: ${nowStr} WIB`],
     [`Total Temuan Anomali: ${anomalies.length} Anggota`],
     [''],
     [

@@ -18,6 +18,7 @@ import {
   getDefaultPeriodHeaderText,
   resolveTreasurerName,
 } from '../lib/treasurerPdfReport';
+import { downloadTreasurerExcelReport } from '../lib/treasurerExcelReport';
 import {
   X,
   Download,
@@ -75,6 +76,7 @@ export const FinancialReportModal: React.FC<FinancialReportModalProps> = ({
   );
   const [downloadSuccess, setDownloadSuccess] = useState(false);
   const [downloadedFileName, setDownloadedFileName] = useState<string>('');
+  const [downloadedFormatLabel, setDownloadedFormatLabel] = useState<'PDF' | 'Excel (.XLSX)' | 'CSV'>('PDF');
   const [copiedSuccess, setCopiedSuccess] = useState(false);
 
   const printDateInfo = useMemo(() => formatIndonesianPrintDate(new Date()), []);
@@ -145,8 +147,25 @@ export const FinancialReportModal: React.FC<FinancialReportModalProps> = ({
       : previewPayments.reduce((sum, p) => sum + p.amount, 0);
   const periodExpense = previewClaims.reduce((sum, c) => sum + c.totalAmount, 0);
 
-  const handleExport = async () => {
+  const handleExport = async (treasurerFormat: 'pdf' | 'excel' = 'pdf') => {
     if (reportType === 'treasurer_pdf') {
+      if (treasurerFormat === 'excel') {
+        const fname = downloadTreasurerExcelReport({
+          members,
+          payments,
+          settings,
+          periodFilter: selectedPeriod,
+          periodHeaderText,
+          treasurerName: treasurerNameInput,
+          includeActiveWithoutPayment: true,
+        });
+        setDownloadedFileName(fname);
+        setDownloadedFormatLabel('Excel (.XLSX)');
+        setDownloadSuccess(true);
+        setTimeout(() => setDownloadSuccess(false), 4000);
+        return;
+      }
+
       const fname = await downloadTreasurerPdfReport({
         members,
         payments,
@@ -157,6 +176,7 @@ export const FinancialReportModal: React.FC<FinancialReportModalProps> = ({
         includeActiveWithoutPayment: true,
       });
       setDownloadedFileName(fname);
+      setDownloadedFormatLabel('PDF');
       setDownloadSuccess(true);
       setTimeout(() => setDownloadSuccess(false), 4000);
       return;
@@ -184,6 +204,7 @@ export const FinancialReportModal: React.FC<FinancialReportModalProps> = ({
       setDownloadedFileName(`Rekap_Kepatuhan_Iuran.csv`);
     }
 
+    setDownloadedFormatLabel('CSV');
     setDownloadSuccess(true);
     setTimeout(() => setDownloadSuccess(false), 3500);
   };
@@ -220,14 +241,14 @@ Bendahara: ${treasurerNameInput || resolveTreasurerName(settings)}`;
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-lg sm:text-xl font-black text-white">
-                  Laporan Bendahara & Ekspor Keuangan (PDF / CSV)
+                  Laporan Bendahara & Ekspor Keuangan (PDF / Excel / CSV)
                 </h2>
                 <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold rounded-md">
-                  PDF & Excel Ready
+                  PDF & Excel (.XLSX)
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-1">
-                Cetak Laporan Bendahara Daftar Anggota Kepesertaan Dana Kematian (.PDF) lengkap dengan logo organisasi, tanggal cetak, dan nama bendahara.
+                Cetak Laporan Bendahara Daftar Anggota Kepesertaan Dana Kematian dalam format PDF (.PDF) maupun Excel (.XLSX) lengkap dengan logo organisasi, tanggal cetak WIB, dan nama bendahara.
               </p>
             </div>
           </div>
@@ -273,14 +294,17 @@ Bendahara: ${treasurerNameInput || resolveTreasurerName(settings)}`;
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <h4 className="font-extrabold text-xs sm:text-sm text-slate-900">
-                        Laporan Bendahara — Daftar Anggota Kepesertaan Dana Kematian (PDF)
+                        Laporan Bendahara — Daftar Anggota Kepesertaan Dana Kematian (PDF & Excel)
                       </h4>
                       <span className="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-md text-[10px] font-black uppercase">
                         Format Resmi PDF
                       </span>
+                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-md text-[10px] font-black uppercase">
+                        Excel (.XLSX)
+                      </span>
                     </div>
                     <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
-                      Tabel resmi dilengkapi <strong>Logo Organisasi</strong>, kolom <strong>No</strong>, <strong>Nama Warga dan Nomor Anggota</strong>, <strong>Nominal (Rp)</strong>, <strong>Keterangan</strong>, <strong>Total Kas Berwarna Kuning</strong>, serta <strong>Tanggal Cetak & Nama Bendahara</strong> di bagian bawah.
+                      Tersedia dalam versi <strong>PDF</strong> siap cetak dan <strong>Excel (.XLSX)</strong> berisi 2 sheet (<em>Laporan Bendahara</em> berformat resmi + <em>Data Terstruktur</em> lengkap dengan rumus <code>SUM</code> &amp; filter kolom), dilengkapi <strong>Total Kas Berwarna Kuning</strong> serta <strong>Tanggal Cetak WIB &amp; Nama Bendahara</strong>.
                     </p>
                   </div>
                 </div>
@@ -391,7 +415,7 @@ Bendahara: ${treasurerNameInput || resolveTreasurerName(settings)}`;
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Teks Sub-Judul Periode pada Header PDF:
+                      Teks Sub-Judul Periode (PDF &amp; Excel):
                     </label>
                     <input
                       type="text"
@@ -403,7 +427,7 @@ Bendahara: ${treasurerNameInput || resolveTreasurerName(settings)}`;
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Nama Bendahara (Kanan Bawah PDF):
+                      Nama Bendahara (Penandatangan):
                     </label>
                     <input
                       type="text"
@@ -515,12 +539,12 @@ Bendahara: ${treasurerNameInput || resolveTreasurerName(settings)}`;
                 <Table className="w-4 h-4 text-emerald-400" />
                 <span>
                   {reportType === 'treasurer_pdf'
-                    ? 'Pratinjau Cetakan PDF Laporan Bendahara'
+                    ? 'Pratinjau Laporan Bendahara (PDF & Excel)'
                     : `Pratinjau Data CSV (${selectedPeriod})`}
                 </span>
               </div>
               <span className="text-[11px] font-mono text-slate-400">
-                {reportType === 'treasurer_pdf' ? 'Format: A4 PDF' : 'Format: UTF-8 CSV'}
+                {reportType === 'treasurer_pdf' ? 'Format: A4 PDF & .XLSX' : 'Format: UTF-8 CSV'}
               </span>
             </div>
 
@@ -751,7 +775,7 @@ Bendahara: ${treasurerNameInput || resolveTreasurerName(settings)}`;
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
               <div>
                 <span className="font-bold">
-                  File {reportType === 'treasurer_pdf' ? 'PDF' : 'CSV'} Berhasil Diunduh!
+                  File {downloadedFormatLabel} Berhasil Diunduh!
                 </span>{' '}
                 {downloadedFileName && (
                   <span className="font-mono text-[11px]">({downloadedFileName})</span>
@@ -781,7 +805,7 @@ Bendahara: ${treasurerNameInput || resolveTreasurerName(settings)}`;
             )}
           </button>
 
-          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
             <button
               type="button"
               onClick={onClose}
@@ -789,18 +813,35 @@ Bendahara: ${treasurerNameInput || resolveTreasurerName(settings)}`;
             >
               Tutup
             </button>
-            <button
-              type="button"
-              onClick={handleExport}
-              className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl shadow-lg shadow-emerald-900/30 transition-all flex items-center justify-center gap-2 text-center cursor-pointer"
-            >
-              <Download className="w-4 h-4" />
-              <span>
-                {reportType === 'treasurer_pdf'
-                  ? 'Unduh Laporan Bendahara (.PDF)'
-                  : 'Unduh File CSV Sekarang'}
-              </span>
-            </button>
+            {reportType === 'treasurer_pdf' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleExport('excel')}
+                  className="w-full sm:w-auto px-4 py-2.5 bg-teal-700 hover:bg-teal-600 text-white font-extrabold rounded-xl shadow-lg shadow-teal-950/25 transition-all flex items-center justify-center gap-2 text-center cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>Unduh Excel (.XLSX)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExport('pdf')}
+                  className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl shadow-lg shadow-emerald-900/30 transition-all flex items-center justify-center gap-2 text-center cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Unduh PDF (.PDF)</span>
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleExport('pdf')}
+                className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl shadow-lg shadow-emerald-900/30 transition-all flex items-center justify-center gap-2 text-center cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span>Unduh File CSV Sekarang</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

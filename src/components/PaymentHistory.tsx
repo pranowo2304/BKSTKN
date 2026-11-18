@@ -3,6 +3,7 @@ import { Payment, Member, SystemSettings, AppUser, CLUSTERS } from '../types';
 import { formatIDR, getMemberForUser } from '../lib/storage';
 import { exportDuesCollectionCSV } from '../lib/csvExport';
 import { downloadTreasurerPdfReport } from '../lib/treasurerPdfReport';
+import { downloadTreasurerExcelReport } from '../lib/treasurerExcelReport';
 import {
   findMemberForPayment,
   generateReceiptWhatsAppUrl,
@@ -17,6 +18,7 @@ import {
   Clock,
   XCircle,
   FileText,
+  FileSpreadsheet,
   Download,
   Share2,
   Phone,
@@ -214,6 +216,18 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
     });
   };
 
+  const handleDownloadTreasurerExcel = () => {
+    if (!settings) return;
+    downloadTreasurerExcelReport({
+      members,
+      payments: filteredPayments,
+      settings,
+      periodFilter: 'Semua Periode',
+      clusterFilter: clusterFilter !== 'Semua' ? clusterFilter : 'Semua',
+      includeActiveWithoutPayment: clusterFilter === 'Semua' && searchTerm === '',
+    });
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Title Card */}
@@ -257,11 +271,20 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
               </button>
               <button
                 type="button"
+                onClick={handleDownloadTreasurerExcel}
+                className="px-3.5 py-2 bg-teal-700 hover:bg-teal-600 text-white text-xs font-extrabold rounded-xl shadow-md transition-all inline-flex items-center gap-1.5 hover:scale-[1.02] active:scale-95 cursor-pointer print:hidden"
+                title="Unduh Laporan Bendahara Daftar Anggota Kepesertaan Dana Kematian (.XLSX / Excel)"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-white" />
+                <span>Laporan Bendahara (Excel)</span>
+              </button>
+              <button
+                type="button"
                 onClick={handleExportCSV}
                 className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-950/20 transition-all flex items-center gap-1.5 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
               >
                 <Download className="w-4 h-4" />
-                <span>Pratinjau & Ekspor (PDF/CSV)</span>
+                <span>Pratinjau & Ekspor (PDF/Excel/CSV)</span>
               </button>
             </>
           )}

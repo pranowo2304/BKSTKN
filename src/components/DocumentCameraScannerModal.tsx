@@ -327,8 +327,8 @@ export const DocumentCameraScannerModal: React.FC<DocumentCameraScannerModalProp
         };
       }
 
-      // Generate optimized JPEG data URL
-      const dataUrl = fullCanvas.toDataURL('image/jpeg', 0.82);
+      // Generate high-clarity JPEG data URL for accurate OCR digits
+      const dataUrl = fullCanvas.toDataURL('image/jpeg', 0.90);
 
       setCapturedDataUrl(dataUrl);
       setCapturedReport(report);
@@ -684,7 +684,7 @@ export const DocumentCameraScannerModal: React.FC<DocumentCameraScannerModalProp
             <div className="flex items-center justify-between gap-3">
               <div className="hidden sm:flex items-center gap-2 text-slate-400 text-xs">
                 <Info className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>Pastikan seluruh bagian tabel KK masuk dalam bingkai persegi.</span>
+                <span>Disarankan Landscape agar teks lebih lebar (Portrait juga didukung jika jelas).</span>
               </div>
 
               {/* Shutter Button */}

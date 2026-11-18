@@ -1,5 +1,6 @@
 import { Member, Payment, SystemSettings, MembershipPeriodSettings } from '../types';
 import { getStoredSettings } from './storage';
+import { parseIndonesiaTimestamp } from './indonesianTime';
 
 export interface MemberAnnualExpiryInfo {
   memberId: string;
@@ -115,12 +116,18 @@ export const calculateMemberExpiry = (
 
   // Sort verified payments descending
   const sortedPayments = [...verifiedAnnualPayments].sort((a, b) => {
-    const dateA = new Date(a.verifiedAt || a.createdAt).getTime();
-    const dateB = new Date(b.verifiedAt || b.createdAt).getTime();
+    const dateA = (parseIndonesiaTimestamp(a.verifiedAt || a.createdAt) || new Date(0)).getTime();
+    const dateB = (parseIndonesiaTimestamp(b.verifiedAt || b.createdAt) || new Date(0)).getTime();
     return dateB - dateA;
   });
 
-  const lastPayment = sortedPayments[0] || verifiedPayments.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+  const lastPayment =
+    sortedPayments[0] ||
+    verifiedPayments.sort(
+      (a, b) =>
+        (parseIndonesiaTimestamp(b.createdAt) || new Date(0)).getTime() -
+        (parseIndonesiaTimestamp(a.createdAt) || new Date(0)).getTime()
+    )[0];
 
   let expiryDate: Date;
   let coverageYear = '';
@@ -147,8 +154,8 @@ export const calculateMemberExpiry = (
           const match = p.periodMonth.match(/\b(20\d\d)\b/);
           if (match) paidYears.push(Number(match[0]));
         } else {
-          const dt = new Date(p.verifiedAt || p.createdAt);
-          if (!isNaN(dt.getTime())) paidYears.push(dt.getFullYear());
+          const dt = parseIndonesiaTimestamp(p.verifiedAt || p.createdAt);
+          if (dt && !isNaN(dt.getTime())) paidYears.push(dt.getFullYear());
         }
       });
 
@@ -174,7 +181,7 @@ export const calculateMemberExpiry = (
 
     if (lastPayment) {
       const payDateStr = lastPayment.verifiedAt || lastPayment.createdAt;
-      const basePayDate = new Date(payDateStr);
+      const basePayDate = parseIndonesiaTimestamp(payDateStr) || new Date(payDateStr);
       expiryDate = new Date(basePayDate);
       expiryDate.setMonth(expiryDate.getMonth() + monthsToAdd);
 

@@ -1,4 +1,5 @@
 import { Payment, Member, SystemSettings } from '../types';
+import { INDONESIA_TIMEZONE, parseIndonesiaTimestamp } from './indonesianTime';
 
 export interface PendingGracePeriodInfo {
   paymentId: string;
@@ -25,6 +26,8 @@ export interface PaymentWithGraceInfo {
 export const parsePaymentDate = (dateStr?: string): Date => {
   if (!dateStr) return new Date();
   try {
+    const parsedIndonesia = parseIndonesiaTimestamp(dateStr);
+    if (parsedIndonesia) return parsedIndonesia;
     const normalized = dateStr.includes(' ') && !dateStr.includes('T')
       ? dateStr.replace(' ', 'T')
       : dateStr;
@@ -62,12 +65,14 @@ export const calculatePendingGracePeriod = (
 
   const graceDeadlineDate = new Date(createdAtDate.getTime() + 30 * 24 * 60 * 60 * 1000);
   const graceDeadlineFormatted = graceDeadlineDate.toLocaleDateString('id-ID', {
+    timeZone: INDONESIA_TIMEZONE,
     day: 'numeric',
     month: 'short',
     year: 'numeric',
   });
 
   const createdAtFormatted = createdAtDate.toLocaleDateString('id-ID', {
+    timeZone: INDONESIA_TIMEZONE,
     day: 'numeric',
     month: 'short',
     year: 'numeric',

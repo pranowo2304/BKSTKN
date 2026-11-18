@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Member, Payment, SystemSettings, PaymentType, PaymentMethod, AppUser } from '../types';
 import { formatIDR, getMemberForUser } from '../lib/storage';
 import { getSystemConfiguredPeriod, getEffectivePaymentPeriod } from '../lib/receiptUtils';
+import { getIndonesiaTimestamp, formatStoredPaymentDateTime } from '../lib/indonesianTime';
 import {
   CreditCard,
   Upload,
@@ -348,7 +349,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
       proofImageUrl: proofImage || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=500&q=80',
       proofFileName: fileName || 'bukti_transfer.jpg',
       status: 'Pending', // Awaiting Admin Validation!
-      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      createdAt: getIndonesiaTimestamp(),
     };
 
     onAddPayment(newPayment);
@@ -753,7 +754,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                             </span>
                           </div>
                           <p className="text-[10px] text-slate-500 font-mono">
-                            {pay.paymentMethod} • {pay.createdAt}
+                            {pay.paymentMethod} • {formatStoredPaymentDateTime(pay.createdAt, true)}
                           </p>
                         </div>
                         {isAdminUser && onDeletePayment && (
@@ -1121,7 +1122,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                       </td>
                       <td className="py-3 px-3.5">
                         <div className="font-semibold text-slate-700">{pay.paymentMethod}</div>
-                        <div className="font-mono text-[10px] text-slate-500">{pay.createdAt}</div>
+                        <div className="font-mono text-[10px] text-slate-500">{formatStoredPaymentDateTime(pay.createdAt, true)}</div>
                       </td>
                       <td className="py-3 px-3.5">
                         <span
@@ -1197,7 +1198,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
               </div>
               <div className="flex justify-between gap-2">
                 <span className="text-slate-500">Waktu Konfirmasi:</span>
-                <span className="font-mono text-slate-600 text-right">{deleteTargetPayment.createdAt}</span>
+                <span className="font-mono text-slate-600 text-right">{formatStoredPaymentDateTime(deleteTargetPayment.createdAt, true)}</span>
               </div>
             </div>
 

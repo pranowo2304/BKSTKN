@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { AppNotification, MemberStatus, MemberVerificationStatus, Payment, Member, SystemSettings } from '../types';
 import { formatIDR } from '../lib/storage';
 import { downloadTreasurerPdfReport } from '../lib/treasurerPdfReport';
+import { downloadTreasurerExcelReport } from '../lib/treasurerExcelReport';
 import { analyzeMemberStatusAnomalies } from '../lib/systemAuditLog';
 import { SystemStatusTraceModal } from './SystemStatusTraceModal';
 import {
@@ -17,6 +18,7 @@ import {
   generateGracePeriodWhatsAppUrl,
   parsePaymentDate,
 } from '../lib/gracePeriodUtils';
+import { getIndonesiaTimestamp, formatStoredPaymentDateTime } from '../lib/indonesianTime';
 import {
   CheckSquare,
   ShieldCheck,
@@ -141,17 +143,17 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
 
     // Setelah verifikasi, bendahara langsung diberikan opsi mengirim kwitansi resmi ke WA anggota
     if (isBendahara) {
-      const nowIso = new Date().toISOString().replace('T', ' ').substring(0, 19);
+      const nowWib = getIndonesiaTimestamp();
       const verifiedObj: Payment = {
         ...paymentToVerify,
         status: 'Verified',
-        verifiedAt: nowIso,
+        verifiedAt: nowWib,
         verifiedBy: data.signerName || activeUser?.name || settings.treasurerName || 'Bendahara',
         adminNotes: 'Disetujui dan disahkan secara resmi oleh Bendahara',
         adminSignature: data.signatureUrl,
         adminSignerName: data.signerName,
         adminSignerTitle: data.signerTitle,
-        adminSignatureDate: nowIso,
+        adminSignatureDate: nowWib,
       };
       setPostVerifyPayment(verifiedObj);
     }
@@ -163,11 +165,11 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
 
     // Setelah verifikasi cepat, bendahara langsung diberikan opsi mengirim kwitansi resmi ke WA anggota
     if (isBendahara) {
-      const nowIso = new Date().toISOString().replace('T', ' ').substring(0, 19);
+      const nowWib = getIndonesiaTimestamp();
       const verifiedObj: Payment = {
         ...payment,
         status: 'Verified',
-        verifiedAt: nowIso,
+        verifiedAt: nowWib,
         verifiedBy: verifierName,
         adminNotes: 'Disetujui dan disahkan oleh Bendahara',
         adminSignerName: verifierName,
@@ -474,6 +476,24 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
           >
             <FileText className="w-4 h-4 text-slate-950 shrink-0" />
             <span>Laporan Bendahara (PDF)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              downloadTreasurerExcelReport({
+                members,
+                payments,
+                settings,
+                periodFilter: 'Semua Periode',
+                includeActiveWithoutPayment: true,
+              })
+            }
+            className="px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg transition-all flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 whitespace-nowrap shrink-0"
+            title="Unduh Laporan Bendahara Daftar Anggota Kepesertaan Dana Kematian (.XLSX / Excel)"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-white shrink-0" />
+            <span>Laporan Bendahara (Excel)</span>
           </button>
 
           {activeUser?.authority === 'Admin' && (
@@ -868,7 +888,7 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
                       {/* Metode & Waktu */}
                       <td className="py-3.5 px-4 align-middle text-xs">
                         <span className="font-semibold text-slate-700 block">{payment.paymentMethod}</span>
-                        <span className="font-mono text-[11px] text-slate-500 block">{payment.createdAt}</span>
+                        <span className="font-mono text-[11px] text-slate-500 block">{formatStoredPaymentDateTime(payment.createdAt, true)}</span>
                       </td>
 
                       {/* Umur & Grace Period */}
@@ -1152,7 +1172,7 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
                       </div>
                       <div>
                         <span className="text-slate-400 text-[10px] uppercase font-bold block">Waktu Submit</span>
-                        <span className="font-mono text-slate-800">{payment.createdAt}</span>
+                        <span className="font-mono text-slate-800">{formatStoredPaymentDateTime(payment.createdAt, true)}</span>
                       </div>
                     </div>
 
@@ -1437,7 +1457,7 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
               </div>
               <div className="flex justify-between gap-2">
                 <span className="text-slate-500">Waktu Konfirmasi:</span>
-                <span className="font-mono text-slate-600 text-right">{deleteModalPayment.createdAt}</span>
+                <span className="font-mono text-slate-600 text-right">{formatStoredPaymentDateTime(deleteModalPayment.createdAt, true)}</span>
               </div>
             </div>
 

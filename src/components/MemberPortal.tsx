@@ -1759,7 +1759,14 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({
         <FamilyCardModal
           isOpen={isKkModalOpen}
           onClose={() => setIsKkModalOpen(false)}
+          photoUrl={member.familyCardPhotoUrl || ''}
           member={member}
+          memberName={member.name}
+          kkNumber={member.familyCardNumber}
+          cluster={member.cluster}
+          fileName={member.familyCardFileName}
+          qualityScore={member.familyCardQualityScore}
+          qualityStatus={member.familyCardQualityStatus}
         />
       )}
 

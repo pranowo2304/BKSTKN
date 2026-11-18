@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import { Member, Payment, SystemSettings } from '../types';
 import { getStoredUsers } from './storage';
 import { isPaymentMatchingPeriod } from './csvExport';
+import { getIndonesiaTimestamp, getIndonesiaDateString, formatStoredPaymentDateTime } from './indonesianTime';
 
 export interface TreasurerReportRow {
   no: number;
@@ -73,13 +74,14 @@ export function formatIndonesianPrintDate(date: Date = new Date()): {
   dateOnly: string;
   dateTime: string;
 } {
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = INDONESIAN_MONTHS_TITLE[date.getMonth()] || '';
-  const year = date.getFullYear();
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const wibStr = getIndonesiaTimestamp(date); // YYYY-MM-DD HH:mm:ss in Asia/Jakarta
+  const [datePart, timePart] = wibStr.split(' ');
+  const [year, monthStr, day] = datePart.split('-');
+  const monthIdx = Math.max(0, Math.min(11, parseInt(monthStr, 10) - 1));
+  const month = INDONESIAN_MONTHS_TITLE[monthIdx] || '';
+  const hhmm = (timePart || '00:00:00').slice(0, 5);
   const dateOnly = `${day} ${month} ${year}`;
-  const dateTime = `${dateOnly}, ${hours}:${minutes} WIB`;
+  const dateTime = `${dateOnly}, ${hhmm} WIB`;
   return { dateOnly, dateTime };
 }
 
@@ -248,7 +250,8 @@ export function buildTreasurerReportRows({
     const memberNumber = matchedMember?.memberNumber || p.memberNumber || '-';
     const phone = formatReportPhone(matchedMember?.phone || '');
     const methodLabel = resolveBankTransferLabel(p.paymentMethod, settings);
-    const timestamp = (p.createdAt || p.verifiedAt || matchedMember?.joinDate || '').trim();
+    const rawTimestamp = (p.createdAt || p.verifiedAt || matchedMember?.joinDate || '').trim();
+    const timestamp = rawTimestamp ? formatStoredPaymentDateTime(rawTimestamp, false) : '';
 
     rawEntries.push({
       memberId: matchedMember?.id || p.memberId || p.id,
@@ -553,8 +556,7 @@ export async function downloadTreasurerPdfReport(options: GenerateTreasurerPdfOp
     logoPngDataUrl,
   });
 
-  const now = new Date();
-  const dateTag = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const dateTag = getIndonesiaDateString().replace(/-/g, '');
   const filename = `Laporan_Bendahara_Kepesertaan_Dana_Kematian_${dateTag}.pdf`;
   doc.save(filename);
   return filename;
