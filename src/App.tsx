@@ -3755,6 +3755,7 @@ export default function App() {
             settings={settings}
             benefits={benefits}
             users={users}
+            financials={financials}
             onNavigateToPayment={handleSelectMemberForPayment}
             onUpdateMember={handleUpdateMember}
             onLogout={handleRequestLogout}
