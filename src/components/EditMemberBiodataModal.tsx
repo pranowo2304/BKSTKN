@@ -26,6 +26,7 @@ import {
 import { FamilyCardUploader } from './FamilyCardUploader';
 import { ExtractedKkResult, mergeExtractedDependents } from '../lib/kkExtractor';
 import { MemberPhotoCaptureModal } from './MemberPhotoCaptureModal';
+import { processImageFile } from '../lib/imageUtils';
 import { checkDuplicateMember, findDuplicateNikMember, findDuplicateKkMember } from '../lib/duplicateValidator';
 
 interface EditMemberBiodataModalProps {
@@ -58,6 +59,7 @@ export const EditMemberBiodataModal: React.FC<EditMemberBiodataModalProps> = ({
   const [cluster, setCluster] = useState<string>(member?.cluster || 'Cluster Sanur');
   const [photoUrl, setPhotoUrl] = useState<string>(member?.photoUrl || '');
   const [isPhotoCaptureModalOpen, setIsPhotoCaptureModalOpen] = useState<boolean>(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
   const [familyCardFile, setFamilyCardFile] = useState<File | null>(null);
   const [familyCardPhotoUrl, setFamilyCardPhotoUrl] = useState(member?.familyCardPhotoUrl || '');
   const [familyCardFileName, setFamilyCardFileName] = useState(member?.familyCardFileName || '');
@@ -106,8 +108,35 @@ export const EditMemberBiodataModal: React.FC<EditMemberBiodataModalProps> = ({
       setDependents(member.dependentsList ? [...member.dependentsList] : []);
       setErrorMessage(null);
       setSuccessMessage(null);
+      setIsUploadingPhoto(false);
     }
-  }, [member]);
+  }, [member, isOpen]);
+
+  const handleProfilePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (!file.type.startsWith('image/') && !/\.(jpe?g|png|webp|heic|heif)$/i.test(file.name)) {
+      setErrorMessage('Format foto profil harus berupa gambar (JPG, PNG, atau WebP).');
+      return;
+    }
+
+    setErrorMessage(null);
+    setIsUploadingPhoto(true);
+    try {
+      const processed = await processImageFile(file, 720, 0.82);
+      setPhotoUrl(processed.dataUrl);
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error
+          ? err.message
+          : 'Gagal memproses foto profil. Silakan coba pilih gambar lain.'
+      );
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
 
   if (!isOpen || !member) return null;
 
@@ -291,6 +320,106 @@ export const EditMemberBiodataModal: React.FC<EditMemberBiodataModalProps> = ({
           {/* TAB 1: BIODATA */}
           {activeTab === 'biodata' && (
             <div className="space-y-4 animate-in fade-in">
+              {/* Foto Profil / Pasfoto Resmi KTA */}
+              <div className="p-4 bg-slate-50/90 border border-slate-200 rounded-2xl">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                  {/* Preview Pasfoto 3:4 */}
+                  <div className="relative shrink-0">
+                    <div className="w-24 h-32 rounded-2xl overflow-hidden border-2 border-dashed border-slate-300 bg-white shadow-xs flex flex-col items-center justify-center relative group">
+                      {photoUrl ? (
+                        <>
+                          <img
+                            src={photoUrl}
+                            alt={`Foto Profil ${name || member.name}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setIsPhotoCaptureModalOpen(true)}
+                            className="absolute inset-0 bg-slate-900/45 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
+                            title="Ganti Foto via Kamera"
+                          >
+                            <Camera className="w-5 h-5" />
+                          </button>
+                        </>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center text-slate-400 p-2 text-center">
+                          <User className="w-9 h-9 mb-1 text-slate-300" />
+                          <span className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wide">
+                            Belum Ada Foto
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    {photoUrl && (
+                      <span className="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 bg-emerald-600 text-white text-[9px] font-black rounded-full shadow-xs flex items-center gap-0.5">
+                        <Check className="w-2.5 h-2.5" />
+                        <span>KTA</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Upload & Camera Controls */}
+                  <div className="flex-1 space-y-2.5 text-center sm:text-left w-full">
+                    <div>
+                      <span className="text-xs font-extrabold text-slate-800 block">
+                        Foto Profil Anggota (Tampil di KTA Digital)
+                      </span>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {photoUrl
+                          ? 'Anda dapat mengganti pasfoto profil melalui galeri/berkas atau kamera langsung.'
+                          : 'Belum ada foto profil. Unggah pasfoto dari perangkat atau ambil langsung dengan kamera.'}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                      <label
+                        className={`px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer ${
+                          isUploadingPhoto ? 'opacity-60 pointer-events-none' : ''
+                        }`}
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>
+                          {isUploadingPhoto
+                            ? 'Memproses Foto...'
+                            : photoUrl
+                            ? 'Ganti Foto dari Berkas'
+                            : 'Upload Foto Profil'}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={isUploadingPhoto}
+                          onChange={handleProfilePhotoUpload}
+                          className="hidden"
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsPhotoCaptureModalOpen(true)}
+                        disabled={isUploadingPhoto}
+                        className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Camera className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>{photoUrl ? 'Ambil Ulang Kamera' : 'Ambil via Kamera'}</span>
+                      </button>
+
+                      {photoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setPhotoUrl('')}
+                          className="px-3 py-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Hapus Foto</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Nama Lengkap */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -660,6 +789,18 @@ export const EditMemberBiodataModal: React.FC<EditMemberBiodataModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* Modal Kamera Pasfoto Profil */}
+      <MemberPhotoCaptureModal
+        isOpen={isPhotoCaptureModalOpen}
+        onClose={() => setIsPhotoCaptureModalOpen(false)}
+        onPhotoCaptured={(capturedUrl) => {
+          setPhotoUrl(capturedUrl);
+          setIsPhotoCaptureModalOpen(false);
+        }}
+        memberName={name || member.name}
+        currentPhotoUrl={photoUrl}
+      />
     </div>
   );
 };
