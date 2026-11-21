@@ -18,18 +18,14 @@ import {
   User,
   Info,
   Calendar,
-  Sparkles,
   ExternalLink,
   Edit3,
   X,
   Crown,
-  RotateCcw,
   Eye,
   Lock,
   ShieldAlert,
   Heart,
-  Plus,
-  Upload,
   Camera,
   Check,
   Building,
@@ -80,7 +76,6 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
   onDeleteMember,
   onUpdateMemberCluster,
   onViewMemberDetail,
-  onAddClaim,
   onNavigateToRealization,
   onNavigateToDashboard,
   onLogout,
@@ -185,92 +180,8 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
     return members;
   }, [members, isRtRole, userCluster]);
 
-  // RT Claim Modal States
-  const [isRtClaimModalOpen, setIsRtClaimModalOpen] = useState(false);
-  const [claimFilterByCluster, setClaimFilterByCluster] = useState(true);
-  const claimCandidateMembers = claimFilterByCluster && baseMembers.length > 0 ? baseMembers : members;
-  const [claimMemberId, setClaimMemberId] = useState(claimCandidateMembers[0]?.id || members[0]?.id || '');
-  const [claimDeceasedName, setClaimDeceasedName] = useState('');
-  const [claimRelationship, setClaimRelationship] = useState<'Anggota Utama' | 'Suami/Istri' | 'Anak' | 'Orang Tua' | 'Tanggungan Lain'>('Anggota Utama');
-  const [claimDateOfDeath, setClaimDateOfDeath] = useState(new Date().toISOString().split('T')[0]);
-  const [claimCauseOfDeath, setClaimCauseOfDeath] = useState('');
-  const [claimDeathCertUrl, setClaimDeathCertUrl] = useState<string | null>(null);
-  const [claimDeathCertName, setClaimDeathCertName] = useState('');
-  const [claimNotes, setClaimNotes] = useState('Laporan warga berduka diajukan resmi oleh Ketua RT setempat.');
+  // Death certificate zoom preview state
   const [zoomedDeathCert, setZoomedDeathCert] = useState<string | null>(null);
-
-  // Synchronize candidate member
-  useEffect(() => {
-    if (claimCandidateMembers.length > 0 && !claimCandidateMembers.some((m) => m.id === claimMemberId)) {
-      setClaimMemberId(claimCandidateMembers[0].id);
-    }
-  }, [claimCandidateMembers, claimMemberId]);
-
-  const handleRtClaimSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const activeMember = members.find((m) => m.id === claimMemberId) || claimCandidateMembers[0] || members[0];
-    if (!activeMember) {
-      alert('Pilih data anggota terdaftar terlebih dahulu.');
-      return;
-    }
-    if (!claimDeceasedName.trim()) {
-      alert('Masukkan nama almarhum/almarhumah.');
-      return;
-    }
-
-    const nextClaimNum = `KLAIM-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
-
-    const newClaim: BenefitClaim = {
-      id: 'claim-' + Date.now(),
-      claimNumber: nextClaimNum,
-      memberId: activeMember.id,
-      memberName: activeMember.name,
-      memberNumber: activeMember.memberNumber,
-      cluster: activeMember.cluster || userCluster || 'Cluster RT',
-      deceasedName: claimDeceasedName.trim(),
-      relationship: claimRelationship,
-      dateOfDeath: claimDateOfDeath,
-      causeOfDeath: claimCauseOfDeath.trim() || 'Sakit / Usia Lanjut',
-      deathCertificateUrl: claimDeathCertUrl || undefined,
-      deathCertificateFileName: claimDeathCertName || undefined,
-      status: 'Menunggu Pembayaran Bendahara',
-      submittedByRtName: activeUser?.name || officerName || 'Ketua RT',
-      submittedByRtCluster: activeUser?.cluster || userCluster || activeMember.cluster || 'Cluster RT',
-      submittedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      rtNotes: claimNotes.trim() || 'Laporan duka cita diajukan resmi oleh Ketua RT setempat.',
-      expenseDetails: [],
-      totalAmount: 0,
-      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      processedBy: `${activeUser?.name || officerName || 'Ketua RT'} (Pengajuan Awal RT)`,
-      notes: 'Klaim baru diajukan oleh RT. Menunggu Bendahara melakukan input rincian pembayaran ke pihak terkait.',
-    };
-
-    if (onAddClaim) {
-      onAddClaim(newClaim);
-    }
-
-    setIsRtClaimModalOpen(false);
-    setStatusFilter('claims');
-    setClaimDeceasedName('');
-    setClaimCauseOfDeath('');
-    setClaimDeathCertUrl(null);
-    setClaimDeathCertName('');
-    setClaimNotes('Laporan warga berduka diajukan resmi oleh Ketua RT setempat.');
-    setToastMessage(`Klaim santunan untuk "${newClaim.deceasedName}" (${newClaim.claimNumber}) berhasil disimpan! Berkas berstatus Menunggu Pembayaran Bendahara dan telah tercatat di sistem.`);
-    setTimeout(() => setToastMessage(null), 7000);
-  };
-
-  const setSampleClaimData = () => {
-    if (claimCandidateMembers.length > 0) {
-      setClaimMemberId(claimCandidateMembers[0].id);
-    }
-    setClaimDeceasedName('Alm. Bpk. Rusli Hidayat');
-    setClaimRelationship('Anggota Utama');
-    setClaimCauseOfDeath('Sakit Usia Lanjut di Rumah Duka');
-    setClaimDeathCertUrl('https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=600&auto=format&fit=crop&q=80');
-    setClaimDeathCertName('surat_kematian_kelurahan_resmi.pdf');
-    setClaimNotes('Laporan duka cita warga RT. Surat keterangan kematian resmi telah lengkap dan terverifikasi oleh Ketua RT.');
-  };
 
   const relevantRtClaims = useMemo(() => {
     return claims.filter((c) => {
@@ -660,15 +571,6 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
             <span>Panduan Alur RT</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => setIsRtClaimModalOpen(true)}
-            className="px-3.5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs rounded-xl shadow-xs transition-colors inline-flex items-center gap-1.5 cursor-pointer"
-          >
-            <Heart className="w-3.5 h-3.5" />
-            <span>+ Input Klaim Santunan Warga (RT)</span>
-          </button>
-
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 p-2 rounded-xl text-xs">
             <User className="w-4 h-4 text-indigo-600 shrink-0" />
             <div>
@@ -693,81 +595,8 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
         </div>
       )}
 
-      {/* RT Login Personalized Cluster Banner */}
-      {activeUser && (
-        <div className={`p-4 rounded-2xl border shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
-          isRtRole && userCluster
-            ? 'bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-white border-amber-300 text-amber-950'
-            : 'bg-indigo-50/70 border-indigo-200 text-indigo-950'
-        }`}>
-          <div className="flex items-center gap-3">
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-white shrink-0 shadow-sm ${
-              activeUser.avatarColor || (isRtRole ? 'bg-amber-600' : 'bg-indigo-600')
-            }`}>
-              {activeUser.name.charAt(0)}
-            </div>
-            <div>
-              <p className="font-extrabold text-xs sm:text-sm text-slate-900 flex items-center gap-2 flex-wrap">
-                <span>Login: {activeUser.name}</span>
-                <span className={`px-2 py-0.5 rounded-md text-[10px] font-black border ${
-                  isRtRole ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-indigo-100 text-indigo-900 border-indigo-300'
-                }`}>
-                  {activeUser.authority} {userCluster ? `• ${userCluster}` : ''}
-                </span>
-              </p>
-              <p className="text-slate-600 mt-0.5">
-                {isRtRole && userCluster ? (
-                  <span>
-                    Verifikasi warga disesuaikan otomatis dengan wilayah penugasan Anda di <strong>{userCluster}</strong>.
-                  </span>
-                ) : (
-                  <span>
-                    Anda memiliki wewenang supervisi penuh untuk memantau dan memverifikasi calon warga di semua RT Cluster.
-                  </span>
-                )}
-              </p>
-            </div>
-          </div>
-
-          {isRtRole && userCluster && selectedCluster !== userCluster && (
-            <button
-              type="button"
-              onClick={() => setSelectedCluster(userCluster)}
-              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5 self-start sm:self-auto shrink-0"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Kembali ke {userCluster}</span>
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Cluster Filter Section */}
-      {isRtRole && userCluster ? (
-        <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/40 p-4 sm:p-5 rounded-2xl text-white shadow-md border border-amber-500/30 space-y-2">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/40 shrink-0">
-                <Home className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Lingkungan RT yang Dipimpin</span>
-                  <span className="px-2 py-0.5 bg-amber-400 text-slate-950 text-[10px] font-black rounded-md">Hak Akses Terkunci</span>
-                </div>
-                <h3 className="text-lg font-black text-white mt-0.5">{userCluster}</h3>
-                <p className="text-xs text-slate-300">
-                  Sesuai ketentuan, Ketua RT hanya dapat melihat data warga dan melakukan verifikasi di lingkungan <strong>{userCluster}</strong>.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 self-start sm:self-auto bg-slate-800/80 px-3.5 py-2 rounded-xl border border-slate-700 text-xs">
-              <span className="text-slate-400">Total Warga {userCluster}:</span>
-              <span className="font-extrabold text-emerald-400">{baseMembers.length} Orang</span>
-            </div>
-          </div>
-        </div>
-      ) : (
+      {/* Cluster Filter Section (hanya untuk supervisi lintas cluster / non-RT) */}
+      {!(isRtRole && userCluster) && (
         <div className="bg-slate-900 p-3 sm:p-4 rounded-2xl text-white shadow-md space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
             <span className="text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
@@ -966,18 +795,9 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
                 {userCluster && <span className="text-rose-300 text-sm font-bold">({userCluster})</span>}
               </h3>
               <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
-                Ketua RT menginput klaim duka warga. Selanjutnya Bendahara menginput pembayaran pihak luar & bukti transfer, lalu disahkan Ketua Paguyuban untuk pemotongan kas paguyuban.
+                Ketua RT memantau pengajuan klaim duka warga di lingkungan RT. Selanjutnya Bendahara menginput pembayaran pihak luar & bukti transfer, lalu disahkan Ketua Paguyuban untuk pemotongan kas paguyuban.
               </p>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setIsRtClaimModalOpen(true)}
-              className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg shadow-rose-950/40 transition-all flex items-center gap-2 cursor-pointer shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Input Klaim Santunan Warga</span>
-            </button>
           </div>
 
           {/* Quick Metrics Bar */}
@@ -1011,18 +831,8 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
                   Belum Ada Pengajuan Klaim Santunan Warga {userCluster ? `di ${userCluster}` : ''}
                 </h4>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  Ketua RT dapat mencatat peristiwa duka cita warga dan mengunggah surat kematian agar proses santunan kas duka cita segera diproses oleh Bendahara.
+                  Belum ada riwayat pengajuan klaim santunan duka cita warga yang tercatat pada cluster ini.
                 </p>
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsRtClaimModalOpen(true)}
-                    className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Input Pengajuan Santunan Pertama</span>
-                  </button>
-                </div>
               </div>
             ) : (
               relevantRtClaims.map((claim) => {
@@ -1685,228 +1495,6 @@ export const RtClusterVerification: React.FC<RtClusterVerificationProps> = ({
           cluster={selectedKkViewerMember.cluster}
           fileName={selectedKkViewerMember.familyCardFileName}
         />
-      )}
-
-      {/* RT INPUT BENEFIT CLAIM MODAL */}
-      {isRtClaimModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 space-y-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 my-8">
-            <div className="flex items-start justify-between border-b border-slate-200 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
-                  <Heart className="w-6 h-6" />
-                </div>
-                <div>
-                  <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-black rounded-md uppercase mb-0.5">
-                    <span>Tahap 1: Laporan Duka Cita oleh Ketua RT</span>
-                  </div>
-                  <h3 className="text-lg font-black text-slate-900">
-                    Formulir Pengajuan Santunan Kematian Warga (RT)
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Wilayah Pengajuan: <strong>{userCluster || 'Cluster RT'}</strong>
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsRtClaimModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 text-sm font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleRtClaimSubmit} className="space-y-4">
-              {/* Helper Bar */}
-              <div className="flex items-center justify-between bg-indigo-50 p-3 rounded-xl border border-indigo-200 text-xs">
-                <span className="text-indigo-900 font-semibold flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-indigo-600" />
-                  <span>Isi otomatis dengan data simulasi kematian warga?</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={setSampleClaimData}
-                  className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg transition-colors cursor-pointer"
-                >
-                  Isi Contoh Cepat
-                </button>
-              </div>
-
-              {/* Citizen Selector */}
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block text-xs font-bold text-slate-700">
-                    Pilih Anggota Terdaftar (Keluarga Duka) <span className="text-rose-500">*</span>
-                  </label>
-                  {userCluster && (
-                    <button
-                      type="button"
-                      onClick={() => setClaimFilterByCluster(!claimFilterByCluster)}
-                      className="text-[11px] font-bold text-indigo-600 hover:underline cursor-pointer"
-                    >
-                      {claimFilterByCluster ? `Tampilkan Semua Cluster` : `Hanya ${userCluster}`}
-                    </button>
-                  )}
-                </div>
-                <select
-                  required
-                  value={claimMemberId}
-                  onChange={(e) => setClaimMemberId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
-                >
-                  {claimCandidateMembers.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} ({m.memberNumber}) - {m.cluster}
-                    </option>
-                  ))}
-                </select>
-                {claimCandidateMembers.length === 0 && (
-                  <p className="text-[11px] text-amber-600 mt-1">Belum ada anggota di cluster ini.</p>
-                )}
-              </div>
-
-              {/* Deceased Name & Relationship */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Nama Almarhum / Almarhumah <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Contoh: Bpk. H. Rusli Hidayat"
-                    value={claimDeceasedName}
-                    onChange={(e) => setClaimDeceasedName(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Hubungan dengan Anggota Terdaftar <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={claimRelationship}
-                    onChange={(e) => setClaimRelationship(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
-                  >
-                    <option value="Anggota Utama">Anggota Utama (Kepala Keluarga)</option>
-                    <option value="Suami/Istri">Suami / Istri Sah</option>
-                    <option value="Anak">Anak Kandung</option>
-                    <option value="Orang Tua">Orang Tua Kandung</option>
-                    <option value="Tanggungan Lain">Tanggungan Lain Sesuai KK</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Date of Death & Cause */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Tanggal Wafat <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={claimDateOfDeath}
-                    onChange={(e) => setClaimDateOfDeath(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Penyebab Kematian (Singkat)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Contoh: Sakit Medis di RS / Usia Lanjut"
-                    value={claimCauseOfDeath}
-                    onChange={(e) => setClaimCauseOfDeath(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Lampiran Surat Kematian */}
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
-                <label className="block text-xs font-bold text-slate-700">
-                  Unggah Surat Keterangan Kematian Resmi RT / Kelurahan / RS
-                </label>
-                <div className="flex flex-wrap items-center gap-3">
-                  <label className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl cursor-pointer inline-flex items-center gap-1.5 transition-colors">
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Pilih Berkas / Foto</span>
-                    <input
-                      type="file"
-                      accept="image/*,.pdf"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          setClaimDeathCertName(file.name);
-                          const reader = new FileReader();
-                          reader.onload = (ev) => {
-                            setClaimDeathCertUrl(ev.target?.result as string);
-                          };
-                          reader.readAsDataURL(file);
-                        }
-                      }}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setClaimDeathCertUrl('https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=600&auto=format&fit=crop&q=80');
-                      setClaimDeathCertName('surat_kematian_kelurahan_resmi.pdf');
-                    }}
-                    className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs rounded-xl cursor-pointer"
-                  >
-                    Gunakan Contoh Berkas
-                  </button>
-                  {claimDeathCertName && (
-                    <span className="text-xs font-bold text-emerald-700 flex items-center gap-1">
-                      <Check className="w-3.5 h-3.5" /> {claimDeathCertName}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* RT Notes */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Catatan Pengantar Ketua RT:
-                </label>
-                <textarea
-                  rows={2}
-                  value={claimNotes}
-                  onChange={(e) => setClaimNotes(e.target.value)}
-                  placeholder="Catatan pengantar laporan warga berduka"
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
-                />
-              </div>
-
-              {/* Modal Action Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setIsRtClaimModalOpen(false)}
-                  className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-800 rounded-xl cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg shadow-rose-950/20 transition-all flex items-center gap-2 cursor-pointer"
-                >
-                  <Heart className="w-4 h-4" />
-                  <span>Simpan & Ajukan Klaim Santunan (RT)</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
       )}
 
       {/* ZOOMED DEATH CERT MODAL */}

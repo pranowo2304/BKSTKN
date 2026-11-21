@@ -628,9 +628,9 @@ export const RtOnboardingHelpModal: React.FC<RtOnboardingHelpModalProps> = ({
                       Ketua RT Adalah Pintu Pertama Pengajuan Klaim Santunan Duka
                     </h4>
                     <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                      Selain verifikasi pendaftar baru, Ketua RT bertugas menginput laporan duka jika ada anggota atau
-                      tanggungan keluarga di cluster yang meninggal dunia melalui tombol{' '}
-                      <strong>+ Input Klaim Santunan Warga (RT)</strong>.
+                      Selain verifikasi pendaftar baru, Ketua RT dapat memantau daftar pengajuan santunan warga cluster
+                      pada tab <strong>Klaim Santunan Warga</strong> dan mengajukan klaim duka melalui menu{' '}
+                      <strong>Realisasi Santunan</strong>.
                     </p>
                   </div>
                 </div>
