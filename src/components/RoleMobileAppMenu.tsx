@@ -287,7 +287,7 @@ export const RoleMobileAppMenu: React.FC<RoleMobileAppMenuProps> = ({
       {renderBottomDock && dockItems.length > 0 && (
         <nav
           aria-label="Menu Navigasi Mobile Bawah"
-          className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-8px_30px_rgba(0,0,0,0.08)] pt-1 pb-1 sm:pb-1.5 px-3 sm:px-6"
+          className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-8px_30px_rgba(0,0,0,0.08)] pt-1 pb-1 sm:pb-1.5 px-3 sm:px-6"
           style={{ bottom: 0, left: 0, right: 0 }}
         >
           <div className="max-w-md sm:max-w-lg mx-auto flex items-center justify-around relative">
