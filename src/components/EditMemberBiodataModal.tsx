@@ -13,7 +13,6 @@ import {
   Save,
   CheckCircle,
   AlertCircle,
-  HeartHandshake,
   Edit3,
   Calendar,
   Home,
@@ -550,30 +549,12 @@ export const EditMemberBiodataModal: React.FC<EditMemberBiodataModalProps> = ({
                   />
                 </div>
               </div>
-
-              <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-900 flex items-start gap-2.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <p>
-                  Pastikan nomor telepon WhatsApp dan alamat rumah selalu akurat agar pengurus paguyuban dan tim ambulans dapat merespons cepat saat dibutuhkan.
-                </p>
-              </div>
             </div>
           )}
 
           {/* TAB 2: DATA KELUARGA & TANGGUNGAN */}
           {activeTab === 'dependents' && (
             <div className="space-y-5 animate-in fade-in">
-              {/* Info Perlindungan Santunan */}
-              <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl border border-emerald-200 text-xs text-emerald-950 flex items-start gap-3">
-                <HeartHandshake className="w-5 h-5 text-emerald-700 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-extrabold text-emerald-900">Perlindungan Santunan Sesuai Master Hak & Manfaat</h4>
-                  <p className="mt-0.5 leading-relaxed text-emerald-800">
-                    Keluarga yang tercatat resmi dalam Kartu Keluarga (KK) terlindungi fasilitas pemakaman & santunan duka cita sesuai ketentuan yang terdaftar pada Master Hak & Manfaat Paguyuban.
-                  </p>
-                </div>
-              </div>
-
               {/* Form Tambah Anggota Keluarga Baru */}
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                 <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
