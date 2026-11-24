@@ -19,7 +19,14 @@ import { formatIDR, getRtUserForCluster } from '../lib/storage';
 import { calculateMemberExpiry } from '../lib/expiryUtils';
 import { getMemberKtaIssuanceInfo } from '../lib/ktaUtils';
 import { checkDuplicateMember, findDuplicateNikMember, findDuplicateKkMember } from '../lib/duplicateValidator';
-import { getSystemConfiguredPeriod, cleanPhoneNumberForWhatsApp, findMemberForPayment } from '../lib/receiptUtils';
+import {
+  getSystemConfiguredPeriod,
+  getEffectivePaymentPeriod,
+  cleanPhoneNumberForWhatsApp,
+  findMemberForPayment,
+  findDuplicatePaymentsForCandidate,
+} from '../lib/receiptUtils';
+import { stampPaymentUploaderMetadata } from '../lib/systemAuditLog';
 import { FamilyCardUploader } from './FamilyCardUploader';
 import { ExtractedKkResult, mergeExtractedDependents } from '../lib/kkExtractor';
 import {
@@ -104,7 +111,7 @@ interface PublicLandingPageProps {
   inventoryLoans?: FuneralInventoryLoan[];
   funeralSchedules?: FuneralSchedule[];
   onRegisterMember: (newMember: Member) => void;
-  onMakePayment: (payment: Payment) => void;
+  onMakePayment: (payment: Payment) => boolean | void;
   onNavigateToInternal: () => void;
   onOpenKtaModal?: (member: Member) => void;
   onLoginSuccess?: (user: AppUser) => void;
@@ -447,7 +454,26 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
   const [payProofImage, setPayProofImage] = useState<string | null>(null);
   const [payProofFileName, setPayProofFileName] = useState('');
   const [paySuccessMsg, setPaySuccessMsg] = useState(false);
+  const [payDuplicateError, setPayDuplicateError] = useState<string | null>(null);
   const [isBesaranIuranModalOpen, setIsBesaranIuranModalOpen] = useState(false);
+
+  const existingPublicSamePeriodPayments = useMemo(() => {
+    if (!payingMember || !payments.length) return [];
+    const targetPeriod = getSystemConfiguredPeriod(settings);
+    return findDuplicatePaymentsForCandidate({
+      candidate: {
+        id: '__public_candidate__',
+        memberId: payingMember.id,
+        memberName: payingMember.name,
+        memberNumber: payingMember.memberNumber,
+        paymentType: payType,
+        periodMonth: targetPeriod,
+      },
+      existingPayments: payments,
+      targetMember: payingMember,
+      settings,
+    });
+  }, [payingMember, payType, payments, settings]);
 
   useEffect(() => {
     const handleOpenBesaran = () => setIsBesaranIuranModalOpen(true);
@@ -661,17 +687,19 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
     setPayProofImage(null);
     setPayProofFileName('');
     setPaySuccessMsg(false);
+    setPayDuplicateError(null);
     setIsPaymentModalOpen(true);
   };
 
   const handlePaymentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!payingMember) return;
+    setPayDuplicateError(null);
 
     const receiptNumber = `KW-${Date.now().toString().slice(-6)}`;
     const currentYear = new Date().getFullYear();
 
-    const newPayment: Payment = {
+    const rawPayment: Payment = {
       id: 'pay-' + Date.now(),
       receiptNumber,
       memberId: payingMember.id,
@@ -689,7 +717,35 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
       adminNotes: `Pembayaran online mandiri oleh warga (${payingMember.phone})`,
     };
 
-    onMakePayment(newPayment);
+    const duplicates = findDuplicatePaymentsForCandidate({
+      candidate: rawPayment,
+      existingPayments: payments,
+      targetMember: payingMember,
+      settings,
+    });
+
+    if (duplicates.length > 0) {
+      const firstDup = duplicates[0];
+      const dupPeriod = getEffectivePaymentPeriod(firstDup, settings);
+      setPayDuplicateError(
+        `Pengajuan DITOLAK SISTEM: Anggota "${payingMember.name}" sudah memiliki pembayaran ${payType} untuk periode "${dupPeriod}" (${firstDup.receiptNumber || '-'} • Status: ${firstDup.status}).`
+      );
+      return;
+    }
+
+    const newPayment = stampPaymentUploaderMetadata({
+      payment: rawPayment,
+      activeUser,
+      targetMember: payingMember,
+    });
+
+    const accepted = onMakePayment(newPayment);
+    if (accepted === false) {
+      setPayDuplicateError(
+        `Pengajuan DITOLAK SISTEM: Terdeteksi duplikasi pembayaran ${payType} pada periode yang sama untuk anggota "${payingMember.name}".`
+      );
+      return;
+    }
     setPaySuccessMsg(true);
     setTimeout(() => {
       setIsPaymentModalOpen(false);
@@ -2474,6 +2530,23 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                   )}
                 </div>
 
+                {(existingPublicSamePeriodPayments.length > 0 || payDuplicateError) && (
+                  <div className="p-3 bg-rose-50 border-2 border-rose-400 rounded-xl text-rose-900 space-y-1.5">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <p className="font-extrabold text-rose-950">
+                          ⛔ Ditolak Sistem: Duplikasi Pembayaran Periode Sama
+                        </p>
+                        <p className="text-[11px] leading-relaxed">
+                          {payDuplicateError ||
+                            `Anggota "${payingMember.name}" sudah memiliki catatan pembayaran ${payType} (${existingPublicSamePeriodPayments[0]?.receiptNumber || '-'} • Status: ${existingPublicSamePeriodPayments[0]?.status}) pada periode "${getEffectivePaymentPeriod(existingPublicSamePeriodPayments[0], settings)}". Pengiriman ulang hanya diperbolehkan jika pembayaran sebelumnya berstatus Ditolak (Rejected).`}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
                   <button
                     type="button"
@@ -2484,10 +2557,19 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl shadow-md flex items-center gap-1.5"
+                    disabled={existingPublicSamePeriodPayments.length > 0}
+                    className={`px-5 py-2 font-black rounded-xl shadow-md flex items-center gap-1.5 ${
+                      existingPublicSamePeriodPayments.length > 0
+                        ? 'bg-slate-200 text-slate-500 cursor-not-allowed shadow-none'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                    }`}
                   >
                     <Send className="w-3.5 h-3.5" />
-                    <span>Kirim Bukti Pembayaran</span>
+                    <span>
+                      {existingPublicSamePeriodPayments.length > 0
+                        ? 'Ditolak (Sudah Ada di Periode Ini)'
+                        : 'Kirim Bukti Pembayaran'}
+                    </span>
                   </button>
                 </div>
               </form>

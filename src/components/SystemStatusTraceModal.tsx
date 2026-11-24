@@ -5,6 +5,7 @@ import {
   MemberStatus,
   MemberVerificationStatus,
   Payment,
+  PaymentUploadAuditLog,
 } from '../types';
 import { getWhatsAppLogs } from '../lib/whatsappService';
 import {
@@ -43,8 +44,11 @@ interface SystemStatusTraceModalProps {
   onClose: () => void;
   members: Member[];
   payments: Payment[];
+  paymentAuditLogs?: PaymentUploadAuditLog[];
   notifications?: AppNotification[];
   initialMemberId?: string;
+  initialTab?: 'anomalies' | 'inspect' | 'logs' | 'uploads';
+  canRepair?: boolean;
   onRepairMemberStatus?: (
     memberId: string,
     targetStatus: MemberStatus,
@@ -59,15 +63,20 @@ export const SystemStatusTraceModal: React.FC<SystemStatusTraceModalProps> = ({
   onClose,
   members,
   payments,
+  paymentAuditLogs = [],
   notifications = [],
   initialMemberId,
+  initialTab,
+  canRepair = true,
   onRepairMemberStatus,
   onResolveDuplicateNpas,
 }) => {
-  const [activeTab, setActiveTab] = useState<'anomalies' | 'inspect' | 'logs'>('anomalies');
+  const [activeTab, setActiveTab] = useState<'anomalies' | 'inspect' | 'logs' | 'uploads'>('anomalies');
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
   const [memberQuery, setMemberQuery] = useState<string>('');
   const [logQuery, setLogQuery] = useState<string>('');
+  const [uploadLogQuery, setUploadLogQuery] = useState<string>('');
+  const [onlyUploadMismatch, setOnlyUploadMismatch] = useState<boolean>(false);
   const [repairReason, setRepairReason] = useState<string>(
     'Perbaikan inkonsistensi status: warga belum memiliki transaksi pembayaran aktif.'
   );
@@ -80,14 +89,19 @@ export const SystemStatusTraceModal: React.FC<SystemStatusTraceModalProps> = ({
     if (isOpen) {
       setAuditLogs(getSystemAuditLogs());
       setRepairFeedback(null);
-      if (initialMemberId) {
+      if (initialTab) {
+        setActiveTab(initialTab);
+      } else if (initialMemberId) {
         setSelectedMemberId(initialMemberId);
         setActiveTab('inspect');
       } else {
         setActiveTab('anomalies');
       }
+      if (initialMemberId) {
+        setSelectedMemberId(initialMemberId);
+      }
     }
-  }, [isOpen, initialMemberId]);
+  }, [isOpen, initialMemberId, initialTab]);
 
   const anomalies = useMemo(() => {
     if (!isOpen) return [];
@@ -154,11 +168,86 @@ export const SystemStatusTraceModal: React.FC<SystemStatusTraceModalProps> = ({
       (log) =>
         log.memberName?.toLowerCase().includes(q) ||
         log.memberNumber?.toLowerCase().includes(q) ||
+        log.submittedByUserName?.toLowerCase().includes(q) ||
+        log.submittedByUserId?.toLowerCase().includes(q) ||
+        log.senderAccountName?.toLowerCase().includes(q) ||
         log.source?.toLowerCase().includes(q) ||
         log.action?.toLowerCase().includes(q) ||
         log.detail?.toLowerCase().includes(q)
     );
   }, [auditLogs, logQuery]);
+
+  // Gabungkan paymentAuditLogs (Cloud) dengan payment yang sudah punya submittedByUserId agar riwayat tetap lengkap
+  const mergedUploadAuditLogs = useMemo<PaymentUploadAuditLog[]>(() => {
+    const byPaymentId = new Map<string, PaymentUploadAuditLog>();
+    for (const log of paymentAuditLogs) {
+      if (log?.paymentId) {
+        byPaymentId.set(log.paymentId, log);
+      }
+    }
+    for (const p of payments) {
+      if (!p || byPaymentId.has(p.id)) continue;
+      if (p.submittedByUserId || p.submittedByUserName || p.senderAccountName) {
+        byPaymentId.set(p.id, {
+          id: `derived-${p.id}`,
+          paymentId: p.id,
+          receiptNumber: p.receiptNumber || '-',
+          memberId: p.memberId,
+          memberName: p.memberName,
+          memberNumber: p.memberNumber,
+          paymentType: p.paymentType,
+          periodMonth: p.periodMonth,
+          amount: p.amount,
+          paymentMethod: p.paymentMethod,
+          proofFileName: p.proofFileName,
+          senderAccountName: p.senderAccountName,
+          submittedByUserId: p.submittedByUserId || '-',
+          submittedByUserName: p.submittedByUserName || '-',
+          submittedByEmail: p.submittedByEmail,
+          submittedByAuthority: String(p.submittedByAuthority || '-'),
+          submittedByCluster: p.submittedByCluster,
+          submittedByMemberId: p.submittedByMemberId,
+          submittedByMemberNumber: p.submittedByMemberNumber,
+          isAccountMismatch: Boolean(p.uploaderMismatchFlag),
+          isSenderNameMismatch: false,
+          isUploadedOnBehalf: Boolean(p.submittedByAuthority && p.submittedByAuthority !== 'Anggota'),
+          mismatchReason: p.uploaderMismatchReason,
+          sourceComponent: 'PaymentRecord',
+          uploadedAt: p.submittedAt || p.createdAt,
+          createdAtIso: p.submittedAt || p.createdAt || '',
+        });
+      }
+    }
+    return Array.from(byPaymentId.values()).sort((a, b) =>
+      (b.createdAtIso || b.uploadedAt || '').localeCompare(a.createdAtIso || a.uploadedAt || '')
+    );
+  }, [paymentAuditLogs, payments]);
+
+  const filteredUploadAuditLogs = useMemo(() => {
+    const q = uploadLogQuery.trim().toLowerCase();
+    return mergedUploadAuditLogs.filter((item) => {
+      if (onlyUploadMismatch && !item.isAccountMismatch && !item.isSenderNameMismatch) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        item.memberName?.toLowerCase().includes(q) ||
+        item.memberNumber?.toLowerCase().includes(q) ||
+        item.receiptNumber?.toLowerCase().includes(q) ||
+        item.submittedByUserName?.toLowerCase().includes(q) ||
+        item.submittedByUserId?.toLowerCase().includes(q) ||
+        item.submittedByEmail?.toLowerCase().includes(q) ||
+        item.submittedByAuthority?.toLowerCase().includes(q) ||
+        item.senderAccountName?.toLowerCase().includes(q) ||
+        item.mismatchReason?.toLowerCase().includes(q)
+      );
+    });
+  }, [mergedUploadAuditLogs, uploadLogQuery, onlyUploadMismatch]);
+
+  const uploadMismatchCount = useMemo(
+    () => mergedUploadAuditLogs.filter((l) => l.isAccountMismatch || l.isSenderNameMismatch).length,
+    [mergedUploadAuditLogs]
+  );
 
   if (!isOpen) return null;
 
@@ -262,6 +351,28 @@ export const SystemStatusTraceModal: React.FC<SystemStatusTraceModalProps> = ({
             >
               <Search className="w-3.5 h-3.5" />
               <span>Telusuri Detail Warga</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('uploads')}
+              className={`px-3.5 py-2.5 text-xs font-bold rounded-t-xl border-b-2 transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'uploads'
+                  ? 'border-indigo-600 text-indigo-700 bg-white'
+                  : 'border-transparent text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>Audit Upload Bukti (Cloud)</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-black tabular-nums ${
+                  uploadMismatchCount > 0
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-slate-200 text-slate-700'
+                }`}
+              >
+                {mergedUploadAuditLogs.length}
+              </span>
             </button>
 
             <button
@@ -731,7 +842,7 @@ export const SystemStatusTraceModal: React.FC<SystemStatusTraceModalProps> = ({
                   </div>
 
                   {/* Section E: Safe Repair Box */}
-                  {onRepairMemberStatus && forensicReport.anomaly && (
+                  {canRepair && onRepairMemberStatus && forensicReport.anomaly && (
                     <div className="p-4 rounded-2xl border-2 border-indigo-200 bg-indigo-50/60 space-y-3">
                       <div className="flex items-start gap-2.5">
                         <Wrench className="w-5 h-5 text-indigo-700 shrink-0 mt-0.5" />
@@ -785,6 +896,147 @@ export const SystemStatusTraceModal: React.FC<SystemStatusTraceModalProps> = ({
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 4: CLOUD PAYMENT UPLOADER AUDIT LOGS */}
+          {activeTab === 'uploads' && (
+            <div className="space-y-4">
+              <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-200 text-xs text-indigo-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="space-y-0.5">
+                  <p className="font-black">Jejak Akun Pengunggah Bukti Transfer (Tersinkronisasi Cloud)</p>
+                  <p className="text-[11px] text-indigo-900">
+                    Mencatat ID pengguna aktif (<code className="font-mono">userId</code>), nama akun, email, peran, dan nama pengirim di rekening setiap kali bukti transfer diunggah.
+                  </p>
+                </div>
+                {uploadMismatchCount > 0 && (
+                  <span className="px-3 py-1 rounded-full bg-amber-100 border border-amber-300 text-amber-950 font-black text-[11px] shrink-0">
+                    ⚠ {uploadMismatchCount} Selisih Pengunggah/Pengirim
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2.5 justify-between items-stretch sm:items-center">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={uploadLogQuery}
+                    onChange={(e) => setUploadLogQuery(e.target.value)}
+                    placeholder="Cari nama anggota, nama pengunggah, userId, email, nama pengirim rekening, atau no. kwitansi..."
+                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOnlyUploadMismatch((prev) => !prev)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-colors whitespace-nowrap shrink-0 cursor-pointer inline-flex items-center gap-1.5 ${
+                    onlyUploadMismatch
+                      ? 'bg-amber-600 text-white border-amber-600'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>Hanya Ketidaksesuaian ({uploadMismatchCount})</span>
+                </button>
+              </div>
+
+              {filteredUploadAuditLogs.length === 0 ? (
+                <div className="p-6 rounded-2xl border border-slate-200 bg-slate-50 text-center space-y-1.5">
+                  <UserCheck className="w-7 h-7 text-slate-400 mx-auto" />
+                  <p className="text-xs font-bold text-slate-700">Belum Ada Log Audit Upload Bukti Transfer</p>
+                  <p className="text-[11px] text-slate-500 max-w-md mx-auto">
+                    Setiap pengunggahan bukti transfer baru akan otomatis mencatat ID pengguna, akun pengunggah, dan nama pengirim ke database Cloud.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2.5 max-h-[52vh] overflow-y-auto pr-1">
+                  {filteredUploadAuditLogs.map((entry) => {
+                    const hasMismatch = entry.isAccountMismatch || entry.isSenderNameMismatch;
+                    return (
+                      <div
+                        key={entry.id}
+                        className={`p-3.5 rounded-2xl border text-xs space-y-2 ${
+                          hasMismatch
+                            ? 'bg-amber-50/70 border-amber-300'
+                            : 'bg-slate-50/70 border-slate-200'
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono font-black px-2 py-0.5 rounded bg-slate-900 text-white text-[10px]">
+                              {entry.receiptNumber}
+                            </span>
+                            <span className="font-black text-slate-900">
+                              Anggota: {entry.memberName} ({entry.memberNumber})
+                            </span>
+                            <span className="font-mono font-bold text-emerald-700">
+                              {formatIDR(entry.amount)}
+                            </span>
+                            {hasMismatch && (
+                              <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-black inline-flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3" />
+                                <span>Ketidaksesuaian Identitas</span>
+                              </span>
+                            )}
+                            {!hasMismatch && entry.isUploadedOnBehalf && (
+                              <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200 text-[10px] font-bold">
+                                Diunggah oleh Pengurus
+                              </span>
+                            )}
+                          </div>
+                          <span className="font-mono text-[10px] text-slate-500 tabular-nums">
+                            {entry.uploadedAt}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-white/80 p-2.5 rounded-xl border border-slate-200/80 text-[11px]">
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                              Akun Pengunggah
+                            </span>
+                            <span className="font-bold text-slate-900">
+                              {entry.submittedByUserName}
+                            </span>
+                            <span className="text-slate-600 block">
+                              {entry.submittedByAuthority}
+                              {entry.submittedByCluster ? ` • ${entry.submittedByCluster}` : ''}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                              User ID &amp; Email Pengunggah
+                            </span>
+                            <span className="font-mono font-bold text-indigo-800 block">
+                              {entry.submittedByUserId}
+                            </span>
+                            <span className="text-slate-600 block truncate">
+                              {entry.submittedByEmail || '-'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                              Pengirim di Rekening / Berkas
+                            </span>
+                            <span className="font-bold text-slate-900 block">
+                              {entry.senderAccountName || '(Tidak diisi)'}
+                            </span>
+                            <span className="text-slate-500 font-mono text-[10px] block truncate">
+                              {entry.paymentMethod} • {entry.proofFileName || '-'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {entry.mismatchReason && (
+                          <div className="p-2 rounded-lg bg-amber-100/80 border border-amber-300 text-[11px] font-semibold text-amber-950">
+                            ⚠ {entry.mismatchReason}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -4,6 +4,7 @@ import {
   MemberStatus,
   MemberVerificationStatus,
   Payment,
+  PaymentUploadAuditLog,
   BenefitClaim,
   SystemSettings,
   AppUser,
@@ -74,6 +75,7 @@ import {
   syncMembersBatchToCloud,
   deleteMemberFromCloud,
   syncPaymentToCloud,
+  createPaymentInCloudIfUnique,
   deletePaymentFromCloud,
   syncClaimToCloud,
   syncAmbulanceOrderToCloud,
@@ -105,10 +107,17 @@ import {
   clearMemberPendingSync,
   getPendingUnsyncedPayments,
   clearPaymentPendingSync,
+  syncPaymentAuditLogToCloud,
+  getPendingUnsyncedPaymentAuditLogs,
+  clearPaymentAuditPendingSync,
 } from './lib/firebase';
 import { checkDuplicateMember } from './lib/duplicateValidator';
 import { isMemberAwaitingPaguyubanApproval, doesPaymentBelongToMember } from './lib/ktaUtils';
-import { syncAndFilterPaymentsWithMembers } from './lib/receiptUtils';
+import {
+  syncAndFilterPaymentsWithMembers,
+  findDuplicatePaymentsForCandidate,
+  getEffectivePaymentPeriod,
+} from './lib/receiptUtils';
 import { recordAppVisit } from './lib/firebaseTelemetry';
 import {
   recoverMissingMembersFromTraces,
@@ -122,6 +131,11 @@ import {
   recordSystemTrace,
   buildDuplicateNpaResolutionPlan,
   NpaReassignmentPlanItem,
+  stampPaymentUploaderMetadata,
+  buildPaymentUploadAuditLog,
+  getStoredPaymentAuditLogs,
+  saveStoredPaymentAuditLogs,
+  analyzePaymentUploaderMismatch,
 } from './lib/systemAuditLog';
 import { initialUsers } from './data/initialData';
 
@@ -176,6 +190,7 @@ import {
 export default function App() {
   const [members, setMembers] = useState<Member[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [paymentAuditLogs, setPaymentAuditLogs] = useState<PaymentUploadAuditLog[]>(() => getStoredPaymentAuditLogs());
   const [claims, setClaims] = useState<BenefitClaim[]>([]);
   const [settings, setSettings] = useState<SystemSettings>(getStoredSettings());
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -208,6 +223,14 @@ export default function App() {
   const [selectedFullKtaMember, setSelectedFullKtaMember] = useState<Member | null>(null);
   const [isPublicRegisterOpen, setIsPublicRegisterOpen] = useState<boolean>(false);
   const [isPWAInstallModalOpen, setIsPWAInstallModalOpen] = useState<boolean>(false);
+  const [duplicatePaymentAlert, setDuplicatePaymentAlert] = useState<{
+    memberName: string;
+    period: string;
+    paymentType: string;
+    existingReceipt?: string;
+    existingStatus?: string;
+    reason: string;
+  } | null>(null);
   const [memberPageSize, setMemberPageSize] = useState<number>(10);
   const [memberPaginationMode, setMemberPaginationMode] = useState<'pagination' | 'lazy'>('pagination');
 
@@ -599,6 +622,30 @@ export default function App() {
                 }
                 return prevMembers;
               });
+            }
+            setIsInitialLoading(false);
+          },
+          onPaymentAuditLogsChange: (cloudLogs) => {
+            if (cloudLogs && Array.isArray(cloudLogs)) {
+              const pendingLocalLogs = getPendingUnsyncedPaymentAuditLogs();
+              const mergedLogs = [...cloudLogs];
+              if (pendingLocalLogs.length > 0) {
+                pendingLocalLogs.forEach((pendingLog) => {
+                  if (!pendingLog || !pendingLog.id) return;
+                  const existingIdx = mergedLogs.findIndex((cl) => cl && cl.id === pendingLog.id);
+                  if (existingIdx === -1) {
+                    mergedLogs.unshift(pendingLog);
+                    syncPaymentAuditLogToCloud(pendingLog).catch(() => {});
+                  } else {
+                    clearPaymentAuditPendingSync(pendingLog.id);
+                  }
+                });
+              }
+              mergedLogs.sort((a, b) =>
+                (b.createdAtIso || b.uploadedAt || '').localeCompare(a.createdAtIso || a.uploadedAt || '')
+              );
+              setPaymentAuditLogs(mergedLogs);
+              saveStoredPaymentAuditLogs(mergedLogs);
             }
             setIsInitialLoading(false);
           },
@@ -1671,23 +1718,79 @@ export default function App() {
     }
   };
 
-  // ADD PAYMENT
-  const handleAddPayment = (newPayment: Payment) => {
-    const normalizedPayment: Payment = {
-      ...newPayment,
-      createdAt: normalizeToIndonesiaTimestamp(newPayment.createdAt),
-    };
-    const updatedPayments = [normalizedPayment, ...payments];
-    setPayments(updatedPayments);
-    savePayments(updatedPayments);
-    syncPaymentToCloud(normalizedPayment).catch((e) => console.warn('Cloud sync payment error:', e));
-
+  // ADD PAYMENT (Menolak otomatis duplikasi pembayaran pada periode yang sama oleh 1 nama anggota)
+  const handleAddPayment = (newPayment: Payment): boolean => {
     // Strict ID match first; only fallback to memberNumber if memberId is absent or missing in members
     const hasExactMemberId = Boolean(newPayment.memberId && members.some((m) => m.id === newPayment.memberId));
     const isTargetMember = (m: Member) =>
       hasExactMemberId
         ? m.id === newPayment.memberId
         : Boolean(newPayment.memberNumber && m.memberNumber === newPayment.memberNumber && (!newPayment.memberName || m.name.trim().toLowerCase() === newPayment.memberName.trim().toLowerCase()));
+
+    const targetMem = members.find((m) => isTargetMember(m));
+
+    // Pastikan seluruh metadata akun aktif pengunggah tercatat di record Payment & Cloud Firestore
+    const stampedPayment = stampPaymentUploaderMetadata({
+      payment: {
+        ...newPayment,
+        createdAt: normalizeToIndonesiaTimestamp(newPayment.createdAt),
+      },
+      activeUser,
+      targetMember: targetMem,
+    });
+
+    // BLOKIR DUPLIKASI: Tolak jika 1 nama anggota sudah memiliki pembayaran non-Rejected pada periode yang sama
+    const existingDuplicates = findDuplicatePaymentsForCandidate({
+      candidate: stampedPayment,
+      existingPayments: payments,
+      targetMember: targetMem,
+      settings,
+    });
+
+    const effectiveTargetPeriod = getEffectivePaymentPeriod(stampedPayment, settings);
+    const uploaderLabel = `${stampedPayment.submittedByUserName || 'Publik'} (ID: ${stampedPayment.submittedByUserId || 'guest'} • ${stampedPayment.submittedByAuthority || 'Publik'})`;
+
+    if (existingDuplicates.length > 0) {
+      const firstDup = existingDuplicates[0];
+      const dupPeriod = getEffectivePaymentPeriod(firstDup, settings);
+      const rejectReason = `Pengajuan pembayaran ${stampedPayment.paymentType} (${effectiveTargetPeriod}) atas nama anggota "${stampedPayment.memberName}" DITOLAK OTOMATIS karena sudah tercatat pembayaran ${firstDup.receiptNumber || '-'} (Status: ${firstDup.status}) pada periode "${dupPeriod}".`;
+
+      recordSystemTrace({
+        source: 'App.handleAddPayment',
+        action: 'DUPLICATE_PAYMENT_REJECTED',
+        severity: 'warning',
+        actor: uploaderLabel,
+        submittedByUserId: stampedPayment.submittedByUserId,
+        submittedByUserName: stampedPayment.submittedByUserName,
+        senderAccountName: stampedPayment.senderAccountName,
+        memberId: stampedPayment.memberId,
+        memberName: stampedPayment.memberName,
+        memberNumber: stampedPayment.memberNumber,
+        paymentId: stampedPayment.id,
+        detail: rejectReason,
+      });
+
+      setDuplicatePaymentAlert({
+        memberName: stampedPayment.memberName,
+        period: dupPeriod,
+        paymentType: stampedPayment.paymentType,
+        existingReceipt: firstDup.receiptNumber,
+        existingStatus: firstDup.status,
+        reason: rejectReason,
+      });
+
+      return false;
+    }
+
+    const mismatchInfo = analyzePaymentUploaderMismatch({
+      payment: stampedPayment,
+      activeUser,
+      targetMember: targetMem,
+    });
+
+    const updatedPayments = [stampedPayment, ...payments];
+    setPayments(updatedPayments);
+    savePayments(updatedPayments);
 
     // If target member was in 'Menunggu Pembayaran', update status to 'Menunggu Validasi Bendahara'
     let updatedMemberObj: Member | null = null;
@@ -1708,33 +1811,119 @@ export default function App() {
       setMembers(updatedMembers);
       saveMembers(updatedMembers);
       syncMemberToCloud(updatedMemberObj).catch((e) => console.warn('Cloud sync member status error:', e));
-      recordSystemTrace({
-        source: 'App.handleAddPayment',
-        action: 'PAYMENT_SUBMITTED_ADVANCE_STATUS',
-        severity: 'info',
-        actor: activeUser?.name || newPayment.memberName,
-        memberId: updatedMemberObj.id,
-        memberName: updatedMemberObj.name,
-        memberNumber: updatedMemberObj.memberNumber,
-        paymentId: newPayment.id,
-        previousStatus: 'Menunggu Pembayaran',
-        newStatus: 'Menunggu Validasi Bendahara',
-        matchedBy: hasExactMemberId ? 'memberId' : 'memberNumber+name',
-        detail: `Konfirmasi pembayaran ${newPayment.receiptNumber} (${formatIDR(newPayment.amount)}) diunggah.`,
-      });
     }
 
-    const targetMem = members.find((m) => isTargetMember(m));
-    addNotification({
-      type: 'info',
-      category: 'payment',
-      title: 'Setoran Iuran Baru Diajukan',
-      message: `Setoran iuran ${newPayment.paymentType} (${newPayment.periodMonth}) sebesar ${formatIDR(newPayment.amount)} untuk warga ${newPayment.memberName} (${newPayment.memberNumber}) telah diunggah dan menunggu validasi Bendahara.`,
-      cluster: targetMem?.cluster,
-      paymentId: newPayment.id,
-      memberId: newPayment.memberId,
-      linkTab: 'payments',
+    // Verifikasi ulang ke Cloud Firestore agar tidak terjadi duplikasi dari 2 perangkat secara bersamaan
+    createPaymentInCloudIfUnique(stampedPayment, settings)
+      .then((cloudRes) => {
+        if (!cloudRes.ok) {
+          // Rollback data lokal jika Cloud Firestore mendeteksi pembayaran periode sama sudah lebih dulu masuk
+          setPayments((prev) => {
+            const rolledBack = prev.filter((p) => p.id !== stampedPayment.id);
+            savePayments(rolledBack);
+            return rolledBack;
+          });
+
+          if (updatedMemberObj) {
+            const targetId = (updatedMemberObj as Member).id;
+            setMembers((prevMembers) => {
+              const reverted = prevMembers.map((m) =>
+                m.id === targetId && m.status === 'Menunggu Validasi Bendahara'
+                  ? { ...m, status: 'Menunggu Pembayaran' as const }
+                  : m
+              );
+              saveMembers(reverted);
+              const revertedMember = reverted.find((m) => m.id === targetId);
+              if (revertedMember) {
+                syncMemberToCloud(revertedMember).catch(() => {});
+              }
+              return reverted;
+            });
+          }
+
+          const cloudDup = cloudRes.duplicatePayment;
+          const dupPeriod = cloudDup ? getEffectivePaymentPeriod(cloudDup, settings) : effectiveTargetPeriod;
+          const rejectReason =
+            cloudRes.reason ||
+            `Pembayaran ${stampedPayment.paymentType} (${dupPeriod}) atas nama "${stampedPayment.memberName}" ditolak oleh database Cloud karena terdeteksi duplikasi periode.`;
+
+          recordSystemTrace({
+            source: 'App.handleAddPayment',
+            action: 'DUPLICATE_PAYMENT_REJECTED_CLOUD',
+            severity: 'warning',
+            actor: uploaderLabel,
+            submittedByUserId: stampedPayment.submittedByUserId,
+            submittedByUserName: stampedPayment.submittedByUserName,
+            senderAccountName: stampedPayment.senderAccountName,
+            memberId: stampedPayment.memberId,
+            memberName: stampedPayment.memberName,
+            memberNumber: stampedPayment.memberNumber,
+            paymentId: stampedPayment.id,
+            detail: rejectReason,
+          });
+
+          setDuplicatePaymentAlert({
+            memberName: stampedPayment.memberName,
+            period: dupPeriod,
+            paymentType: stampedPayment.paymentType,
+            existingReceipt: cloudDup?.receiptNumber,
+            existingStatus: cloudDup?.status,
+            reason: rejectReason,
+          });
+          return;
+        }
+
+        // Catat ke koleksi log audit upload bukti transfer (tersinkronisasi ke Cloud Firestore)
+        const auditLogEntry = buildPaymentUploadAuditLog({
+          payment: stampedPayment,
+          activeUser,
+          targetMember: targetMem,
+          sourceComponent: newPayment.submittedByUserId ? 'PaymentForm' : 'App.handleAddPayment',
+        });
+        setPaymentAuditLogs((prevLogs) => {
+          const updatedAuditLogs = [auditLogEntry, ...prevLogs.filter((l) => l.id !== auditLogEntry.id)];
+          saveStoredPaymentAuditLogs(updatedAuditLogs);
+          return updatedAuditLogs;
+        });
+        syncPaymentAuditLogToCloud(auditLogEntry).catch((e) =>
+          console.warn('Cloud sync payment audit log error:', e)
+        );
+      })
+      .catch((e) => console.warn('Cloud sync payment uniqueness check error:', e));
+
+    // Selalu catat trace sistem untuk SETIAP unggahan bukti transfer (baik anggota baru maupun perpanjangan/aktif)
+    recordSystemTrace({
+      source: 'App.handleAddPayment',
+      action: updatedMemberObj ? 'PAYMENT_SUBMITTED_ADVANCE_STATUS' : 'PAYMENT_PROOF_UPLOADED',
+      severity: mismatchInfo.uploaderMismatchFlag ? 'warning' : 'info',
+      actor: uploaderLabel,
+      submittedByUserId: stampedPayment.submittedByUserId,
+      submittedByUserName: stampedPayment.submittedByUserName,
+      senderAccountName: stampedPayment.senderAccountName,
+      memberId: stampedPayment.memberId,
+      memberName: stampedPayment.memberName,
+      memberNumber: stampedPayment.memberNumber,
+      paymentId: stampedPayment.id,
+      previousStatus: updatedMemberObj ? 'Menunggu Pembayaran' : targetMem?.status,
+      newStatus: updatedMemberObj ? 'Menunggu Validasi Bendahara' : targetMem?.status,
+      matchedBy: hasExactMemberId ? 'memberId' : 'memberNumber+name',
+      detail: `Bukti ${stampedPayment.receiptNumber} (${formatIDR(stampedPayment.amount)}) untuk ${stampedPayment.memberName} diunggah oleh ${uploaderLabel}${stampedPayment.senderAccountName ? ` • Pengirim rekening: ${stampedPayment.senderAccountName}` : ''}.${mismatchInfo.mismatchReason ? ` PERINGATAN: ${mismatchInfo.mismatchReason}` : ''}`,
     });
+
+    addNotification({
+      type: mismatchInfo.uploaderMismatchFlag ? 'warning' : 'info',
+      category: 'payment',
+      title: mismatchInfo.uploaderMismatchFlag
+        ? 'Setoran Iuran Baru (Perbedaan Pengunggah/Pengirim)'
+        : 'Setoran Iuran Baru Diajukan',
+      message: `Setoran iuran ${stampedPayment.paymentType} (${stampedPayment.periodMonth}) sebesar ${formatIDR(stampedPayment.amount)} untuk warga ${stampedPayment.memberName} (${stampedPayment.memberNumber}) telah diunggah oleh akun ${stampedPayment.submittedByUserName || 'Publik'} (ID: ${stampedPayment.submittedByUserId || 'guest'})${stampedPayment.senderAccountName ? `, nama pengirim: ${stampedPayment.senderAccountName}` : ''}.${mismatchInfo.mismatchReason ? ` Catatan Audit: ${mismatchInfo.mismatchReason}` : ' Menunggu validasi Bendahara.'}`,
+      cluster: targetMem?.cluster,
+      paymentId: stampedPayment.id,
+      memberId: stampedPayment.memberId,
+      linkTab: 'validation',
+    });
+
+    return true;
   };
 
   // VERIFY PAYMENT BY BENDAHARA (OFFICIALLY ISSUES THE KTA & KWITANSI DIGITAL SIGNATURE)
@@ -3900,6 +4089,7 @@ export default function App() {
         {currentTab === 'validation' && (
           <AdminValidation
             payments={synchronizedPayments}
+            paymentAuditLogs={paymentAuditLogs}
             members={members}
             notifications={notifications}
             settings={settings}
@@ -3920,6 +4110,7 @@ export default function App() {
             <StatusAuditPage
               members={members}
               payments={synchronizedPayments}
+              paymentAuditLogs={paymentAuditLogs}
               notifications={notifications}
               settings={settings}
               activeUser={activeUser}
@@ -4316,6 +4507,60 @@ export default function App() {
         isOpen={isPWAInstallModalOpen}
         onClose={() => setIsPWAInstallModalOpen(false)}
       />
+
+      {/* Modal Penolakan Otomatis Duplikasi Pembayaran Periode Sama */}
+      {duplicatePaymentAlert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border-2 border-rose-300 animate-in zoom-in-95">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-rose-100 text-rose-700 rounded-xl shrink-0">
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-extrabold text-rose-950 text-base">
+                  Pembayaran Ditolak Sistem (Duplikasi Periode)
+                </h3>
+                <p className="text-xs text-rose-800 mt-1 leading-relaxed">
+                  {duplicatePaymentAlert.reason}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs space-y-1">
+              <div className="flex justify-between gap-2">
+                <span className="text-rose-700">Nama Anggota:</span>
+                <span className="font-extrabold text-rose-950 text-right">{duplicatePaymentAlert.memberName}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-rose-700">Jenis & Periode:</span>
+                <span className="font-bold text-rose-950 text-right">
+                  {duplicatePaymentAlert.paymentType} • {duplicatePaymentAlert.period}
+                </span>
+              </div>
+              {duplicatePaymentAlert.existingReceipt && (
+                <div className="flex justify-between gap-2">
+                  <span className="text-rose-700">Transaksi Sebelumnya:</span>
+                  <span className="font-mono font-bold text-rose-950 text-right">
+                    {duplicatePaymentAlert.existingReceipt} ({duplicatePaymentAlert.existingStatus})
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setDuplicatePaymentAlert(null)}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Mengerti
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating Real-time Animated Slide-in Toast Notifier (Dibatasi sesuai Otoritas Pengguna) */}
       <RealtimeToastNotifier

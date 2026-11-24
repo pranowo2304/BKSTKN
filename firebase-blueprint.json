@@ -22,17 +22,33 @@
     },
     "Payment": {
       "title": "Payment",
-      "description": "Catatan transaksi iuran anggota paguyuban",
+      "description": "Catatan transaksi iuran anggota paguyuban beserta metadata audit akun pengunggah",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "receiptNumber": { "type": "string" },
         "memberId": { "type": "string" },
         "memberName": { "type": "string" },
+        "memberNumber": { "type": "string" },
+        "paymentType": { "type": "string" },
+        "periodMonth": { "type": "string" },
         "amount": { "type": "number" },
         "period": { "type": "string" },
         "paymentDate": { "type": "string" },
+        "createdAt": { "type": "string" },
         "status": { "type": "string" },
-        "paymentMethod": { "type": "string" }
+        "paymentMethod": { "type": "string" },
+        "senderAccountName": { "type": "string" },
+        "submittedByUserId": { "type": "string" },
+        "submittedByUserName": { "type": "string" },
+        "submittedByEmail": { "type": "string" },
+        "submittedByAuthority": { "type": "string" },
+        "submittedByCluster": { "type": "string" },
+        "submittedByMemberId": { "type": "string" },
+        "submittedByMemberNumber": { "type": "string" },
+        "submittedAt": { "type": "string" },
+        "uploaderMismatchFlag": { "type": "boolean" },
+        "uploaderMismatchReason": { "type": "string" }
       },
       "required": ["id", "memberId", "amount", "status"]
     },
@@ -120,6 +136,41 @@
         "checksumSha256": { "type": "string" }
       },
       "required": ["id", "backupDate", "createdAt", "triggerType"]
+    },
+    "PaymentUploadAuditLog": {
+      "title": "PaymentUploadAuditLog",
+      "description": "Jejak audit permanen setiap pengunggahan bukti transfer iuran beserta ID & akun aktif pengunggah",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "paymentId": { "type": "string" },
+        "receiptNumber": { "type": "string" },
+        "memberId": { "type": "string" },
+        "memberName": { "type": "string" },
+        "memberNumber": { "type": "string" },
+        "memberCluster": { "type": "string" },
+        "paymentType": { "type": "string" },
+        "periodMonth": { "type": "string" },
+        "amount": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "proofFileName": { "type": "string" },
+        "senderAccountName": { "type": "string" },
+        "submittedByUserId": { "type": "string" },
+        "submittedByUserName": { "type": "string" },
+        "submittedByEmail": { "type": "string" },
+        "submittedByAuthority": { "type": "string" },
+        "submittedByCluster": { "type": "string" },
+        "submittedByMemberId": { "type": "string" },
+        "submittedByMemberNumber": { "type": "string" },
+        "isAccountMismatch": { "type": "boolean" },
+        "isSenderNameMismatch": { "type": "boolean" },
+        "isUploadedOnBehalf": { "type": "boolean" },
+        "mismatchReason": { "type": "string" },
+        "sourceComponent": { "type": "string" },
+        "uploadedAt": { "type": "string" },
+        "createdAtIso": { "type": "string" }
+      },
+      "required": ["id", "paymentId", "memberId", "submittedByUserId", "submittedByUserName", "uploadedAt"]
     }
   },
   "firestore": {
@@ -130,6 +181,10 @@
     "/payments/{paymentId}": {
       "schema": "Payment",
       "description": "Riwayat transaksi pembayaran iuran"
+    },
+    "/payment_audit_logs/{logId}": {
+      "schema": "PaymentUploadAuditLog",
+      "description": "Log audit cloud untuk setiap unggahan bukti transfer beserta metadata akun pengunggah"
     },
     "/claims/{claimId}": {
       "schema": "BenefitClaim",

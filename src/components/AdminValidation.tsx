@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { AppNotification, MemberStatus, MemberVerificationStatus, Payment, Member, SystemSettings } from '../types';
+import { AppNotification, MemberStatus, MemberVerificationStatus, Payment, PaymentUploadAuditLog, Member, SystemSettings } from '../types';
 import { formatIDR } from '../lib/storage';
 import { downloadTreasurerPdfReport } from '../lib/treasurerPdfReport';
 import { downloadTreasurerExcelReport } from '../lib/treasurerExcelReport';
@@ -10,6 +10,8 @@ import {
   generateReceiptWhatsAppUrl,
   formatPhoneDisplay,
   getEffectivePaymentPeriod,
+  normalizeMemberNameForDuplicateCheck,
+  normalizePeriodForDuplicateCheck,
 } from '../lib/receiptUtils';
 import { doesPaymentBelongToMember } from '../lib/ktaUtils';
 import {
@@ -45,6 +47,7 @@ import {
   Trash2,
   Copy,
   RotateCcw,
+  UserCheck,
 } from 'lucide-react';
 import { DigitalSignatureModal } from './DigitalSignatureModal';
 import { SignatureData } from './DigitalSignaturePad';
@@ -56,6 +59,7 @@ import { useRolePermissions } from '../lib/permissions';
 
 interface AdminValidationProps {
   payments: Payment[];
+  paymentAuditLogs?: PaymentUploadAuditLog[];
   members?: Member[];
   notifications?: AppNotification[];
   settings: SystemSettings;
@@ -83,6 +87,7 @@ interface AdminValidationProps {
 
 export const AdminValidation: React.FC<AdminValidationProps> = ({
   payments,
+  paymentAuditLogs = [],
   members = [],
   notifications = [],
   settings,
@@ -96,9 +101,9 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
   onViewReceipt,
   onSaveDefaultSignature,
 }) => {
-  const [filterStatus, setFilterStatus] = useState<'Pending' | 'Duplicate' | 'OverdueGrace' | 'Verified' | 'Rejected' | 'Semua'>('Pending');
+  const [filterStatus, setFilterStatus] = useState<'Pending' | 'Duplicate' | 'UploaderMismatch' | 'OverdueGrace' | 'Verified' | 'Rejected' | 'Semua'>('Pending');
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
-  const [selectedProofUrl, setSelectedProofUrl] = useState<string | null>(null);
+  const [selectedProofPayment, setSelectedProofPayment] = useState<Payment | null>(null);
   const [rejectModalPayment, setRejectModalPayment] = useState<Payment | null>(null);
   const [rejectReason, setRejectReason] = useState<string>('');
   const [cancelVerifyModalPayment, setCancelVerifyModalPayment] = useState<Payment | null>(null);
@@ -108,6 +113,7 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
   const [verifySignaturePayment, setVerifySignaturePayment] = useState<Payment | null>(null);
   const [postVerifyPayment, setPostVerifyPayment] = useState<Payment | null>(null);
   const [isSystemTraceModalOpen, setIsSystemTraceModalOpen] = useState<boolean>(false);
+  const [traceInitialTab, setTraceInitialTab] = useState<'anomalies' | 'uploads'>('anomalies');
 
   const statusAnomalies = useMemo(() => {
     return analyzeMemberStatusAnomalies({
@@ -188,8 +194,8 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
     const groups = new Map<string, Payment[]>();
     payments.forEach((p) => {
       if (!p || p.status === 'Rejected') return;
-      const memberKey = (p.memberId || p.memberNumber || (p.memberName || '').toLowerCase().trim()).toLowerCase();
-      const periodKey = getEffectivePaymentPeriod(p, settings).toLowerCase().trim();
+      const memberKey = normalizeMemberNameForDuplicateCheck(p.memberName) || (p.memberId || p.memberNumber || '').toLowerCase();
+      const periodKey = normalizePeriodForDuplicateCheck(getEffectivePaymentPeriod(p, settings));
       const typeKey = (p.paymentType || 'Iuran Tahunan').toLowerCase().trim();
       const groupKey = `${memberKey}::${typeKey}::${periodKey}`;
       const list = groups.get(groupKey) || [];
@@ -213,12 +219,19 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
     [payments, duplicatePaymentMap]
   );
 
+  const mismatchPayments = React.useMemo(
+    () => payments.filter((p) => Boolean(p.uploaderMismatchFlag)),
+    [payments]
+  );
+
   const filteredPayments = payments.filter((p) => {
     let matchesStatus = true;
     if (filterStatus === 'Semua') {
       matchesStatus = true;
     } else if (filterStatus === 'Duplicate') {
       matchesStatus = duplicatePaymentMap.has(p.id);
+    } else if (filterStatus === 'UploaderMismatch') {
+      matchesStatus = Boolean(p.uploaderMismatchFlag);
     } else if (filterStatus === 'OverdueGrace') {
       const gInfo = calculatePendingGracePeriod(p);
       matchesStatus = p.status === 'Pending' && gInfo.isExceedingGracePeriod;
@@ -226,11 +239,18 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
       matchesStatus = p.status === filterStatus;
     }
 
+    const q = searchTerm.toLowerCase();
     const matchesSearch =
-      (p.memberName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (p.memberNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (p.receiptNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (p.paymentMethod ? p.paymentMethod.toLowerCase().includes(searchTerm.toLowerCase()) : false);
+      (p.memberName || '').toLowerCase().includes(q) ||
+      (p.memberNumber || '').toLowerCase().includes(q) ||
+      (p.receiptNumber || '').toLowerCase().includes(q) ||
+      (p.paymentMethod ? p.paymentMethod.toLowerCase().includes(q) : false) ||
+      (p.submittedByUserName ? p.submittedByUserName.toLowerCase().includes(q) : false) ||
+      (p.submittedByUserId ? p.submittedByUserId.toLowerCase().includes(q) : false) ||
+      (p.submittedByEmail ? p.submittedByEmail.toLowerCase().includes(q) : false) ||
+      (p.submittedByAuthority ? p.submittedByAuthority.toLowerCase().includes(q) : false) ||
+      (p.senderAccountName ? p.senderAccountName.toLowerCase().includes(q) : false) ||
+      (p.uploaderMismatchReason ? p.uploaderMismatchReason.toLowerCase().includes(q) : false);
 
     return matchesStatus && matchesSearch;
   });
@@ -496,10 +516,37 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
             <span>Laporan Bendahara (Excel)</span>
           </button>
 
+          {(isAdminUser || isBendahara) && (
+            <button
+              type="button"
+              onClick={() => {
+                setTraceInitialTab('uploads');
+                setIsSystemTraceModalOpen(true);
+              }}
+              className={`px-4 py-3 font-extrabold text-xs rounded-xl shadow-lg transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 border ${
+                mismatchPayments.length > 0
+                  ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-300'
+                  : 'bg-slate-800 hover:bg-slate-700 text-emerald-200 border-slate-600'
+              }`}
+              title="Lihat audit metadata akun pengunggah & nama pengirim bukti transfer (Cloud)"
+            >
+              <UserCheck className="w-4 h-4 shrink-0" />
+              <span>Log Upload Bukti</span>
+              {mismatchPayments.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-slate-950 text-amber-300 text-[10px] font-black tabular-nums">
+                  {mismatchPayments.length}
+                </span>
+              )}
+            </button>
+          )}
+
           {activeUser?.authority === 'Admin' && (
             <button
               type="button"
-              onClick={() => setIsSystemTraceModalOpen(true)}
+              onClick={() => {
+                setTraceInitialTab('anomalies');
+                setIsSystemTraceModalOpen(true);
+              }}
               className={`px-4 py-3 font-extrabold text-xs rounded-xl shadow-lg transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 border ${
                 statusAnomalies.length > 0
                   ? 'bg-rose-600 hover:bg-rose-500 text-white border-rose-400'
@@ -605,7 +652,7 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Cari nama warga, NPA, metode..."
+              placeholder="Cari warga, NPA, pengunggah, pengirim..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
@@ -637,6 +684,21 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
             >
               <Copy className="w-3.5 h-3.5" />
               <span>Duplikat Periode ({duplicatePayments.length})</span>
+            </button>
+
+            <button
+              onClick={() => setFilterStatus('UploaderMismatch')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all inline-flex items-center gap-1.5 ${
+                filterStatus === 'UploaderMismatch'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : mismatchPayments.length > 0
+                  ? 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-300'
+                  : 'text-slate-500 hover:text-slate-900'
+              }`}
+              title="Tampilkan pembayaran dengan akun pengunggah atau nama pengirim rekening berbeda dari nama anggota"
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>Selisih Pengunggah ({mismatchPayments.length})</span>
             </button>
 
             {graceSummary.hasOverdue && (
@@ -847,6 +909,15 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
                             <span>{memberPhone}</span>
                           </p>
                         )}
+                        {payment.uploaderMismatchFlag && (
+                          <div
+                            className="mt-1.5 px-2 py-1 bg-amber-100 border border-amber-300 text-amber-950 rounded-lg text-[10px] font-bold flex items-start gap-1 max-w-xs"
+                            title={payment.uploaderMismatchReason || 'Pengunggah atau pengirim berbeda dari nama anggota'}
+                          >
+                            <AlertTriangle className="w-3 h-3 text-amber-700 shrink-0 mt-0.5" />
+                            <span>Pengunggah / Pengirim Berbeda</span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Jenis & Periode */}
@@ -885,10 +956,30 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
                         </span>
                       </td>
 
-                      {/* Metode & Waktu */}
+                      {/* Metode & Waktu + Metadata Pengunggah */}
                       <td className="py-3.5 px-4 align-middle text-xs">
                         <span className="font-semibold text-slate-700 block">{payment.paymentMethod}</span>
                         <span className="font-mono text-[11px] text-slate-500 block">{formatStoredPaymentDateTime(payment.createdAt, true)}</span>
+                        {payment.senderAccountName && (
+                          <span className="block mt-1 text-[10px] font-bold text-slate-700">
+                            Pengirim Rek: <span className="text-indigo-700">{payment.senderAccountName}</span>
+                          </span>
+                        )}
+                        {payment.submittedByUserId || payment.submittedByUserName ? (
+                          <span className="block mt-0.5 text-[10px] text-slate-500 leading-snug">
+                            Akun Upload: <strong className="text-slate-700">{payment.submittedByUserName || '-'}</strong>{' '}
+                            {payment.submittedByAuthority ? `(${payment.submittedByAuthority})` : ''}
+                            {payment.submittedByUserId ? (
+                              <span className="block font-mono text-[9px] text-slate-400">
+                                ID: {payment.submittedByUserId}
+                              </span>
+                            ) : null}
+                          </span>
+                        ) : (
+                          <span className="block mt-1 text-[10px] italic text-slate-400">
+                            Riwayat lama (sebelum log akun aktif)
+                          </span>
+                        )}
                       </td>
 
                       {/* Umur & Grace Period */}
@@ -918,9 +1009,9 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
                         {payment.proofImageUrl ? (
                           <button
                             type="button"
-                            onClick={() => setSelectedProofUrl(payment.proofImageUrl || null)}
+                            onClick={() => setSelectedProofPayment(payment)}
                             className="group relative w-12 h-12 rounded-lg border-2 border-slate-300 overflow-hidden bg-slate-100 inline-block hover:border-emerald-500 transition-colors shadow-2xs"
-                            title="Klik untuk zoom bukti transfer"
+                            title="Klik untuk zoom bukti transfer & detail pengunggah"
                           >
                             <img src={payment.proofImageUrl} alt="Struk" className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
                             <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
@@ -1191,6 +1282,44 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
                       </div>
                     )}
 
+                    {/* Audit Metadata Pengunggah & Pengirim Rekening */}
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] space-y-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <span className="text-slate-500 font-semibold">Akun Pengunggah: </span>
+                          {payment.submittedByUserId || payment.submittedByUserName ? (
+                            <span className="font-bold text-slate-900">
+                              {payment.submittedByUserName || '-'}
+                              {payment.submittedByAuthority ? ` (${payment.submittedByAuthority})` : ''}
+                              {payment.submittedByUserId ? (
+                                <span className="ml-1.5 font-mono text-[10px] text-slate-500">
+                                  • ID: {payment.submittedByUserId}
+                                </span>
+                              ) : null}
+                            </span>
+                          ) : (
+                            <span className="italic text-slate-400">
+                              Riwayat lama (sebelum log akun aktif)
+                            </span>
+                          )}
+                        </div>
+                        {payment.senderAccountName && (
+                          <div>
+                            <span className="text-slate-500 font-semibold">Pengirim Rek: </span>
+                            <span className="font-bold text-indigo-700">{payment.senderAccountName}</span>
+                          </div>
+                        )}
+                      </div>
+                      {payment.uploaderMismatchFlag && (
+                        <div className="mt-1 p-2 bg-amber-100 border border-amber-300 rounded-lg text-amber-950 font-semibold flex items-start gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
+                          <span>
+                            Peringatan Ketidaksesuaian: {payment.uploaderMismatchReason || 'Akun pengunggah atau nama pengirim berbeda dari nama anggota.'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
                     {payment.adminNotes && (
                       <p className="text-xs text-slate-600 bg-slate-100 p-2 rounded-lg italic border border-slate-200">
                         <strong>Catatan Admin:</strong> {payment.adminNotes}
@@ -1208,9 +1337,9 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
                     {/* Proof Thumbnail */}
                     {payment.proofImageUrl && (
                       <button
-                        onClick={() => setSelectedProofUrl(payment.proofImageUrl || null)}
+                        onClick={() => setSelectedProofPayment(payment)}
                         className="group relative w-16 h-16 rounded-xl border-2 border-slate-300 overflow-hidden bg-slate-100 shrink-0 hover:border-emerald-500 transition-colors"
-                        title="Klik untuk zoom bukti transfer"
+                        title="Klik untuk zoom bukti transfer & detail pengunggah"
                       >
                         <img src={payment.proofImageUrl} alt="Struk" className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
                         <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
@@ -1340,7 +1469,7 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
       )}
 
       {/* PROOF IMAGE ZOOM MODAL */}
-      {selectedProofUrl && (
+      {selectedProofPayment && selectedProofPayment.proofImageUrl && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
           <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl animate-in zoom-in-95">
             <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
@@ -1349,18 +1478,73 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
                 <span>Foto Struk / Bukti Transfer</span>
               </span>
               <button
-                onClick={() => setSelectedProofUrl(null)}
+                onClick={() => setSelectedProofPayment(null)}
                 className="p-1 hover:bg-slate-800 rounded-lg transition-colors text-slate-300 hover:text-white"
               >
                 ✕
               </button>
             </div>
-            <div className="p-4 bg-slate-950 flex justify-center max-h-[75vh] overflow-auto">
-              <img src={selectedProofUrl} alt="Bukti Transfer Zoom" className="max-w-full max-h-[70vh] object-contain rounded-lg" />
+
+            {/* Metadata Strip Anggota, Pengirim & Akun Pengunggah */}
+            <div className="p-3.5 bg-slate-50 border-b border-slate-200 text-xs space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Anggota Tujuan (KTA)</span>
+                  <span className="font-extrabold text-slate-900">
+                    {selectedProofPayment.memberName}{' '}
+                    <span className="font-mono text-slate-500 font-semibold">({selectedProofPayment.memberNumber})</span>
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Nominal & Metode</span>
+                  <span className="font-extrabold text-emerald-700 font-mono">
+                    {formatIDR(selectedProofPayment.amount)}
+                  </span>{' '}
+                  <span className="text-slate-600 font-semibold">• {selectedProofPayment.paymentMethod}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Nama Pengirim Rekening</span>
+                  <span className="font-bold text-indigo-700">
+                    {selectedProofPayment.senderAccountName || '(Tidak diisi)'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Diunggah Oleh Akun</span>
+                  {selectedProofPayment.submittedByUserId || selectedProofPayment.submittedByUserName ? (
+                    <span className="font-bold text-slate-900">
+                      {selectedProofPayment.submittedByUserName || '-'}
+                      {selectedProofPayment.submittedByAuthority ? ` (${selectedProofPayment.submittedByAuthority})` : ''}
+                      <span className="block font-mono text-[10px] text-slate-500 font-normal">
+                        ID: {selectedProofPayment.submittedByUserId || '-'}
+                        {selectedProofPayment.submittedByEmail ? ` • ${selectedProofPayment.submittedByEmail}` : ''}
+                      </span>
+                      <span className="block font-mono text-[10px] text-slate-500 font-normal">
+                        Waktu: {selectedProofPayment.submittedAt || formatStoredPaymentDateTime(selectedProofPayment.createdAt, true)}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="italic text-slate-400">Riwayat lama (sebelum sistem audit akun aktif)</span>
+                  )}
+                </div>
+              </div>
+
+              {selectedProofPayment.uploaderMismatchFlag && (
+                <div className="p-2.5 bg-amber-100 border border-amber-300 rounded-xl text-amber-950 text-[11px] font-semibold flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-extrabold block">Peringatan Ketidaksesuaian Pengunggah / Pengirim:</span>
+                    <span>{selectedProofPayment.uploaderMismatchReason || 'Nama akun pengunggah atau pengirim rekening berbeda dari nama anggota.'}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-slate-950 flex justify-center max-h-[65vh] overflow-auto">
+              <img src={selectedProofPayment.proofImageUrl} alt="Bukti Transfer Zoom" className="max-w-full max-h-[60vh] object-contain rounded-lg" />
             </div>
             <div className="p-3 bg-slate-100 text-right">
               <button
-                onClick={() => setSelectedProofUrl(null)}
+                onClick={() => setSelectedProofPayment(null)}
                 className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-lg"
               >
                 Tutup Zoom
@@ -1661,15 +1845,18 @@ export const AdminValidation: React.FC<AdminValidationProps> = ({
         }
       />
 
-      {/* MODAL PENELUSURAN ANOMALI & AUDIT STATUS SISTEM (KHUSUS ADMIN) */}
-      {activeUser?.authority === 'Admin' && (
+      {/* MODAL PENELUSURAN ANOMALI & AUDIT UPLOAD BUKTI (ADMIN & BENDAHARA) */}
+      {(isAdminUser || isBendahara) && (
         <SystemStatusTraceModal
           isOpen={isSystemTraceModalOpen}
           onClose={() => setIsSystemTraceModalOpen(false)}
           members={members}
           payments={payments}
+          paymentAuditLogs={paymentAuditLogs}
           notifications={notifications}
-          onRepairMemberStatus={onRepairMemberStatus}
+          initialTab={traceInitialTab}
+          canRepair={isAdminUser}
+          onRepairMemberStatus={isAdminUser ? onRepairMemberStatus : undefined}
         />
       )}
     </div>

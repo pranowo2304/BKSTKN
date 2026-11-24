@@ -6,6 +6,7 @@ import {
   MemberStatus,
   MemberVerificationStatus,
   Payment,
+  PaymentUploadAuditLog,
   SystemSettings,
 } from '../types';
 import {
@@ -42,6 +43,7 @@ import {
 interface StatusAuditPageProps {
   members: Member[];
   payments: Payment[];
+  paymentAuditLogs?: PaymentUploadAuditLog[];
   notifications?: AppNotification[];
   settings: SystemSettings;
   activeUser?: AppUser | null;
@@ -73,6 +75,7 @@ type AuditFilterMode =
 export const StatusAuditPage: React.FC<StatusAuditPageProps> = ({
   members,
   payments,
+  paymentAuditLogs = [],
   notifications = [],
   settings,
   activeUser,
@@ -942,6 +945,7 @@ export const StatusAuditPage: React.FC<StatusAuditPageProps> = ({
         onClose={() => setTraceModalOpen(false)}
         members={members}
         payments={payments}
+        paymentAuditLogs={paymentAuditLogs}
         notifications={notifications}
         initialMemberId={traceMemberId}
         onRepairMemberStatus={onRepairMemberStatus}

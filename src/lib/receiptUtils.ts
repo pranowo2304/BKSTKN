@@ -279,6 +279,104 @@ export const getEffectivePaymentPeriod = (
   return getSystemConfiguredPeriod(settings);
 };
 
+export const normalizeMemberNameForDuplicateCheck = (name?: string | null): string => {
+  return (name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+};
+
+export const normalizePeriodForDuplicateCheck = (period?: string | null): string => {
+  return (period || '').trim().replace(/\s+/g, ' ').toLowerCase();
+};
+
+export const arePaymentPeriodsEquivalent = (
+  periodA?: string | null,
+  periodB?: string | null
+): boolean => {
+  const a = normalizePeriodForDuplicateCheck(periodA);
+  const b = normalizePeriodForDuplicateCheck(periodB);
+  if (!a || !b) return false;
+  if (a === b) return true;
+
+  // Treat "2026" and "Tahun 2026" as equivalent periods
+  const stripYearPrefix = (val: string) => val.replace(/^tahun\s+/, '').trim();
+  const aYearOnly = stripYearPrefix(a);
+  const bYearOnly = stripYearPrefix(b);
+  if (/^\d{4}$/.test(aYearOnly) && aYearOnly === bYearOnly) {
+    return true;
+  }
+  return false;
+};
+
+export const doesPaymentMatchMemberIdentity = (
+  payment: Payment,
+  candidateMemberName?: string | null,
+  candidateMemberId?: string | null,
+  candidateMemberNumber?: string | null
+): boolean => {
+  if (!payment) return false;
+
+  // 1. Primary check requested: 1 nama anggota (case-insensitive & whitespace-normalized)
+  const pNameNorm = normalizeMemberNameForDuplicateCheck(payment.memberName);
+  const cNameNorm = normalizeMemberNameForDuplicateCheck(candidateMemberName);
+  if (pNameNorm && cNameNorm && pNameNorm === cNameNorm) {
+    return true;
+  }
+
+  // 2. Exact member ID match
+  if (payment.memberId && candidateMemberId && payment.memberId === candidateMemberId) {
+    return true;
+  }
+
+  // 3. Member number match when name is not conflicting
+  const pNum = (payment.memberNumber || '').trim().toLowerCase();
+  const cNum = (candidateMemberNumber || '').trim().toLowerCase();
+  if (pNum && cNum && pNum === cNum && (!pNameNorm || !cNameNorm || pNameNorm === cNameNorm)) {
+    return true;
+  }
+
+  return false;
+};
+
+export const findDuplicatePaymentsForCandidate = (params: {
+  candidate: Pick<Payment, 'id' | 'memberId' | 'memberName' | 'memberNumber' | 'paymentType' | 'periodMonth'> & Partial<Payment>;
+  existingPayments: Payment[];
+  targetMember?: Member | null;
+  settings?: SystemSettings;
+}): Payment[] => {
+  const { candidate, existingPayments, targetMember, settings } = params;
+  if (!candidate || !Array.isArray(existingPayments) || existingPayments.length === 0) {
+    return [];
+  }
+
+  const candName = targetMember?.name || candidate.memberName;
+  const candId = targetMember?.id || candidate.memberId;
+  const candNum = targetMember?.memberNumber || candidate.memberNumber;
+  const candType = (candidate.paymentType || 'Iuran Tahunan').trim().toLowerCase();
+  const candEffectivePeriod = getEffectivePaymentPeriod(candidate as Payment, settings);
+  const candRawPeriod = candidate.periodMonth || candEffectivePeriod;
+
+  return existingPayments.filter((p) => {
+    if (!p || p.id === candidate.id) return false;
+    // Pembayaran yang sudah Ditolak (Rejected) boleh diajukan ulang
+    if (p.status === 'Rejected') return false;
+
+    const sameMember = doesPaymentMatchMemberIdentity(p, candName, candId, candNum);
+    if (!sameMember) return false;
+
+    const pType = (p.paymentType || 'Iuran Tahunan').trim().toLowerCase();
+    if (pType !== candType) return false;
+
+    const pEffectivePeriod = getEffectivePaymentPeriod(p, settings);
+    const pRawPeriod = p.periodMonth || pEffectivePeriod;
+
+    return (
+      arePaymentPeriodsEquivalent(pEffectivePeriod, candEffectivePeriod) ||
+      arePaymentPeriodsEquivalent(pRawPeriod, candRawPeriod) ||
+      arePaymentPeriodsEquivalent(pEffectivePeriod, candRawPeriod) ||
+      arePaymentPeriodsEquivalent(pRawPeriod, candEffectivePeriod)
+    );
+  });
+};
+
 /**
  * Generates a clean, official, beautifully structured WhatsApp receipt message in Indonesian.
  */

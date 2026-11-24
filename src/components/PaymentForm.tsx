@@ -1,8 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Member, Payment, SystemSettings, PaymentType, PaymentMethod, AppUser } from '../types';
 import { formatIDR, getMemberForUser } from '../lib/storage';
-import { getSystemConfiguredPeriod, getEffectivePaymentPeriod } from '../lib/receiptUtils';
+import {
+  getSystemConfiguredPeriod,
+  getEffectivePaymentPeriod,
+  findDuplicatePaymentsForCandidate,
+  normalizeMemberNameForDuplicateCheck,
+  normalizePeriodForDuplicateCheck,
+} from '../lib/receiptUtils';
 import { getIndonesiaTimestamp, formatStoredPaymentDateTime } from '../lib/indonesianTime';
+import { namesShareOverlap, stampPaymentUploaderMetadata } from '../lib/systemAuditLog';
 import {
   CreditCard,
   Upload,
@@ -36,7 +43,7 @@ interface PaymentFormProps {
   settings: SystemSettings;
   activeUser?: AppUser;
   selectedMemberForPayment?: Member | null;
-  onAddPayment: (payment: Payment) => void;
+  onAddPayment: (payment: Payment) => boolean | void;
   onDeletePayment?: (paymentId: string) => void;
   onNavigateToValidation?: () => void;
   onNavigateToVerification?: () => void;
@@ -200,7 +207,9 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
   // Proof upload state
   const [proofImage, setProofImage] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>('');
-  
+  const [senderAccountName, setSenderAccountName] = useState<string>('');
+  const [formError, setFormError] = useState<string | null>(null);
+
   const [isSuccessSubmitted, setIsSuccessSubmitted] = useState<boolean>(false);
   const [submittedPayment, setSubmittedPayment] = useState<Payment | null>(null);
 
@@ -266,30 +275,37 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
   // Eligible to pay if verified by RT (Menunggu Pembayaran, Menunggu Validasi Bendahara, or Aktif)
   const isEligibleToPay = activeMember && !isPendingVerification && !isRejected && !isDeceased && (activeMember.verificationStatus === 'Verified' || isAwaitingPayment || isAwaitingTreasurer || isMemberActive);
 
-  // Riwayat pembayaran milik anggota yang sedang dipilih pada periode yang sama
+  // Riwayat pembayaran milik anggota yang sedang dipilih pada periode yang sama (kecuali Rejected)
   const existingSamePeriodPayments = useMemo(() => {
     if (!activeMember || !payments.length) return [];
-    const targetPeriod = (periodMonth || systemPeriod || '').toLowerCase().trim();
-    return payments.filter((p) => {
-      if (!p || p.status === 'Rejected') return false;
-      const sameMem =
-        (p.memberId && p.memberId === activeMember.id) ||
-        (p.memberNumber && activeMember.memberNumber && p.memberNumber === activeMember.memberNumber) ||
-        (p.memberName && activeMember.name && p.memberName.toLowerCase().trim() === activeMember.name.toLowerCase().trim());
-      if (!sameMem) return false;
-      const pPeriod = getEffectivePaymentPeriod(p, settings).toLowerCase().trim();
-      const rawPeriod = (p.periodMonth || '').toLowerCase().trim();
-      return (pPeriod === targetPeriod || rawPeriod === targetPeriod) && p.paymentType === paymentType;
+    return findDuplicatePaymentsForCandidate({
+      candidate: {
+        id: '__candidate__',
+        memberId: activeMember.id,
+        memberName: activeMember.name,
+        memberNumber: activeMember.memberNumber,
+        paymentType,
+        periodMonth: periodMonth || systemPeriod,
+      },
+      existingPayments: payments,
+      targetMember: activeMember,
+      settings,
     });
   }, [activeMember, payments, periodMonth, systemPeriod, paymentType, settings]);
+
+  const isDuplicateBlocked = existingSamePeriodPayments.length > 0;
+
+  useEffect(() => {
+    setFormError(null);
+  }, [memberId, paymentType, periodMonth, proofImage, paymentMethod]);
 
   // Deteksi seluruh pembayaran duplikat periode untuk Admin
   const allDuplicatePayments = useMemo(() => {
     const groups = new Map<string, Payment[]>();
     payments.forEach((p) => {
       if (!p || p.status === 'Rejected') return;
-      const memberKey = (p.memberId || p.memberNumber || (p.memberName || '').toLowerCase().trim()).toLowerCase();
-      const periodKey = getEffectivePaymentPeriod(p, settings).toLowerCase().trim();
+      const memberKey = normalizeMemberNameForDuplicateCheck(p.memberName) || (p.memberId || p.memberNumber || '').toLowerCase();
+      const periodKey = normalizePeriodForDuplicateCheck(getEffectivePaymentPeriod(p, settings));
       const typeKey = (p.paymentType || 'Iuran Tahunan').toLowerCase().trim();
       const groupKey = `${memberKey}::${typeKey}::${periodKey}`;
       const list = groups.get(groupKey) || [];
@@ -307,36 +323,36 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
+
     if (!activeMember) {
-      alert('Pilih anggota terlebih dahulu!');
+      setFormError('Pilih anggota terlebih dahulu sebelum mengirim pembayaran.');
       return;
     }
 
     if (!isEligibleToPay) {
-      alert(`Pendaftar baru belum dapat melakukan pembayaran!\n\nSesuai alur resmi paguyuban, pendaftar baru bisa melakukan pembayaran setelah verifikasi dari RT (${activeMember.cluster || 'Cluster'}). Mohon tunggu verifikasi dan persetujuan dari Ketua RT.`);
+      setFormError(`Pendaftar baru atas nama "${activeMember.name}" belum dapat melakukan pembayaran sebelum diverifikasi oleh Ketua RT (${activeMember.cluster || 'Cluster'}).`);
       return;
     }
 
     if (!proofImage && paymentMethod !== 'Tunai') {
-      alert('Mohon unggah bukti transfer / pembayaran terlebih dahulu.');
+      setFormError('Mohon unggah bukti transfer / pembayaran terlebih dahulu.');
       return;
     }
 
     if (existingSamePeriodPayments.length > 0) {
-      const confirmDup = window.confirm(
-        `PERINGATAN KONFIRMASI GANDA:\n\n` +
-          `Warga "${activeMember.name}" sudah memiliki ${existingSamePeriodPayments.length} data konfirmasi pembayaran untuk ${paymentType} periode "${periodMonth}" (${existingSamePeriodPayments.map((p) => `${p.receiptNumber || '-'} - ${p.status}`).join(', ')}).\n\n` +
-          `Apakah Anda yakin tetap ingin mengirim konfirmasi pembayaran lagi untuk periode yang sama?`
+      const firstDup = existingSamePeriodPayments[0];
+      const dupPeriod = getEffectivePaymentPeriod(firstDup, settings);
+      setFormError(
+        `Pengajuan DITOLAK SISTEM: Anggota "${activeMember.name}" sudah memiliki pembayaran ${paymentType} untuk periode "${dupPeriod}" (${firstDup.receiptNumber || '-'} • Status: ${firstDup.status}). Duplikasi pembayaran pada periode yang sama oleh 1 nama anggota tidak diperbolehkan.`
       );
-      if (!confirmDup) {
-        return;
-      }
+      return;
     }
 
     const nextId = 'pay-' + Date.now();
     const nextReceiptNum = `KWT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    const newPayment: Payment = {
+    const rawPayment: Payment = {
       id: nextId,
       receiptNumber: nextReceiptNum,
       memberId: activeMember.id,
@@ -352,7 +368,20 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
       createdAt: getIndonesiaTimestamp(),
     };
 
-    onAddPayment(newPayment);
+    const newPayment = stampPaymentUploaderMetadata({
+      payment: rawPayment,
+      activeUser,
+      targetMember: activeMember,
+      senderAccountName,
+    });
+
+    const accepted = onAddPayment(newPayment);
+    if (accepted === false) {
+      setFormError(
+        `Pengajuan DITOLAK SISTEM: Terdeteksi duplikasi pembayaran ${paymentType} pada periode yang sama untuk anggota "${activeMember.name}".`
+      );
+      return;
+    }
     setSubmittedPayment(newPayment);
     setIsSuccessSubmitted(true);
   };
@@ -362,6 +391,8 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
     setSubmittedPayment(null);
     setProofImage(null);
     setFileName('');
+    setSenderAccountName('');
+    setFormError(null);
   };
 
   return (
@@ -715,20 +746,18 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                 </div>
               </div>
 
-              {/* Peringatan & Tombol Hapus jika warga terpilih sudah punya konfirmasi pembayaran pada periode yang sama */}
+              {/* Penolakan otomatis jika 1 nama anggota sudah punya pembayaran pada periode yang sama */}
               {existingSamePeriodPayments.length > 0 && (
-                <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-xl text-xs space-y-2">
+                <div className="p-3.5 bg-rose-50 border-2 border-rose-400 rounded-xl text-xs space-y-2 shadow-xs">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-start gap-2">
-                      <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                      <AlertCircle className="w-4 h-4 text-rose-700 shrink-0 mt-0.5" />
                       <div>
-                        <p className="font-extrabold text-amber-950">
-                          Tercatat {existingSamePeriodPayments.length} Konfirmasi Pembayaran untuk {activeMember?.name} ({periodMonth})
+                        <p className="font-extrabold text-rose-950">
+                          ⛔ Ditolak Sistem: Pembayaran Periode Sama Sudah Ada ({activeMember?.name} • {getEffectivePaymentPeriod({ paymentType, periodMonth } as Payment, settings)})
                         </p>
-                        <p className="text-[11px] text-amber-800 mt-0.5">
-                          {existingSamePeriodPayments.length > 1
-                            ? 'Terdapat konfirmasi pembayaran lebih dari sekali pada periode yang sama.'
-                            : 'Warga ini sudah pernah mengirimkan konfirmasi pembayaran untuk periode ini.'}
+                        <p className="text-[11px] text-rose-800 mt-0.5 leading-relaxed">
+                          Sistem otomatis menolak pengajuan pembayaran ganda pada periode yang sama oleh 1 nama anggota. Pengiriman ulang hanya diperbolehkan jika pembayaran sebelumnya berstatus <strong>Rejected (Ditolak Bendahara)</strong>.
                         </p>
                       </div>
                     </div>
@@ -737,7 +766,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                     {existingSamePeriodPayments.map((pay) => (
                       <div
                         key={pay.id}
-                        className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-white border border-amber-200 rounded-lg"
+                        className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-white border border-rose-200 rounded-lg"
                       >
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -891,6 +920,44 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                 )}
               </div>
 
+              {/* NAMA PENGIRIM DI REKENING & INFO AUDIT PENGUNGGAH */}
+              <div className="border-t border-slate-200 pt-4 space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Nama Pengirim / Pemilik Rekening Transfer <span className="text-[10px] font-normal text-slate-500">(Sesuai struk mutasi/transfer)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={activeMember ? `Contoh: ${activeMember.name} atau nama pengirim di struk` : 'Nama pemilik rekening pengirim transfer'}
+                    value={senderAccountName}
+                    onChange={(e) => setSenderAccountName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none"
+                  />
+                  {senderAccountName.trim().length >= 2 && activeMember && !namesShareOverlap(senderAccountName, activeMember.name) && (
+                    <div className="mt-2 p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-[11px] text-amber-900 flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <span>
+                        Nama pengirim <strong>&ldquo;{senderAccountName.trim()}&rdquo;</strong> berbeda dengan nama anggota <strong>{activeMember.name}</strong>. Perbedaan ini akan ditandai otomatis di log audit Bendahara.
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Audit badge showing active uploader account */}
+                <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 flex flex-wrap items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>
+                      Log Audit Pengunggah: <strong className="text-slate-800">{activeUser?.name || 'Publik / Tanpa Login'}</strong>
+                      {activeUser?.authority ? ` (${activeUser.authority})` : ''}
+                    </span>
+                  </span>
+                  <span className="font-mono text-[10px] text-slate-500">
+                    ID: {activeUser?.id || 'guest'}
+                  </span>
+                </div>
+              </div>
+
               {/* UPLOAD BUKTI TRANSFER */}
               <div className="border-t border-slate-200 pt-4">
                 <label className="block text-xs font-bold text-slate-800 mb-2 flex items-center justify-between">
@@ -922,13 +989,20 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                 </div>
               </div>
 
+              {formError && (
+                <div className="p-3.5 bg-rose-50 border-2 border-rose-400 rounded-xl text-xs text-rose-900 font-semibold flex items-start gap-2 animate-in fade-in">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{formError}</span>
+                </div>
+              )}
+
               <button
                 type="submit"
-                disabled={!isEligibleToPay || isReadOnlyRole}
+                disabled={!isEligibleToPay || isReadOnlyRole || isDuplicateBlocked}
                 className={`w-full py-3.5 font-extrabold text-sm rounded-xl transition-all inline-flex items-center justify-center gap-2 mt-4 ${
-                  isEligibleToPay && !isReadOnlyRole
+                  isEligibleToPay && !isReadOnlyRole && !isDuplicateBlocked
                     ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20 cursor-pointer'
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
+                    : 'bg-slate-200 text-slate-500 cursor-not-allowed border border-slate-300'
                 }`}
               >
                 <Send className="w-4 h-4" />
@@ -939,10 +1013,12 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                     ? '⛔ Menunggu Verifikasi RT (Belum Bisa Bayar)'
                     : isRejected
                     ? '✕ Pendaftaran Ditolak RT (Tidak Dapat Bayar)'
+                    : isDuplicateBlocked
+                    ? '⛔ Ditolak: Sudah Ada Pembayaran di Periode Ini'
                     : isAwaitingPayment
                     ? 'Kirim Bukti Transfer (Menuju Validasi Bendahara)'
                     : isAwaitingTreasurer
-                    ? 'Kirim Tambahan Bukti / Setoran Ulang'
+                    ? 'Kirim Konfirmasi Pembayaran'
                     : 'Kirim Konfirmasi Pembayaran'}
                 </span>
               </button>

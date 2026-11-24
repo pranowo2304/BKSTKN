@@ -1,17 +1,22 @@
 import {
+  AppUser,
   Member,
   MemberStatus,
   MemberVerificationStatus,
   Payment,
+  PaymentUploadAuditLog,
   AppNotification,
   WhatsAppNotificationLog,
 } from '../types';
 import { doesPaymentBelongToMember } from './ktaUtils';
+import { getIndonesiaTimestamp } from './indonesianTime';
 
 export const SYSTEM_AUDIT_LOG_KEY = 'dana_kematian_system_audit_log_v1';
+export const PAYMENT_AUDIT_LOGS_KEY = 'dana_kematian_payment_audit_logs_v1';
 const PENDING_MEMBERS_SYNC_KEY = 'dana_kematian_pending_members_sync_v1';
 const PENDING_PAYMENTS_SYNC_KEY = 'dana_kematian_pending_payments_sync_v1';
 const MAX_AUDIT_LOG_ENTRIES = 350;
+const MAX_PAYMENT_AUDIT_LOGS = 500;
 
 export interface SystemAuditTraceEntry {
   id: string;
@@ -20,6 +25,9 @@ export interface SystemAuditTraceEntry {
   action: string;
   severity: 'info' | 'warning' | 'error';
   actor?: string;
+  submittedByUserId?: string;
+  submittedByUserName?: string;
+  senderAccountName?: string;
   memberId?: string;
   memberName?: string;
   memberNumber?: string;
@@ -281,6 +289,9 @@ export function recordSystemTrace(
     action: entry.action,
     severity: entry.severity,
     actor: entry.actor,
+    submittedByUserId: entry.submittedByUserId,
+    submittedByUserName: entry.submittedByUserName,
+    senderAccountName: entry.senderAccountName,
     memberId: entry.memberId,
     memberName: entry.memberName,
     memberNumber: entry.memberNumber,
@@ -311,6 +322,239 @@ export function clearSystemAuditLogs(): void {
   } catch {
     // ignore storage error
   }
+}
+
+export function getStoredPaymentAuditLogs(): PaymentUploadAuditLog[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(PAYMENT_AUDIT_LOGS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveStoredPaymentAuditLogs(logs: PaymentUploadAuditLog[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(
+      PAYMENT_AUDIT_LOGS_KEY,
+      JSON.stringify((logs || []).slice(0, MAX_PAYMENT_AUDIT_LOGS))
+    );
+  } catch {
+    // ignore storage quota error
+  }
+}
+
+const HONORIFIC_STOP_WORDS = new Set([
+  'bpk',
+  'bapak',
+  'bp',
+  'ibu',
+  'ny',
+  'sdr',
+  'sdri',
+  'h',
+  'hj',
+  'drs',
+  'dr',
+  'ir',
+  'st',
+  'se',
+  'sh',
+  'alm',
+  'almarhum',
+  'almarhumah',
+]);
+
+function extractNameTokens(raw?: string): string[] {
+  if (!raw) return [];
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2 && !HONORIFIC_STOP_WORDS.has(t));
+}
+
+export function namesShareOverlap(nameA?: string, nameB?: string): boolean {
+  const tokensA = extractNameTokens(nameA);
+  const tokensB = extractNameTokens(nameB);
+  if (tokensA.length === 0 || tokensB.length === 0) return false;
+  const setB = new Set(tokensB);
+  return tokensA.some((t) => setB.has(t));
+}
+
+export interface PaymentMismatchAnalysis {
+  isAccountMismatch: boolean;
+  isSenderNameMismatch: boolean;
+  isUploadedOnBehalf: boolean;
+  uploaderMismatchFlag: boolean;
+  mismatchReason?: string;
+}
+
+export function analyzePaymentUploaderMismatch(params: {
+  payment: Partial<Payment>;
+  activeUser?: AppUser | null;
+  targetMember?: Member;
+}): PaymentMismatchAnalysis {
+  const { payment, activeUser, targetMember } = params;
+  const subUserId = payment.submittedByUserId || activeUser?.id || '';
+  const subUserName = payment.submittedByUserName || activeUser?.name || '';
+  const subAuthority = payment.submittedByAuthority || activeUser?.authority || '';
+  const subMemberId = payment.submittedByMemberId || activeUser?.memberId || '';
+  const subMemberNumber = payment.submittedByMemberNumber || activeUser?.memberNumber || '';
+
+  const targetMemId = payment.memberId || targetMember?.id || '';
+  const targetMemNumber = payment.memberNumber || targetMember?.memberNumber || '';
+  const targetMemName = payment.memberName || targetMember?.name || '';
+  const senderName = (payment.senderAccountName || '').trim();
+
+  let isAccountMismatch = false;
+  let isUploadedOnBehalf = false;
+  let isSenderNameMismatch = false;
+  const reasons: string[] = [];
+
+  const isMemberRole = subAuthority === 'Anggota';
+  const isStaffRole =
+    Boolean(subAuthority) && subAuthority !== 'Anggota' && subAuthority !== 'Publik / Tamu';
+
+  if (isStaffRole) {
+    isUploadedOnBehalf = true;
+  }
+
+  if (isMemberRole) {
+    const idMismatch = Boolean(subMemberId && targetMemId && subMemberId !== targetMemId);
+    const npaMismatch = Boolean(
+      subMemberNumber &&
+        targetMemNumber &&
+        subMemberNumber.trim().toLowerCase() !== targetMemNumber.trim().toLowerCase()
+    );
+    const nameMismatch =
+      !subMemberId &&
+      Boolean(subUserName && targetMemName && !namesShareOverlap(subUserName, targetMemName));
+
+    if (idMismatch || npaMismatch || nameMismatch) {
+      isAccountMismatch = true;
+      isUploadedOnBehalf = true;
+      reasons.push(
+        `Akun anggota pengunggah "${subUserName || subUserId}" (${subMemberNumber || subUserId}) berbeda dengan anggota yang dibayarkan "${targetMemName}" (${targetMemNumber}).`
+      );
+    }
+  } else if (!subUserId || subUserId === 'guest') {
+    isAccountMismatch = true;
+    reasons.push('Bukti transfer diunggah tanpa sesi akun login aktif (Publik/Tamu).');
+  }
+
+  if (senderName.length >= 2 && targetMemName) {
+    if (!namesShareOverlap(senderName, targetMemName)) {
+      isSenderNameMismatch = true;
+      reasons.push(
+        `Nama pengirim di rekening/struk ("${senderName}") tidak cocok dengan nama anggota ("${targetMemName}").`
+      );
+    }
+  }
+
+  const uploaderMismatchFlag = isAccountMismatch || isSenderNameMismatch;
+
+  return {
+    isAccountMismatch,
+    isSenderNameMismatch,
+    isUploadedOnBehalf,
+    uploaderMismatchFlag,
+    mismatchReason: reasons.length > 0 ? reasons.join(' ') : undefined,
+  };
+}
+
+export function stampPaymentUploaderMetadata(params: {
+  payment: Payment;
+  activeUser?: AppUser | null;
+  targetMember?: Member;
+  senderAccountName?: string;
+}): Payment {
+  const { payment, activeUser, targetMember, senderAccountName } = params;
+  const nowWib = payment.submittedAt || getIndonesiaTimestamp();
+  const effectiveSender =
+    senderAccountName !== undefined
+      ? senderAccountName.trim()
+      : (payment.senderAccountName || '').trim();
+
+  const withUser: Payment = {
+    ...payment,
+    submittedByUserId: payment.submittedByUserId || activeUser?.id || 'guest',
+    submittedByUserName:
+      payment.submittedByUserName || activeUser?.name || 'Publik / Tanpa Login',
+    submittedByEmail: payment.submittedByEmail || activeUser?.email || undefined,
+    submittedByAuthority:
+      payment.submittedByAuthority || activeUser?.authority || 'Publik / Tamu',
+    submittedByCluster:
+      payment.submittedByCluster || activeUser?.cluster || targetMember?.cluster || undefined,
+    submittedByMemberId: payment.submittedByMemberId || activeUser?.memberId || undefined,
+    submittedByMemberNumber:
+      payment.submittedByMemberNumber || activeUser?.memberNumber || undefined,
+    submittedAt: nowWib,
+    ...(effectiveSender ? { senderAccountName: effectiveSender } : {}),
+  };
+
+  const mismatch = analyzePaymentUploaderMismatch({
+    payment: withUser,
+    activeUser,
+    targetMember,
+  });
+
+  return {
+    ...withUser,
+    uploaderMismatchFlag: mismatch.uploaderMismatchFlag,
+    ...(mismatch.mismatchReason ? { uploaderMismatchReason: mismatch.mismatchReason } : {}),
+  };
+}
+
+export function buildPaymentUploadAuditLog(params: {
+  payment: Payment;
+  activeUser?: AppUser | null;
+  targetMember?: Member;
+  sourceComponent: string;
+}): PaymentUploadAuditLog {
+  const { payment, activeUser, targetMember, sourceComponent } = params;
+  const mismatch = analyzePaymentUploaderMismatch({
+    payment,
+    activeUser,
+    targetMember,
+  });
+
+  return {
+    id: `paylog-${payment.id}-${Date.now()}`,
+    paymentId: payment.id,
+    receiptNumber: payment.receiptNumber || '-',
+    memberId: payment.memberId,
+    memberName: payment.memberName,
+    memberNumber: payment.memberNumber,
+    memberCluster: targetMember?.cluster,
+    paymentType: payment.paymentType,
+    periodMonth: payment.periodMonth,
+    amount: payment.amount,
+    paymentMethod: payment.paymentMethod,
+    proofFileName: payment.proofFileName,
+    senderAccountName: payment.senderAccountName,
+    submittedByUserId: payment.submittedByUserId || activeUser?.id || 'guest',
+    submittedByUserName:
+      payment.submittedByUserName || activeUser?.name || 'Publik / Tanpa Login',
+    submittedByEmail: payment.submittedByEmail || activeUser?.email,
+    submittedByAuthority:
+      String(payment.submittedByAuthority || activeUser?.authority || 'Publik / Tamu'),
+    submittedByCluster: payment.submittedByCluster || activeUser?.cluster,
+    submittedByMemberId: payment.submittedByMemberId || activeUser?.memberId,
+    submittedByMemberNumber: payment.submittedByMemberNumber || activeUser?.memberNumber,
+    isAccountMismatch: mismatch.isAccountMismatch,
+    isSenderNameMismatch: mismatch.isSenderNameMismatch,
+    isUploadedOnBehalf: mismatch.isUploadedOnBehalf,
+    mismatchReason: mismatch.mismatchReason,
+    sourceComponent,
+    uploadedAt: payment.submittedAt || payment.createdAt || getIndonesiaTimestamp(),
+    createdAtIso: new Date().toISOString(),
+  };
 }
 
 export function getPendingUnsyncedMembers(): Member[] {

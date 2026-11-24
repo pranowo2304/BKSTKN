@@ -337,6 +337,48 @@ export interface Payment {
   verificationCancelledAt?: string; // Waktu pembatalan verifikasi oleh Bendahara
   verificationCancelledBy?: string; // Nama petugas yang membatalkan verifikasi
   verificationCancelReason?: string; // Alasan pembatalan verifikasi pembayaran
+  // Metadata Audit Pengunggah Bukti Transfer (disimpan saat upload)
+  submittedByUserId?: string; // ID akun user yang sedang login saat mengunggah bukti
+  submittedByUserName?: string; // Nama akun aktif yang mengunggah bukti
+  submittedByEmail?: string; // Email akun pengunggah
+  submittedByAuthority?: UserAuthority | string; // Peran/otoritas akun pengunggah
+  submittedByCluster?: string; // Cluster akun pengunggah
+  submittedByMemberId?: string; // memberId milik akun pengunggah (jika akun Anggota)
+  submittedByMemberNumber?: string; // NPA akun pengunggah (jika akun Anggota)
+  submittedAt?: string; // Timestamp WIB saat bukti transfer diunggah
+  senderAccountName?: string; // Nama pengirim / pemilik rekening pada struk transfer
+  uploaderMismatchFlag?: boolean; // True jika akun pengunggah / nama pengirim berbeda dengan anggota target
+  uploaderMismatchReason?: string; // Keterangan rincian ketidaksesuaian akun atau nama pengirim
+}
+
+export interface PaymentUploadAuditLog {
+  id: string;
+  paymentId: string;
+  receiptNumber: string;
+  memberId: string;
+  memberName: string;
+  memberNumber: string;
+  memberCluster?: string;
+  paymentType: PaymentType | string;
+  periodMonth: string;
+  amount: number;
+  paymentMethod: string;
+  proofFileName?: string;
+  senderAccountName?: string;
+  submittedByUserId: string;
+  submittedByUserName: string;
+  submittedByEmail?: string;
+  submittedByAuthority: string;
+  submittedByCluster?: string;
+  submittedByMemberId?: string;
+  submittedByMemberNumber?: string;
+  isAccountMismatch: boolean;
+  isSenderNameMismatch: boolean;
+  isUploadedOnBehalf: boolean;
+  mismatchReason?: string;
+  sourceComponent: string;
+  uploadedAt: string;
+  createdAtIso: string;
 }
 
 export interface ExpenseDetail {

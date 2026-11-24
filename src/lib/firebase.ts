@@ -19,9 +19,9 @@ import {
 // Silence benign internal SDK connection/offline polling messages so they don't trigger error boundaries
 setLogLevel('silent');
 import firebaseConfig from '../../firebase-applet-config.json';
-import { Member, Payment, BenefitClaim, SystemSettings, AppUser, ClusterMaster, DEFAULT_CLUSTERS, BenefitMaster, DEFAULT_BENEFITS, AmbulanceOrder, FuneralSchedule, FuneralInventoryItem, FuneralInventoryLoan, TransactionBackupRecord } from '../types';
+import { Member, Payment, PaymentUploadAuditLog, BenefitClaim, SystemSettings, AppUser, ClusterMaster, DEFAULT_CLUSTERS, BenefitMaster, DEFAULT_BENEFITS, AmbulanceOrder, FuneralSchedule, FuneralInventoryItem, FuneralInventoryLoan, TransactionBackupRecord } from '../types';
 import { recordFirebaseRead, recordFirebaseWrite, setCloudConnectionDiagnostics } from './firebaseTelemetry';
-import { sortPaymentsByNewest } from './receiptUtils';
+import { sortPaymentsByNewest, findDuplicatePaymentsForCandidate, getEffectivePaymentPeriod } from './receiptUtils';
 import { getExplicitlyDeletedMemberIds, markMemberExplicitlyDeleted } from './memberRecovery';
 import {
   initialMembers,
@@ -114,6 +114,7 @@ export const COLLECTIONS = {
   FUNERAL_INVENTORY: 'funeral_inventory',
   FUNERAL_INVENTORY_LOANS: 'funeral_inventory_loans',
   TRANSACTION_BACKUPS: 'transaction_backups',
+  PAYMENT_AUDIT_LOGS: 'payment_audit_logs',
   META: 'meta',
 } as const;
 
@@ -310,6 +311,7 @@ export async function seedInitialFirestoreData(): Promise<void> {
 export function subscribeToFirestore(callbacks: {
   onMembersChange?: (members: Member[]) => void;
   onPaymentsChange?: (payments: Payment[]) => void;
+  onPaymentAuditLogsChange?: (logs: PaymentUploadAuditLog[]) => void;
   onClaimsChange?: (claims: BenefitClaim[]) => void;
   onAmbulanceOrdersChange?: (orders: AmbulanceOrder[]) => void;
   onFuneralSchedulesChange?: (schedules: FuneralSchedule[]) => void;
@@ -650,6 +652,28 @@ export function subscribeToFirestore(callbacks: {
       (err) => handleListenerError(err, COLLECTIONS.FUNERAL_INVENTORY_LOANS)
     );
     unsubscribers.push(unsubInventoryLoans);
+
+    // 13. Payment Upload Audit Logs subscription
+    const unsubPaymentAuditLogs = onSnapshot(
+      collection(db, COLLECTIONS.PAYMENT_AUDIT_LOGS),
+      (snapshot) => {
+        if (snapshot.metadata.fromCache && snapshot.empty) {
+          return;
+        }
+        if (!snapshot.metadata.fromCache) {
+          recordFirebaseRead(COLLECTIONS.PAYMENT_AUDIT_LOGS, Math.max(1, snapshot.docChanges().length));
+        }
+        const logsList: PaymentUploadAuditLog[] = [];
+        snapshot.forEach((d) => {
+          logsList.push({ ...d.data(), id: d.id } as PaymentUploadAuditLog);
+        });
+        logsList.sort((a, b) => (b.createdAtIso || b.uploadedAt || '').localeCompare(a.createdAtIso || a.uploadedAt || ''));
+        callbacks.onPaymentAuditLogsChange?.(logsList);
+        markConnectedFromSnapshot(snapshot.metadata.fromCache);
+      },
+      (err) => handleListenerError(err, COLLECTIONS.PAYMENT_AUDIT_LOGS)
+    );
+    unsubscribers.push(unsubPaymentAuditLogs);
   } catch (e: any) {
     console.error('Failed to set up Firestore subscriptions:', e);
     setCloudConnectionDiagnostics('network_offline', e?.message);
@@ -973,6 +997,119 @@ export async function syncPaymentToCloud(payment: Payment): Promise<boolean> {
       }
       return false;
     }
+  }
+}
+
+/**
+ * Verifies against live Cloud Firestore before persisting a NEW payment so concurrent submissions
+ * for the same member name & period cannot create duplicate payment records.
+ */
+export async function createPaymentInCloudIfUnique(
+  payment: Payment,
+  settings?: SystemSettings
+): Promise<{
+  ok: boolean;
+  synced: boolean;
+  duplicatePayment?: Payment;
+  reason?: string;
+}> {
+  try {
+    const paymentsSnap = await Promise.race([
+      getDocs(collection(db, COLLECTIONS.PAYMENTS)),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
+    ]);
+
+    if (paymentsSnap) {
+      recordFirebaseRead(COLLECTIONS.PAYMENTS, Math.max(1, paymentsSnap.size));
+      const deletedIds = getExplicitlyDeletedPaymentIds();
+      const cloudPayments: Payment[] = [];
+      paymentsSnap.forEach((docSnap) => {
+        if (deletedIds.has(docSnap.id)) return;
+        cloudPayments.push({ ...docSnap.data(), id: docSnap.id } as Payment);
+      });
+
+      const matches = findDuplicatePaymentsForCandidate({
+        candidate: payment,
+        existingPayments: cloudPayments,
+        settings,
+      });
+
+      if (matches.length > 0) {
+        clearPaymentPendingSync(payment.id);
+        const dup = matches[0];
+        const effPeriod = getEffectivePaymentPeriod(dup, settings);
+        return {
+          ok: false,
+          synced: false,
+          duplicatePayment: dup,
+          reason: `Pembayaran ditolak sistem: Anggota "${payment.memberName}" sudah memiliki transaksi ${dup.paymentType} (${dup.receiptNumber || '-'} • Status: ${dup.status}) untuk periode "${effPeriod}" di database Cloud.`,
+        };
+      }
+    }
+  } catch (error: any) {
+    if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
+      handleFirestoreError(error, OperationType.GET, COLLECTIONS.PAYMENTS);
+    } else {
+      console.warn('Firestore duplicate pre-check notice (falling back to local check & sync):', error?.message);
+    }
+  }
+
+  const synced = await syncPaymentToCloud(payment);
+  return { ok: true, synced };
+}
+
+const PENDING_PAYMENT_AUDIT_SYNC_KEY = 'dana_kematian_pending_payment_audit_sync_v1';
+
+export function getPendingUnsyncedPaymentAuditLogs(): PaymentUploadAuditLog[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(PENDING_PAYMENT_AUDIT_SYNC_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function markPaymentAuditPendingSync(log: PaymentUploadAuditLog): void {
+  if (typeof window === 'undefined' || !log?.id) return;
+  try {
+    const current = getPendingUnsyncedPaymentAuditLogs();
+    const updated = [log, ...current.filter((l) => l && l.id !== log.id)];
+    localStorage.setItem(PENDING_PAYMENT_AUDIT_SYNC_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function clearPaymentAuditPendingSync(logId: string): void {
+  if (typeof window === 'undefined' || !logId) return;
+  try {
+    const current = getPendingUnsyncedPaymentAuditLogs();
+    const updated = current.filter((l) => l && l.id !== logId);
+    localStorage.setItem(PENDING_PAYMENT_AUDIT_SYNC_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export async function syncPaymentAuditLogToCloud(log: PaymentUploadAuditLog): Promise<boolean> {
+  markPaymentAuditPendingSync(log);
+  const ref = doc(db, COLLECTIONS.PAYMENT_AUDIT_LOGS, log.id);
+  try {
+    const sanitized = sanitizeFirestoreData(log);
+    await setDoc(ref, sanitized, { merge: true });
+    clearPaymentAuditPendingSync(log.id);
+    recordFirebaseWrite(COLLECTIONS.PAYMENT_AUDIT_LOGS, 1);
+    return true;
+  } catch (error: any) {
+    if (error?.code === 'permission-denied' || error?.message?.includes('insufficient permissions')) {
+      handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.PAYMENT_AUDIT_LOGS}/${log.id}`);
+    } else {
+      console.warn(`Firestore syncPaymentAuditLogToCloud notice for ${log.id}:`, error?.message);
+    }
+    return false;
   }
 }
 
