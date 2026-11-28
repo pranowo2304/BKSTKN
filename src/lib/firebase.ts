@@ -1560,7 +1560,11 @@ export async function clearTransactionsFromCloud(): Promise<void> {
 
     // 5. Local storage marker
     if (typeof window !== 'undefined') {
-      localStorage.setItem('dana_kematian_tx_cleared_v1', 'true');
+      try {
+        localStorage.setItem('dana_kematian_tx_cleared_v1', 'true');
+      } catch {
+        // ignore storage quota errors
+      }
     }
 
     console.log('Successfully cleared all transactions (payments & claims) from Cloud Firestore.');

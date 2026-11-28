@@ -381,7 +381,11 @@ export default function App() {
           await seedInitialFirestoreData();
           await cleanupDemoClaimsFromCloud().catch(() => {});
           if (typeof window !== 'undefined') {
-            localStorage.setItem('dana_kematian_initialized_v1', 'true');
+            try {
+              localStorage.setItem('dana_kematian_initialized_v1', 'true');
+            } catch {
+              // ignore storage quota errors
+            }
           }
         }
         unsubscribeFirestore = subscribeToFirestore({

@@ -35,11 +35,191 @@ const KEYS = {
   DEMO_CLEARED: 'dana_kematian_demo_cleared_v1',
 };
 
+const LARGE_DATA_URL_LIMIT = 16000;
+
+const isLargeDataUrl = (value: unknown, maxLen: number = LARGE_DATA_URL_LIMIT): boolean => {
+  return typeof value === 'string' && value.startsWith('data:') && value.length > maxLen;
+};
+
+const compactMemberForLocalCache = (member: Member): Member => {
+  if (!member) return member;
+  const needsCompact =
+    isLargeDataUrl(member.familyCardPhotoUrl) ||
+    isLargeDataUrl(member.photoUrl) ||
+    isLargeDataUrl(member.paguyubanSignature);
+  if (!needsCompact) return member;
+  return {
+    ...member,
+    familyCardPhotoUrl: isLargeDataUrl(member.familyCardPhotoUrl) ? '' : member.familyCardPhotoUrl,
+    photoUrl: isLargeDataUrl(member.photoUrl) ? '' : member.photoUrl,
+    paguyubanSignature: isLargeDataUrl(member.paguyubanSignature) ? '' : member.paguyubanSignature,
+  };
+};
+
+const compactPaymentForLocalCache = (payment: Payment): Payment => {
+  if (!payment) return payment;
+  const needsCompact =
+    isLargeDataUrl(payment.proofImageUrl) ||
+    isLargeDataUrl(payment.adminSignature);
+  if (!needsCompact) return payment;
+  return {
+    ...payment,
+    proofImageUrl: isLargeDataUrl(payment.proofImageUrl) ? '' : payment.proofImageUrl,
+    adminSignature: isLargeDataUrl(payment.adminSignature) ? '' : payment.adminSignature,
+  };
+};
+
+const compactClaimForLocalCache = (claim: BenefitClaim): BenefitClaim => {
+  if (!claim) return claim;
+  return {
+    ...claim,
+    deathCertificateUrl: isLargeDataUrl(claim.deathCertificateUrl) ? '' : claim.deathCertificateUrl,
+    ketuaSignature: isLargeDataUrl(claim.ketuaSignature) ? '' : claim.ketuaSignature,
+    transferProofUrls: Array.isArray(claim.transferProofUrls)
+      ? claim.transferProofUrls.filter((u) => !isLargeDataUrl(u))
+      : claim.transferProofUrls,
+    externalReceiptUrls: Array.isArray(claim.externalReceiptUrls)
+      ? claim.externalReceiptUrls.filter((u) => !isLargeDataUrl(u))
+      : claim.externalReceiptUrls,
+    expenseDetails: Array.isArray(claim.expenseDetails)
+      ? claim.expenseDetails.map((d) => ({
+          ...d,
+          transferProofUrl: isLargeDataUrl(d?.transferProofUrl) ? '' : d?.transferProofUrl,
+          externalReceiptUrl: isLargeDataUrl(d?.externalReceiptUrl) ? '' : d?.externalReceiptUrl,
+        }))
+      : claim.expenseDetails,
+  };
+};
+
+const reclaimLocalStorageSpace = (excludeKey?: string): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    // 1. Compact heavy cached collections that may contain legacy base64 photos/proofs
+    if (excludeKey !== KEYS.MEMBERS) {
+      const rawMembers = localStorage.getItem(KEYS.MEMBERS);
+      if (rawMembers && rawMembers.length > 200000) {
+        try {
+          const parsed = JSON.parse(rawMembers);
+          if (Array.isArray(parsed)) {
+            localStorage.setItem(KEYS.MEMBERS, JSON.stringify(parsed.map(compactMemberForLocalCache)));
+          }
+        } catch {
+          localStorage.removeItem(KEYS.MEMBERS);
+        }
+      }
+    }
+
+    if (excludeKey !== KEYS.PAYMENTS) {
+      const rawPayments = localStorage.getItem(KEYS.PAYMENTS);
+      if (rawPayments && rawPayments.length > 200000) {
+        try {
+          const parsed = JSON.parse(rawPayments);
+          if (Array.isArray(parsed)) {
+            localStorage.setItem(KEYS.PAYMENTS, JSON.stringify(parsed.map(compactPaymentForLocalCache)));
+          }
+        } catch {
+          localStorage.removeItem(KEYS.PAYMENTS);
+        }
+      }
+    }
+
+    if (excludeKey !== KEYS.CLAIMS) {
+      const rawClaims = localStorage.getItem(KEYS.CLAIMS);
+      if (rawClaims && rawClaims.length > 150000) {
+        try {
+          const parsed = JSON.parse(rawClaims);
+          if (Array.isArray(parsed)) {
+            localStorage.setItem(KEYS.CLAIMS, JSON.stringify(parsed.map(compactClaimForLocalCache)));
+          }
+        } catch {
+          localStorage.removeItem(KEYS.CLAIMS);
+        }
+      }
+    }
+
+    // 2. Trim old notifications and non-critical form drafts if large
+    if (excludeKey !== KEYS.NOTIFICATIONS) {
+      const rawNotifs = localStorage.getItem(KEYS.NOTIFICATIONS);
+      if (rawNotifs && rawNotifs.length > 100000) {
+        try {
+          const parsed = JSON.parse(rawNotifs);
+          if (Array.isArray(parsed)) {
+            localStorage.setItem(KEYS.NOTIFICATIONS, JSON.stringify(parsed.slice(0, 50)));
+          }
+        } catch {
+          localStorage.removeItem(KEYS.NOTIFICATIONS);
+        }
+      }
+    }
+
+    // Remove oversized draft keys if present
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (!k || k === excludeKey) continue;
+      if (k.includes('_draft_') || k.includes('draft_v')) {
+        const val = localStorage.getItem(k);
+        if (val && val.length > 100000) {
+          localStorage.removeItem(k);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Unable to reclaim localStorage space:', err);
+  }
+};
+
+export const safeSetItem = (key: string, value: string): boolean => {
+  if (typeof window === 'undefined') return false;
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch {
+    // Reclaim space from bloated base64 caches and retry once
+    reclaimLocalStorageSpace(key);
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch (retryErr) {
+      // As a final step for critical lightweight keys (users, settings, active user), clear heavy offline mirror caches
+      const isCriticalSmallKey =
+        key === KEYS.USERS ||
+        key === KEYS.SETTINGS ||
+        key === KEYS.ACTIVE_USER ||
+        key === KEYS.CLUSTERS ||
+        key === KEYS.BENEFITS ||
+        key === KEYS.IS_INITIALIZED;
+      if (isCriticalSmallKey) {
+        try {
+          localStorage.removeItem(KEYS.MEMBERS);
+          localStorage.removeItem(KEYS.PAYMENTS);
+          localStorage.removeItem(KEYS.CLAIMS);
+          localStorage.setItem(key, value);
+          return true;
+        } catch (finalErr) {
+          console.warn(`Storage quota exceeded for ${key}, continuing in memory/cloud mode:`, finalErr);
+          return false;
+        }
+      }
+      console.warn(`Storage quota exceeded for ${key}, continuing in memory/cloud mode:`, retryErr);
+      return false;
+    }
+  }
+};
+
+export const safeRemoveItem = (key: string): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(key);
+  } catch (err) {
+    console.warn(`Unable to remove localStorage key ${key}:`, err);
+  }
+};
+
 export const getStoredBenefits = (): BenefitMaster[] => {
   try {
     const data = localStorage.getItem(KEYS.BENEFITS);
     if (!data) {
-      localStorage.setItem(KEYS.BENEFITS, JSON.stringify(DEFAULT_BENEFITS));
+      safeSetItem(KEYS.BENEFITS, JSON.stringify(DEFAULT_BENEFITS));
       return DEFAULT_BENEFITS;
     }
     const parsed = JSON.parse(data);
@@ -59,7 +239,7 @@ export const getStoredBenefits = (): BenefitMaster[] => {
           !b.categoryName?.toLowerCase().includes('anak')
       );
       if (cleaned.length !== parsed.length) {
-        localStorage.setItem(KEYS.BENEFITS, JSON.stringify(cleaned));
+        safeSetItem(KEYS.BENEFITS, JSON.stringify(cleaned));
       }
       return cleaned.length > 0 ? cleaned : DEFAULT_BENEFITS;
     }
@@ -71,18 +251,14 @@ export const getStoredBenefits = (): BenefitMaster[] => {
 };
 
 export const saveStoredBenefits = (benefits: BenefitMaster[]) => {
-  try {
-    localStorage.setItem(KEYS.BENEFITS, JSON.stringify(benefits));
-  } catch (e) {
-    console.error('Error saving benefits:', e);
-  }
+  safeSetItem(KEYS.BENEFITS, JSON.stringify(benefits));
 };
 
 export const getStoredClusters = (): ClusterMaster[] => {
   try {
     const data = localStorage.getItem(KEYS.CLUSTERS);
     if (!data) {
-      localStorage.setItem(KEYS.CLUSTERS, JSON.stringify(DEFAULT_CLUSTERS));
+      safeSetItem(KEYS.CLUSTERS, JSON.stringify(DEFAULT_CLUSTERS));
       return DEFAULT_CLUSTERS;
     }
     const parsed = JSON.parse(data);
@@ -123,7 +299,7 @@ export const getStoredClusters = (): ClusterMaster[] => {
         return c;
       });
       if (migrated) {
-        localStorage.setItem(KEYS.CLUSTERS, JSON.stringify(normalized));
+        safeSetItem(KEYS.CLUSTERS, JSON.stringify(normalized));
       }
 
       // Sync leader phone and name with stored users if available
@@ -149,11 +325,7 @@ export const getStoredClusters = (): ClusterMaster[] => {
 };
 
 export const saveStoredClusters = (clusters: ClusterMaster[]) => {
-  try {
-    localStorage.setItem(KEYS.CLUSTERS, JSON.stringify(clusters));
-  } catch (e) {
-    console.error('Error saving clusters:', e);
-  }
+  safeSetItem(KEYS.CLUSTERS, JSON.stringify(clusters));
 };
 
 export const getActiveClusterNames = (): string[] => {
@@ -194,7 +366,7 @@ export const getStoredUsers = (): AppUser[] => {
 
     const members = getStoredMembers();
     const synced = syncMembersToUsers(members, users);
-    localStorage.setItem(KEYS.USERS, JSON.stringify(synced));
+    safeSetItem(KEYS.USERS, JSON.stringify(synced));
     return synced;
   } catch (e) {
     console.error('Error reading users:', e);
@@ -473,7 +645,7 @@ export const getMemberForUser = (user?: AppUser, members: Member[] = []): Member
 };
 
 export const saveUsers = (users: AppUser[]) => {
-  localStorage.setItem(KEYS.USERS, JSON.stringify(users));
+  safeSetItem(KEYS.USERS, JSON.stringify(users));
 };
 
 export const getStoredActiveUser = (): AppUser | null => {
@@ -489,13 +661,13 @@ export const getStoredActiveUser = (): AppUser | null => {
     }
     if (user.cluster === 'Cluster Tanah Minang' || user.cluster === 'Cluster Ranah Minang') {
       user.cluster = 'Cluster Ranah Melayu';
-      localStorage.setItem(KEYS.ACTIVE_USER, JSON.stringify(user));
+      safeSetItem(KEYS.ACTIVE_USER, JSON.stringify(user));
     } else if (user.cluster === 'Cluster Pasundan' || user.cluster === 'Cluster Pasundan RT 02') {
       user.cluster = 'Cluster Pasundan RT 05';
-      localStorage.setItem(KEYS.ACTIVE_USER, JSON.stringify(user));
+      safeSetItem(KEYS.ACTIVE_USER, JSON.stringify(user));
     } else if (user.cluster === 'Cluster Pasundan RT 03') {
       user.cluster = 'Cluster Pasundan RT 06';
-      localStorage.setItem(KEYS.ACTIVE_USER, JSON.stringify(user));
+      safeSetItem(KEYS.ACTIVE_USER, JSON.stringify(user));
     }
     return user;
   } catch (e) {
@@ -505,14 +677,14 @@ export const getStoredActiveUser = (): AppUser | null => {
 
 export const saveStoredActiveUser = (user: AppUser | null) => {
   if (user) {
-    localStorage.setItem(KEYS.ACTIVE_USER, JSON.stringify(user));
+    safeSetItem(KEYS.ACTIVE_USER, JSON.stringify(user));
   } else {
-    localStorage.removeItem(KEYS.ACTIVE_USER);
+    safeRemoveItem(KEYS.ACTIVE_USER);
   }
 };
 
 export const clearStoredActiveUser = () => {
-  localStorage.removeItem(KEYS.ACTIVE_USER);
+  safeRemoveItem(KEYS.ACTIVE_USER);
 };
 
 export const getStoredMembers = (): Member[] => {
@@ -527,8 +699,8 @@ export const getStoredMembers = (): Member[] => {
       if (isInit) {
         return [];
       }
-      localStorage.setItem(KEYS.IS_INITIALIZED, 'true');
-      localStorage.setItem(KEYS.MEMBERS, JSON.stringify(initialMembers));
+      safeSetItem(KEYS.IS_INITIALIZED, 'true');
+      safeSetItem(KEYS.MEMBERS, JSON.stringify(initialMembers.map(compactMemberForLocalCache)));
       return initialMembers;
     }
     const parsed = JSON.parse(data);
@@ -571,7 +743,7 @@ export const getStoredMembers = (): Member[] => {
     });
 
     if (migrated) {
-      localStorage.setItem(KEYS.MEMBERS, JSON.stringify(migratedMembers));
+      safeSetItem(KEYS.MEMBERS, JSON.stringify(migratedMembers.map(compactMemberForLocalCache)));
     }
 
     return migratedMembers;
@@ -582,28 +754,11 @@ export const getStoredMembers = (): Member[] => {
 };
 
 export const saveMembers = (members: Member[]) => {
-  try {
-    localStorage.setItem(KEYS.IS_INITIALIZED, 'true');
-    localStorage.setItem(KEYS.MEMBERS, JSON.stringify(members));
-  } catch (e) {
-    console.warn('Storage quota warning when saving members:', e);
-    // If quota exceeded due to large photo base64 strings, save members safely
-    try {
-      const compactMembers = members.map((m) => {
-        if (m.familyCardPhotoUrl && m.familyCardPhotoUrl.length > 450000) {
-          // Omit oversized base64 payload from local fallback rather than slicing mid-stream while cloud Firestore holds the full record
-          return {
-            ...m,
-            familyCardPhotoUrl: '',
-          };
-        }
-        return m;
-      });
-      localStorage.setItem(KEYS.MEMBERS, JSON.stringify(compactMembers));
-    } catch (innerErr) {
-      console.warn('Fallback compact member save failed:', innerErr);
-    }
-  }
+  safeSetItem(KEYS.IS_INITIALIZED, 'true');
+  // Strip heavy base64 images from localStorage mirror so browser 5MB quota is never exhausted;
+  // Cloud Firestore and in-memory state retain the full-resolution attachments.
+  const compactMembers = (members || []).map(compactMemberForLocalCache);
+  safeSetItem(KEYS.MEMBERS, JSON.stringify(compactMembers));
 };
 
 export const getStoredPayments = (): Payment[] => {
@@ -619,7 +774,7 @@ export const getStoredPayments = (): Payment[] => {
       if (isInit) {
         return [];
       }
-      localStorage.setItem(KEYS.PAYMENTS, JSON.stringify(initialPayments));
+      safeSetItem(KEYS.PAYMENTS, JSON.stringify(initialPayments.map(compactPaymentForLocalCache)));
       return initialPayments;
     }
     const parsed = JSON.parse(data);
@@ -632,19 +787,17 @@ export const getStoredPayments = (): Payment[] => {
 };
 
 export const savePayments = (payments: Payment[]) => {
-  try {
-    localStorage.setItem(KEYS.IS_INITIALIZED, 'true');
-    localStorage.setItem(KEYS.PAYMENTS, JSON.stringify(payments));
-  } catch (e) {
-    console.warn('Storage quota warning when saving payments:', e);
-  }
+  safeSetItem(KEYS.IS_INITIALIZED, 'true');
+  // Strip heavy base64 transfer proof images from localStorage mirror; Cloud Firestore holds the full proofs.
+  const compactPayments = (payments || []).map(compactPaymentForLocalCache);
+  safeSetItem(KEYS.PAYMENTS, JSON.stringify(compactPayments));
 };
 
 export const getStoredClaims = (): BenefitClaim[] => {
   try {
     const data = localStorage.getItem(KEYS.CLAIMS);
     if (!data) {
-      localStorage.setItem(KEYS.CLAIMS, JSON.stringify([]));
+      safeSetItem(KEYS.CLAIMS, JSON.stringify([]));
       return [];
     }
     const parsed = JSON.parse(data);
@@ -652,7 +805,7 @@ export const getStoredClaims = (): BenefitClaim[] => {
       // Filter out demo claims ('claim-1', 'claim-2', 'claim-3') to ensure realization demo data is clean
       const cleaned = parsed.filter((c: BenefitClaim) => c && c.id !== 'claim-1' && c.id !== 'claim-2' && c.id !== 'claim-3');
       if (cleaned.length !== parsed.length) {
-        localStorage.setItem(KEYS.CLAIMS, JSON.stringify(cleaned));
+        safeSetItem(KEYS.CLAIMS, JSON.stringify(cleaned.map(compactClaimForLocalCache)));
       }
       return cleaned;
     }
@@ -664,25 +817,17 @@ export const getStoredClaims = (): BenefitClaim[] => {
 };
 
 export const clearAllClaimsLocally = () => {
-  try {
-    localStorage.setItem(KEYS.CLAIMS, JSON.stringify([]));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('adk_claims_updated', { detail: [] }));
-    }
-  } catch (e) {
-    console.warn('Storage quota warning when clearing claims:', e);
+  safeSetItem(KEYS.CLAIMS, JSON.stringify([]));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('adk_claims_updated', { detail: [] }));
   }
 };
 
 export const saveClaims = (claims: BenefitClaim[]) => {
-  try {
-    localStorage.setItem(KEYS.IS_INITIALIZED, 'true');
-    localStorage.setItem(KEYS.CLAIMS, JSON.stringify(claims));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('adk_claims_updated', { detail: claims }));
-    }
-  } catch (e) {
-    console.warn('Storage quota warning when saving claims:', e);
+  safeSetItem(KEYS.IS_INITIALIZED, 'true');
+  safeSetItem(KEYS.CLAIMS, JSON.stringify((claims || []).map(compactClaimForLocalCache)));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('adk_claims_updated', { detail: claims }));
   }
 };
 
@@ -692,7 +837,7 @@ export const getStoredAmbulanceOrders = (): AmbulanceOrder[] => {
     const data = localStorage.getItem(KEYS.AMBULANCE_ORDERS);
     if (data === null) {
       if (isCleared) return [];
-      localStorage.setItem(KEYS.AMBULANCE_ORDERS, JSON.stringify(sampleInitialAmbulanceOrders));
+      safeSetItem(KEYS.AMBULANCE_ORDERS, JSON.stringify(sampleInitialAmbulanceOrders));
       return sampleInitialAmbulanceOrders;
     }
     const parsed = JSON.parse(data);
@@ -704,13 +849,9 @@ export const getStoredAmbulanceOrders = (): AmbulanceOrder[] => {
 };
 
 export const saveAmbulanceOrders = (orders: AmbulanceOrder[]) => {
-  try {
-    localStorage.setItem(KEYS.AMBULANCE_ORDERS, JSON.stringify(orders));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('adk_ambulance_orders_updated', { detail: orders }));
-    }
-  } catch (e) {
-    console.warn('Storage quota warning when saving ambulance orders:', e);
+  safeSetItem(KEYS.AMBULANCE_ORDERS, JSON.stringify(orders));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('adk_ambulance_orders_updated', { detail: orders }));
   }
 };
 
@@ -720,7 +861,7 @@ export const getStoredFuneralSchedules = (): FuneralSchedule[] => {
     const data = localStorage.getItem(KEYS.FUNERAL_SCHEDULES);
     if (data === null) {
       if (isCleared) return [];
-      localStorage.setItem(KEYS.FUNERAL_SCHEDULES, JSON.stringify(sampleInitialFuneralSchedules));
+      safeSetItem(KEYS.FUNERAL_SCHEDULES, JSON.stringify(sampleInitialFuneralSchedules));
       return sampleInitialFuneralSchedules;
     }
     const parsed = JSON.parse(data);
@@ -732,13 +873,9 @@ export const getStoredFuneralSchedules = (): FuneralSchedule[] => {
 };
 
 export const saveFuneralSchedules = (schedules: FuneralSchedule[]) => {
-  try {
-    localStorage.setItem(KEYS.FUNERAL_SCHEDULES, JSON.stringify(schedules));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('adk_funeral_schedules_updated', { detail: schedules }));
-    }
-  } catch (e) {
-    console.warn('Storage quota warning when saving funeral schedules:', e);
+  safeSetItem(KEYS.FUNERAL_SCHEDULES, JSON.stringify(schedules));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('adk_funeral_schedules_updated', { detail: schedules }));
   }
 };
 
@@ -748,7 +885,7 @@ export const getStoredFuneralInventory = (): FuneralInventoryItem[] => {
     const data = localStorage.getItem(KEYS.FUNERAL_INVENTORY);
     if (data === null) {
       if (isCleared) return [];
-      localStorage.setItem(KEYS.FUNERAL_INVENTORY, JSON.stringify(sampleInitialInventoryItems));
+      safeSetItem(KEYS.FUNERAL_INVENTORY, JSON.stringify(sampleInitialInventoryItems));
       return sampleInitialInventoryItems;
     }
     const parsed = JSON.parse(data);
@@ -760,13 +897,9 @@ export const getStoredFuneralInventory = (): FuneralInventoryItem[] => {
 };
 
 export const saveFuneralInventory = (items: FuneralInventoryItem[]) => {
-  try {
-    localStorage.setItem(KEYS.FUNERAL_INVENTORY, JSON.stringify(items));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('adk_funeral_inventory_updated', { detail: items }));
-    }
-  } catch (e) {
-    console.warn('Storage quota warning when saving funeral inventory:', e);
+  safeSetItem(KEYS.FUNERAL_INVENTORY, JSON.stringify(items));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('adk_funeral_inventory_updated', { detail: items }));
   }
 };
 
@@ -776,7 +909,7 @@ export const getStoredFuneralInventoryLoans = (): FuneralInventoryLoan[] => {
     const data = localStorage.getItem(KEYS.FUNERAL_INVENTORY_LOANS);
     if (data === null) {
       if (isCleared) return [];
-      localStorage.setItem(KEYS.FUNERAL_INVENTORY_LOANS, JSON.stringify(sampleInitialInventoryLoans));
+      safeSetItem(KEYS.FUNERAL_INVENTORY_LOANS, JSON.stringify(sampleInitialInventoryLoans));
       return sampleInitialInventoryLoans;
     }
     const parsed = JSON.parse(data);
@@ -788,13 +921,9 @@ export const getStoredFuneralInventoryLoans = (): FuneralInventoryLoan[] => {
 };
 
 export const saveFuneralInventoryLoans = (loans: FuneralInventoryLoan[]) => {
-  try {
-    localStorage.setItem(KEYS.FUNERAL_INVENTORY_LOANS, JSON.stringify(loans));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('adk_funeral_inventory_loans_updated', { detail: loans }));
-    }
-  } catch (e) {
-    console.warn('Storage quota warning when saving funeral inventory loans:', e);
+  safeSetItem(KEYS.FUNERAL_INVENTORY_LOANS, JSON.stringify(loans));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('adk_funeral_inventory_loans_updated', { detail: loans }));
   }
 };
 
@@ -802,7 +931,7 @@ export const getStoredSettings = (): SystemSettings => {
   try {
     const data = localStorage.getItem(KEYS.SETTINGS);
     if (data === null) {
-      localStorage.setItem(KEYS.SETTINGS, JSON.stringify(initialSettings));
+      safeSetItem(KEYS.SETTINGS, JSON.stringify(initialSettings));
       return initialSettings;
     }
     const parsed = JSON.parse(data);
@@ -837,7 +966,17 @@ export const saveSettings = (settings: SystemSettings) => {
       (b) => b && ((b.bankName && b.bankName.trim()) || (b.accountNumber && b.accountNumber.trim()))
     ),
   };
-  localStorage.setItem(KEYS.SETTINGS, JSON.stringify(cleanedSettings));
+  if (!safeSetItem(KEYS.SETTINGS, JSON.stringify(cleanedSettings))) {
+    // Fallback without large base64 logo/signature if storage is extremely tight
+    const compactSettings: SystemSettings = {
+      ...cleanedSettings,
+      logoUrl: isLargeDataUrl(cleanedSettings.logoUrl, 64000) ? '' : cleanedSettings.logoUrl,
+      defaultAdminSignature: isLargeDataUrl(cleanedSettings.defaultAdminSignature, 64000)
+        ? ''
+        : cleanedSettings.defaultAdminSignature,
+    };
+    safeSetItem(KEYS.SETTINGS, JSON.stringify(compactSettings));
+  }
 };
 
 export const getBaseBalance = (): number => {
@@ -855,11 +994,7 @@ export const getBaseBalance = (): number => {
 };
 
 export const saveBaseBalance = (balance: number) => {
-  try {
-    localStorage.setItem(KEYS.BASE_BALANCE, balance.toString());
-  } catch (e) {
-    console.error('Error saving base balance:', e);
-  }
+  safeSetItem(KEYS.BASE_BALANCE, balance.toString());
 };
 
 // Calculate current dynamic balance: Base + Verified Payments - Approved Benefit Claims
@@ -910,7 +1045,7 @@ export const getStoredNotifications = (): AppNotification[] => {
   try {
     const data = localStorage.getItem(KEYS.NOTIFICATIONS);
     if (!data) {
-      localStorage.setItem(KEYS.NOTIFICATIONS, JSON.stringify(INITIAL_NOTIFICATIONS));
+      safeSetItem(KEYS.NOTIFICATIONS, JSON.stringify(INITIAL_NOTIFICATIONS));
       return INITIAL_NOTIFICATIONS;
     }
     const parsed = JSON.parse(data);
@@ -925,54 +1060,50 @@ export const getStoredNotifications = (): AppNotification[] => {
 };
 
 export const saveStoredNotifications = (notifications: AppNotification[]) => {
-  try {
-    localStorage.setItem(KEYS.NOTIFICATIONS, JSON.stringify(notifications));
-  } catch (e) {
-    console.error('Error saving notifications:', e);
-  }
+  safeSetItem(KEYS.NOTIFICATIONS, JSON.stringify((notifications || []).slice(0, 120)));
 };
 
 export const resetToDefaultData = () => {
-  localStorage.removeItem(KEYS.DEMO_CLEARED);
-  localStorage.setItem(KEYS.IS_INITIALIZED, 'true');
-  localStorage.setItem(KEYS.MEMBERS, JSON.stringify(sampleDemoMembers));
-  localStorage.setItem(KEYS.PAYMENTS, JSON.stringify(sampleDemoPayments));
-  localStorage.setItem(KEYS.CLAIMS, JSON.stringify(sampleDemoClaims));
-  localStorage.setItem(KEYS.AMBULANCE_ORDERS, JSON.stringify(sampleInitialAmbulanceOrders));
-  localStorage.setItem(KEYS.FUNERAL_SCHEDULES, JSON.stringify(sampleInitialFuneralSchedules));
-  localStorage.setItem(KEYS.FUNERAL_INVENTORY, JSON.stringify(sampleInitialInventoryItems));
-  localStorage.setItem(KEYS.FUNERAL_INVENTORY_LOANS, JSON.stringify(sampleInitialInventoryLoans));
-  localStorage.setItem(KEYS.SETTINGS, JSON.stringify(initialSettings));
-  localStorage.setItem(KEYS.CLUSTERS, JSON.stringify(DEFAULT_CLUSTERS));
-  localStorage.setItem(KEYS.BENEFITS, JSON.stringify(DEFAULT_BENEFITS));
-  localStorage.setItem(KEYS.NOTIFICATIONS, JSON.stringify(INITIAL_NOTIFICATIONS));
-  localStorage.setItem(KEYS.BASE_BALANCE, INITIAL_BASE_FUND_BALANCE.toString());
-  localStorage.setItem(KEYS.USERS, JSON.stringify(initialUsers));
-  localStorage.setItem(KEYS.ACTIVE_USER, JSON.stringify(initialUsers[0]));
+  safeRemoveItem(KEYS.DEMO_CLEARED);
+  safeSetItem(KEYS.IS_INITIALIZED, 'true');
+  safeSetItem(KEYS.MEMBERS, JSON.stringify(sampleDemoMembers.map(compactMemberForLocalCache)));
+  safeSetItem(KEYS.PAYMENTS, JSON.stringify(sampleDemoPayments.map(compactPaymentForLocalCache)));
+  safeSetItem(KEYS.CLAIMS, JSON.stringify(sampleDemoClaims.map(compactClaimForLocalCache)));
+  safeSetItem(KEYS.AMBULANCE_ORDERS, JSON.stringify(sampleInitialAmbulanceOrders));
+  safeSetItem(KEYS.FUNERAL_SCHEDULES, JSON.stringify(sampleInitialFuneralSchedules));
+  safeSetItem(KEYS.FUNERAL_INVENTORY, JSON.stringify(sampleInitialInventoryItems));
+  safeSetItem(KEYS.FUNERAL_INVENTORY_LOANS, JSON.stringify(sampleInitialInventoryLoans));
+  safeSetItem(KEYS.SETTINGS, JSON.stringify(initialSettings));
+  safeSetItem(KEYS.CLUSTERS, JSON.stringify(DEFAULT_CLUSTERS));
+  safeSetItem(KEYS.BENEFITS, JSON.stringify(DEFAULT_BENEFITS));
+  safeSetItem(KEYS.NOTIFICATIONS, JSON.stringify(INITIAL_NOTIFICATIONS));
+  safeSetItem(KEYS.BASE_BALANCE, INITIAL_BASE_FUND_BALANCE.toString());
+  safeSetItem(KEYS.USERS, JSON.stringify(initialUsers));
+  safeSetItem(KEYS.ACTIVE_USER, JSON.stringify(initialUsers[0]));
 };
 
 export const clearTransactionsLocally = () => {
-  localStorage.setItem(KEYS.PAYMENTS, JSON.stringify([]));
-  localStorage.setItem(KEYS.CLAIMS, JSON.stringify([]));
-  localStorage.setItem(KEYS.BASE_BALANCE, '0');
-  localStorage.setItem('dana_kematian_tx_cleared_v1', 'true');
+  safeSetItem(KEYS.PAYMENTS, JSON.stringify([]));
+  safeSetItem(KEYS.CLAIMS, JSON.stringify([]));
+  safeSetItem(KEYS.BASE_BALANCE, '0');
+  safeSetItem('dana_kematian_tx_cleared_v1', 'true');
 };
 
 export const clearAllDemoDataLocally = () => {
-  localStorage.setItem(KEYS.IS_INITIALIZED, 'true');
-  localStorage.setItem(KEYS.DEMO_CLEARED, 'true');
-  localStorage.setItem(KEYS.MEMBERS, JSON.stringify([]));
-  localStorage.setItem(KEYS.PAYMENTS, JSON.stringify([]));
-  localStorage.setItem(KEYS.CLAIMS, JSON.stringify([]));
-  localStorage.setItem(KEYS.AMBULANCE_ORDERS, JSON.stringify([]));
-  localStorage.setItem(KEYS.FUNERAL_SCHEDULES, JSON.stringify([]));
-  localStorage.setItem(KEYS.FUNERAL_INVENTORY, JSON.stringify([]));
-  localStorage.setItem(KEYS.FUNERAL_INVENTORY_LOANS, JSON.stringify([]));
-  localStorage.setItem(KEYS.NOTIFICATIONS, JSON.stringify([]));
-  localStorage.setItem(KEYS.BASE_BALANCE, '0');
+  safeSetItem(KEYS.IS_INITIALIZED, 'true');
+  safeSetItem(KEYS.DEMO_CLEARED, 'true');
+  safeSetItem(KEYS.MEMBERS, JSON.stringify([]));
+  safeSetItem(KEYS.PAYMENTS, JSON.stringify([]));
+  safeSetItem(KEYS.CLAIMS, JSON.stringify([]));
+  safeSetItem(KEYS.AMBULANCE_ORDERS, JSON.stringify([]));
+  safeSetItem(KEYS.FUNERAL_SCHEDULES, JSON.stringify([]));
+  safeSetItem(KEYS.FUNERAL_INVENTORY, JSON.stringify([]));
+  safeSetItem(KEYS.FUNERAL_INVENTORY_LOANS, JSON.stringify([]));
+  safeSetItem(KEYS.NOTIFICATIONS, JSON.stringify([]));
+  safeSetItem(KEYS.BASE_BALANCE, '0');
   const adminUsers = initialUsers.filter((u) => u.authority !== 'Anggota');
-  localStorage.setItem(KEYS.USERS, JSON.stringify(adminUsers));
-  localStorage.setItem(KEYS.ACTIVE_USER, JSON.stringify(adminUsers[0] || initialUsers[0]));
+  safeSetItem(KEYS.USERS, JSON.stringify(adminUsers));
+  safeSetItem(KEYS.ACTIVE_USER, JSON.stringify(adminUsers[0] || initialUsers[0]));
 };
 
 // Format Currency Utility IDR
